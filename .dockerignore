@@ -1,0 +1,53 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+
+# Environment files (will be passed via docker-compose)
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp.*
+nul
+
+# Vite cache
+.vite
+
+# Claude files
+.claude
+
+# Test files
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+__tests__
+
+# Documentation
+*.md
+!README.md
+
+# Dropbox
+.dropbox
+.dropbox.attr

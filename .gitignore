@@ -1,0 +1,19 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# Large video files are now handled by Git LFS
+# *.mp4 files are tracked by Git LFS - see .gitattributes
+
+# Test files
+*test*.js
+*test*.png
+*.png*.mp4
+attached_assets/*.mp4
+client/src/assets/*.mp4
+# Ignore all MP4 files everywhere
+*.mp4
+public/*.mp4

@@ -1,0 +1,314 @@
+/* John Barclay Estate & Management Typography System */
+/* Primary Font: Freight Display Pro (serif) - For headings and brand name */
+/* Secondary Font: Gotham (sans-serif) - For subheadings and UI elements */
+/* Body Font: Avenir Light (sans-serif) - For body text and detailed information */
+
+@import url('https://fonts.googleapis.com/css2?family=Tinos:ital,wght@0,400;0,700;1,400;1,700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply antialiased bg-background text-foreground;
+    font-family: 'Avenir Next', 'Avenir', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 300;
+    font-size: 16px;
+    color: #333333; /* Charcoal Grey */
+  }
+
+  /* Headings and Brand Names - Tinos (closest to Tiempos Text) */
+  h1, h2, h3, h4 {
+    font-family: 'Tinos', 'Times New Roman', Georgia, serif;
+    @apply font-bold;
+    color: #791E75; /* Royal Purple */
+  }
+
+  h1 {
+    font-size: 65px;
+    line-height: 1.1;
+    font-weight: 900;
+  }
+
+  h2 {
+    font-size: 40px;
+    line-height: 1.15;
+    font-weight: 700;
+  }
+
+  h3 {
+    font-size: 28px;
+    line-height: 1.2;
+    font-weight: 700;
+  }
+
+  h4 {
+    font-size: 20px;
+    line-height: 1.25;
+    font-weight: 600;
+  }
+  
+  /* UI Elements - Gotham (sans-serif) style */
+  button, .button {
+    font-family: 'Inter', 'Gotham', 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 600;
+    font-size: 18px;
+  }
+}
+
+@layer components {
+  /* JOHN BARCLAY BRAND COLOR SYSTEM */
+  /* STRICT ADHERENCE: Only use Purple (#791E75) and Gold (#F8B324) */
+  :root {
+    /* Primary Brand Colors - USE THESE ONLY */
+    --brand-purple: #791E75;      /* Royal Purple - Primary brand color */
+    --brand-gold: #F8B324;        /* Gold - Secondary brand color */
+    
+    /* Purple Variations (for hover states and depth) */
+    --purple-dark: #5d1759;       /* Darker purple for hover states */
+    --purple-light: #9b2693;      /* Lighter purple for subtle accents */
+    --purple-darker: #4A1147;     /* Deep plum for shadows */
+    
+    /* Gold Variations (for hover states and depth) */
+    --gold-dark: #d89b1f;         /* Darker gold for hover states */
+    --gold-light: #ffc94d;        /* Lighter gold for highlights */
+    
+    /* Neutrals (use sparingly) */
+    --black: #000000;             /* Pure black */
+    --white: #FFFFFF;             /* Pure white */
+    --gray-dark: #1a1a1a;         /* Very dark gray (near black) */
+    --gray-medium: #333333;       /* Medium gray (for text on white) */
+    --gray-light: #f5f5f5;        /* Very light gray (for subtle backgrounds) */
+  }
+
+  /* Typography System Utility Classes */
+  
+  /* Primary Font: Tinos (serif) - For headings and brand name */
+  .font-freight, .font-heading, .font-tiempos {
+    font-family: 'Tinos', 'Times New Roman', Georgia, serif;
+  }
+  
+  /* Secondary Font: Gotham (sans-serif) - For subheadings and UI elements */
+  .font-gotham, .font-ui {
+    font-family: 'Inter', 'Gotham', 'Helvetica Neue', Arial, sans-serif;
+  }
+  
+  /* Body Font: Avenir Light (sans-serif) - For body text and detailed information */
+  .font-avenir, .font-body {
+    font-family: 'Avenir Next', 'Avenir', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 300;
+  }
+
+  /* Legacy font class for compatibility */
+  .font-calibre {
+    font-family: 'Inter', 'Gotham', 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  /* Professional clean font for JOHN BARCLAY branding - using serif for distinction */
+  .geometric-title {
+    font-family: 'Tinos', 'Times New Roman', Georgia, serif;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+
+  /* Blinking cursor effect */
+  .terminal-cursor {
+    animation: blink 1s infinite;
+  }
+
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+
+  /* Logo reveal animation - simple left to right drawing effect */
+  .logo-reveal-container {
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Note: clip-path animation is controlled by JS/GSAP, not CSS */
+
+  .fun-card {
+    @apply rounded-2xl shadow-lg transition-all duration-300 hover:shadow-xl hover:-translate-y-1;
+    border-width: 2px;
+    border-color: #C9CFD5;
+  }
+
+  .fun-button {
+    @apply rounded-full font-medium shadow-md transition-all duration-300 hover:shadow-lg transform hover:-translate-y-0.5;
+    background-color: #791E75; /* Royal Purple */
+    color: white;
+  }
+
+  .fun-gradient {
+    background-color: #791E75; /* Royal Purple */
+  }
+  
+  /* Custom taller input boxes */
+  input, 
+  select, 
+  .select-trigger,
+  [data-radix-select-trigger],
+  .SelectTrigger,
+  [role="combobox"] {
+    height: 3.75rem !important; /* Approximately 50% taller than previous size */
+    padding-top: 0.75rem !important;
+    padding-bottom: 0.75rem !important;
+    font-size: 1.125rem !important;
+  }
+
+  .section-padding {
+    @apply py-16 md:py-28;
+  }
+  
+  .accent-gold {
+    background-color: #D4A04F; /* Muted Gold */
+    color: #0A0A0A; /* Rich Black */
+  }
+  
+  .stat-card {
+    font-size: 28px;
+    background-color: #D4A04F; /* Muted Gold */
+    @apply p-6 rounded-xl font-bold shadow;
+  }
+  
+  .credential-text {
+    font-size: 18px;
+  }
+  
+  .benefit-card {
+    color: #791E75; /* Royal Purple */
+  }
+
+  .process-step {
+    position: relative;
+  }
+  
+  .process-step-number {
+    position: absolute;
+    top: -10px;
+    left: -10px;
+    width: 40px;
+    height: 40px;
+    background-color: #791E75; /* Royal Purple */
+    color: white;
+    @apply flex items-center justify-center rounded-full font-bold;
+  }
+  
+  .bg-light-gray {
+    background-color: #F9F3E3; /* Soft Cream */
+  }
+  
+  .bg-dark-gray {
+    background-color: #333333; /* Charcoal Grey */
+  }
+  
+  .text-purple {
+    color: #791E75; /* Royal Purple */
+  }
+  
+  .text-dark-gray {
+    color: #333333; /* Charcoal Grey */
+  }
+  
+  .border-light {
+    border-color: #F9F3E3; /* Soft Cream */
+  }
+  
+  .key-term {
+    font-weight: 700;
+  }
+}
+
+/* Custom Animations for 3D Background Effects */
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-20px) rotate(5deg); }
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(-15px) rotate(3deg); }
+}
+
+@keyframes float-reverse {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50% { transform: translateY(15px) rotate(-3deg); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes slide-right {
+  0% { transform: translateX(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(100%); opacity: 0; }
+}
+
+@keyframes slide-left {
+  0% { transform: translateX(100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateX(-100%); opacity: 0; }
+}
+
+@keyframes slide-down {
+  0% { transform: translateY(-100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+
+@keyframes slide-up {
+  0% { transform: translateY(100%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-100%); opacity: 0; }
+}
+
+.animate-float-slow {
+  animation: float-slow 6s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+.animate-float-reverse {
+  animation: float-reverse 5s ease-in-out infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 20s linear infinite;
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 3s ease-in-out infinite;
+}
+
+.animate-slide-right {
+  animation: slide-right 8s linear infinite;
+}
+
+.animate-slide-left {
+  animation: slide-left 10s linear infinite;
+}
+
+.animate-slide-down {
+  animation: slide-down 12s linear infinite;
+}
+
+.animate-slide-up {
+  animation: slide-up 14s linear infinite;
+}
