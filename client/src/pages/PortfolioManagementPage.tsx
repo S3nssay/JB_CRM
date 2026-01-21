@@ -159,11 +159,11 @@ export default function PortfolioManagementPage() {
             Choose the right management package for your property portfolio
           </p>
 
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid md:grid-cols-3 gap-8 items-stretch">
             {lettingServicePackages.map((pkg, idx) => (
               <div
                 key={pkg.id}
-                className={`rounded-2xl p-8 ${idx === 2 ? 'bg-[#791E75] border-2 border-[#F8B324]' : 'bg-white/5 border border-white/10'}`}
+                className={`rounded-2xl p-8 flex flex-col ${idx === 2 ? 'bg-[#791E75] border-2 border-[#F8B324]' : 'bg-white/5 border border-white/10'}`}
               >
                 {idx === 2 && (
                   <div className="bg-[#F8B324] text-black text-xs font-bold px-3 py-1 rounded-full inline-block mb-4">
@@ -176,7 +176,7 @@ export default function PortfolioManagementPage() {
                   <span className="text-gray-400 ml-2">{pkg.feeType === 'upfront' ? 'upfront' : 'monthly'}</span>
                 </div>
                 <p className="text-gray-300 mb-6">{pkg.description}</p>
-                <ul className="space-y-3">
+                <ul className="space-y-3 flex-grow">
                   {pkg.services.map((service, serviceIdx) => (
                     <li key={serviceIdx} className="flex items-start text-sm text-gray-300">
                       <span className="text-[#F8B324] mr-2">✓</span>
@@ -184,8 +184,8 @@ export default function PortfolioManagementPage() {
                     </li>
                   ))}
                 </ul>
-                <Link href="/register-rental">
-                  <Button className={`w-full mt-8 py-4 rounded-xl font-bold ${idx === 2 ? 'bg-[#F8B324] text-black hover:bg-[#d89b1f]' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+                <Link href="/register-rental" className="mt-8">
+                  <Button className={`w-full py-4 rounded-xl font-bold ${idx === 2 ? 'bg-[#F8B324] text-black hover:bg-[#d89b1f]' : 'bg-white/10 text-white hover:bg-white/20'}`}>
                     Get Started
                   </Button>
                 </Link>

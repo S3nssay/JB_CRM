@@ -62,14 +62,14 @@ export default function LandlordDetails() {
                 </Link>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">
-                        {landlord.name}
+                        {landlord.fullName}
                     </h1>
                     <div className="flex items-center gap-2 text-muted-foreground">
                         {landlord.landlordType === 'company' ? <Briefcase className="h-4 w-4" /> : <User className="h-4 w-4" />}
                         <span>ID: {landlord.id}</span>
                         <Separator orientation="vertical" className="h-4" />
-                        <Badge variant={landlord.isActive ? 'default' : 'secondary'}>
-                            {landlord.isActive ? 'ACTIVE' : 'INACTIVE'}
+                        <Badge variant={landlord.status === 'active' ? 'default' : 'secondary'}>
+                            {landlord.status === 'active' ? 'ACTIVE' : 'INACTIVE'}
                         </Badge>
                         <Badge variant="outline">{landlord.landlordType?.toUpperCase()}</Badge>
                     </div>
@@ -103,7 +103,7 @@ export default function LandlordDetails() {
                                 <div>
                                     <div className="font-medium">Address</div>
                                     <div className="text-sm text-muted-foreground">
-                                        {[landlord.addressLine1, landlord.city, landlord.postcode].filter(Boolean).join(', ')}
+                                        {landlord.address || 'No address provided'}
                                     </div>
                                 </div>
                             </div>
@@ -122,7 +122,7 @@ export default function LandlordDetails() {
                                 </div>
                                 <div>
                                     <div className="font-medium">Registration No</div>
-                                    <div className="text-sm text-muted-foreground">{landlord.companyRegistrationNo || 'N/A'}</div>
+                                    <div className="text-sm text-muted-foreground">{landlord.companyRegNo || 'N/A'}</div>
                                 </div>
                                 <Separator />
                                 <div>
@@ -145,7 +145,7 @@ export default function LandlordDetails() {
                                     <div className="text-sm text-muted-foreground">
                                         {landlord.bankName}<br />
                                         Acc: ****{landlord.bankAccountNo ? landlord.bankAccountNo.slice(-4) : '****'}<br />
-                                        Sort: {landlord.sortCode}
+                                        Sort: {landlord.bankSortCode}
                                     </div>
                                 </div>
                             </div>

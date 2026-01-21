@@ -109,7 +109,13 @@ const EstateAgentHome = () => {
   const searchDropdownRef = useRef<HTMLDivElement>(null);
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [searchLocation, setSearchLocation] = useState('');
-  const [searchPropertyType, setSearchPropertyType] = useState('flat');
+  const [searchPropertyTypes, setSearchPropertyTypes] = useState<Record<string, boolean>>({
+    showAll: true,
+    detached: false,
+    semiDetached: false,
+    terraced: false,
+    flat: false,
+  });
   const [searchListingType, setSearchListingType] = useState('sale');
   const [searchMinPrice, setSearchMinPrice] = useState('');
   const [searchMaxPrice, setSearchMaxPrice] = useState('');
@@ -147,10 +153,47 @@ const EstateAgentHome = () => {
     }
   }, []);
 
+  // Handle property type checkbox toggle
+  const handlePropertyTypeToggle = (type: string) => {
+    if (type === 'showAll') {
+      // If clicking "Show all", check it and uncheck others
+      setSearchPropertyTypes({
+        showAll: true,
+        detached: false,
+        semiDetached: false,
+        terraced: false,
+        flat: false,
+      });
+    } else {
+      // If clicking a specific type, uncheck "Show all" and toggle this type
+      setSearchPropertyTypes(prev => {
+        const newState = { ...prev, showAll: false, [type]: !prev[type] };
+        // If no specific types are selected, revert to "Show all"
+        const hasAnySelected = newState.detached || newState.semiDetached || newState.terraced || newState.flat;
+        if (!hasAnySelected) {
+          return { showAll: true, detached: false, semiDetached: false, terraced: false, flat: false };
+        }
+        return newState;
+      });
+    }
+  };
+
   // Handle search form submission
   const handleSearch = useCallback(() => {
     const params = new URLSearchParams();
-    params.set('type', searchPropertyType);
+
+    // Build property types array
+    if (searchPropertyTypes.showAll) {
+      params.set('type', 'all');
+    } else {
+      const selectedTypes: string[] = [];
+      if (searchPropertyTypes.detached) selectedTypes.push('detached');
+      if (searchPropertyTypes.semiDetached) selectedTypes.push('semi-detached');
+      if (searchPropertyTypes.terraced) selectedTypes.push('terraced');
+      if (searchPropertyTypes.flat) selectedTypes.push('flat');
+      params.set('type', selectedTypes.join(','));
+    }
+
     params.set('listingType', searchListingType === 'rent' ? 'rental' : searchListingType);
     if (searchLocation) params.set('location', searchLocation);
     if (searchDistance) params.set('distance', searchDistance);
@@ -160,7 +203,7 @@ const EstateAgentHome = () => {
 
     setLocation(`/search?${params.toString()}`);
     setIsSearchDropdownOpen(false);
-  }, [searchPropertyType, searchListingType, searchLocation, searchDistance, searchMinPrice, searchMaxPrice, searchBedrooms, setLocation]);
+  }, [searchPropertyTypes, searchListingType, searchLocation, searchDistance, searchMinPrice, searchMaxPrice, searchBedrooms, setLocation]);
 
   // BackToTopArrow Component
   // Mobile Navigation Menu Component
@@ -289,32 +332,68 @@ const EstateAgentHome = () => {
                     </div>
                   </div>
 
-                  {/* Property Type */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Property Type</label>
-                      <select
-                        value={searchPropertyType}
-                        onChange={(e) => setSearchPropertyType(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#791E75] focus:border-transparent text-gray-900"
-                        data-testid="select-property-type"
-                      >
-                        <option value="flat">Flats</option>
-                        <option value="house">Houses</option>
-                        <option value="commercial">Commercial</option>
-                      </select>
-                    </div>
+                  {/* Listing Type */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Listing Type</label>
+                    <select
+                      value={searchListingType}
+                      onChange={(e) => setSearchListingType(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#791E75] focus:border-transparent text-gray-900"
+                    >
+                      <option value="sale">For Sale</option>
+                      <option value="rent">To Rent</option>
+                    </select>
+                  </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Listing Type</label>
-                      <select
-                        value={searchListingType}
-                        onChange={(e) => setSearchListingType(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#791E75] focus:border-transparent text-gray-900"
-                      >
-                        <option value="sale">For Sale</option>
-                        <option value="rent">To Rent</option>
-                      </select>
+                  {/* Property Type Checkboxes */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Property type</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={searchPropertyTypes.showAll}
+                          onChange={() => handlePropertyTypeToggle('showAll')}
+                          className="w-4 h-4 rounded border-gray-300 text-[#791E75] focus:ring-[#791E75]"
+                        />
+                        <span className="text-sm text-gray-700">Show all</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={searchPropertyTypes.detached}
+                          onChange={() => handlePropertyTypeToggle('detached')}
+                          className="w-4 h-4 rounded border-gray-300 text-[#791E75] focus:ring-[#791E75]"
+                        />
+                        <span className="text-sm text-gray-700">Detached</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={searchPropertyTypes.semiDetached}
+                          onChange={() => handlePropertyTypeToggle('semiDetached')}
+                          className="w-4 h-4 rounded border-gray-300 text-[#791E75] focus:ring-[#791E75]"
+                        />
+                        <span className="text-sm text-gray-700">Semi-detached</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={searchPropertyTypes.terraced}
+                          onChange={() => handlePropertyTypeToggle('terraced')}
+                          className="w-4 h-4 rounded border-gray-300 text-[#791E75] focus:ring-[#791E75]"
+                        />
+                        <span className="text-sm text-gray-700">Terraced</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={searchPropertyTypes.flat}
+                          onChange={() => handlePropertyTypeToggle('flat')}
+                          className="w-4 h-4 rounded border-gray-300 text-[#791E75] focus:ring-[#791E75]"
+                        />
+                        <span className="text-sm text-gray-700">Flats</span>
+                      </label>
                     </div>
                   </div>
 
@@ -431,7 +510,7 @@ const EstateAgentHome = () => {
         </a>
       </div>
     </div>
-  ), [isSearchDropdownOpen, searchLocation, searchPropertyType, searchListingType, searchMinPrice, searchMaxPrice, searchBedrooms, searchDistance, handleSearch]);
+  ), [isSearchDropdownOpen, searchLocation, searchPropertyTypes, searchListingType, searchMinPrice, searchMaxPrice, searchBedrooms, searchDistance, handleSearch, handlePropertyTypeToggle]);
 
   // Animation state machine: 'reset' -> 'entering' -> 'animating' -> 'completed' -> 'reset'
   const updateAnimationState = (section: string, newState: string, progress: number) => {
@@ -654,7 +733,7 @@ const EstateAgentHome = () => {
       name: "Aslam Noor",
       role: "Director of Lettings & Property Management",
       image: teamAslam,
-      whatsapp: "+442077240000",
+      whatsapp: "+447367087752",
       description: "Leading our lettings division with over 15 years of experience in central London property management."
     },
     {
@@ -662,7 +741,7 @@ const EstateAgentHome = () => {
       name: "Iury Campos",
       role: "Associate Partner & General Manager",
       image: teamIury,
-      whatsapp: "+442077240000",
+      whatsapp: "+447367087752",
       description: "Overseeing operations and client relationships with expertise in both residential sales and commercial ventures."
     },
     {
@@ -670,7 +749,7 @@ const EstateAgentHome = () => {
       name: "Mayssaa Sabrah",
       role: "Sales & Lettings Negotiator",
       image: teamMayssaa,
-      whatsapp: "+442077240000",
+      whatsapp: "+447367087752",
       description: "Specializing in client negotiations and property matching services across prime London locations."
     }
   ];

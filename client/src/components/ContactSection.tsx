@@ -15,7 +15,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
-import { Phone, Mail, MapPin, MessageCircle, ArrowRight } from 'lucide-react';
+import { Phone, Mail, MapPin, MessageCircle, ArrowRight, FileText, Shield } from 'lucide-react';
+import { Link } from 'wouter';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
@@ -204,7 +205,7 @@ const ContactSection = () => {
                 <Phone className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 text-white" />
               </div>
               <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-2 sm:mb-3 md:mb-4">Call</h3>
-              <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-[#8B4A9C]">020 (8) 969 3322</p>
+              <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-[#8B4A9C]">+44 7367 087752</p>
             </div>
 
             {/* Email */}
@@ -254,6 +255,33 @@ const ContactSection = () => {
               <div>Monday - Friday: 9:00 AM - 6:00 PM</div>
               <div>Saturday: 10:00 AM - 4:00 PM</div>
               <div>Sunday: Closed</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer with Legal Links */}
+        <div className="border-t border-slate-200 pt-8 sm:pt-12">
+          <div className="max-w-4xl mx-auto">
+            {/* Legal Links */}
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mb-6 sm:mb-8">
+              <Link href="/terms-and-conditions">
+                <span className="inline-flex items-center text-sm sm:text-base text-[#8B4A9C] hover:text-[#6d3a7a] transition-colors cursor-pointer">
+                  <FileText className="h-4 w-4 mr-2" />
+                  Terms & Conditions
+                </span>
+              </Link>
+              <Link href="/privacy-policy">
+                <span className="inline-flex items-center text-sm sm:text-base text-[#8B4A9C] hover:text-[#6d3a7a] transition-colors cursor-pointer">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Privacy Policy
+                </span>
+              </Link>
+            </div>
+
+            {/* Copyright */}
+            <div className="text-center text-xs sm:text-sm text-slate-500">
+              <p>&copy; {new Date().getFullYear()} John Barclay Estate & Management. All rights reserved.</p>
+              <p className="mt-2">Unit 2.03 Grand Union, 332 Ladbroke Grove, London, W10 5AD</p>
             </div>
           </div>
         </div>

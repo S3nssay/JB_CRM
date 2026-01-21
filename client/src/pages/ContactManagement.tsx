@@ -13,8 +13,10 @@ import {
     AlertCircle,
     FileText,
     History,
-    UserPlus
+    UserPlus,
+    ArrowLeft
 } from "lucide-react";
+import { useLocation } from "wouter";
 import {
     Card,
     CardContent,
@@ -53,6 +55,7 @@ import { queryClient } from "@/lib/queryClient";
 
 export default function ContactManagement() {
     const { toast } = useToast();
+    const [, setLocation] = useLocation();
     const [searchTerm, setSearchTerm] = useState("");
     const [typeFilter, setTypeFilter] = useState("all");
 
@@ -95,6 +98,14 @@ export default function ContactManagement() {
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
+            <Button
+                variant="ghost"
+                onClick={() => setLocation("/")}
+                className="mb-4"
+            >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Home
+            </Button>
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Unified Contacts</h1>

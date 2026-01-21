@@ -50,7 +50,7 @@ export default function TenantDetails() {
                 </Link>
                 <div>
                     <h1 className="text-2xl font-bold tracking-tight">
-                        {tenant.firstName} {tenant.lastName}
+                        {tenant.fullName}
                     </h1>
                     <div className="flex items-center gap-2 text-muted-foreground">
                         <User className="h-4 w-4" />
@@ -82,7 +82,7 @@ export default function TenantDetails() {
                                 <Phone className="h-5 w-5 text-muted-foreground mt-0.5" />
                                 <div>
                                     <div className="font-medium">Phone</div>
-                                    <div className="text-sm text-muted-foreground">{tenant.phone || 'No phone provided'}</div>
+                                    <div className="text-sm text-muted-foreground">{tenant.mobile || tenant.phone || 'No phone provided'}</div>
                                 </div>
                             </div>
                         </CardContent>
@@ -90,22 +90,42 @@ export default function TenantDetails() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle>Tenancy Details</CardTitle>
+                            <CardTitle>Additional Details</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="flex items-start gap-3">
-                                <Building className="h-5 w-5 text-muted-foreground mt-0.5" />
-                                <div>
-                                    <div className="font-medium">Property ID</div>
-                                    <Link href={`/crm/managed-property/${tenant.propertyId}`}>
-                                        <div className="text-sm text-blue-600 hover:underline cursor-pointer">
-                                            View Property (ID: {tenant.propertyId})
-                                        </div>
-                                    </Link>
+                            {tenant.employer && (
+                                <div className="flex items-start gap-3">
+                                    <Building className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                    <div>
+                                        <div className="font-medium">Employer</div>
+                                        <div className="text-sm text-muted-foreground">{tenant.employer}</div>
+                                        {tenant.jobTitle && (
+                                            <div className="text-sm text-muted-foreground">{tenant.jobTitle}</div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-
-                            {/* Add more tenancy details here if we fetch agreements */}
+                            )}
+                            {tenant.emergencyContactName && (
+                                <div className="flex items-start gap-3">
+                                    <User className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                    <div>
+                                        <div className="font-medium">Emergency Contact</div>
+                                        <div className="text-sm text-muted-foreground">
+                                            {tenant.emergencyContactName}
+                                            {tenant.emergencyContactPhone && ` - ${tenant.emergencyContactPhone}`}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                            {tenant.address && (
+                                <div className="flex items-start gap-3">
+                                    <Building className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                    <div>
+                                        <div className="font-medium">Address</div>
+                                        <div className="text-sm text-muted-foreground">{tenant.address}</div>
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>

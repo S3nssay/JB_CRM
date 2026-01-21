@@ -74,5 +74,54 @@ services:
       - uploads:/app/uploads
     restart: unless-stopped
 
+# Email worker service - processes email jobs from queue
+  email-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["node", "dist/workers/emailWorker.js"]
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET}
+      - MICROSOFT_TENANT_ID=${MICROSOFT_TENANT_ID}
+      - EMAIL_TOKEN_ENCRYPTION_KEY=${EMAIL_TOKEN_ENCRYPTION_KEY}
+      - EMAIL_WORKER_POLL_INTERVAL=${EMAIL_WORKER_POLL_INTERVAL:-5000}
+      - EMAIL_WORKER_MAX_CONCURRENT=${EMAIL_WORKER_MAX_CONCURRENT:-5}
+      - BASE_URL=${BASE_URL}
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          memory: 512M
+
+  # Email worker for development
+  email-worker-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["npx", "tsx", "server/workers/emailWorker.ts"]
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=${DATABASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MICROSOFT_CLIENT_ID=${MICROSOFT_CLIENT_ID}
+      - MICROSOFT_CLIENT_SECRET=${MICROSOFT_CLIENT_SECRET}
+      - MICROSOFT_TENANT_ID=${MICROSOFT_TENANT_ID}
+      - EMAIL_TOKEN_ENCRYPTION_KEY=${EMAIL_TOKEN_ENCRYPTION_KEY}
+      - EMAIL_WORKER_POLL_INTERVAL=${EMAIL_WORKER_POLL_INTERVAL:-5000}
+      - EMAIL_WORKER_MAX_CONCURRENT=${EMAIL_WORKER_MAX_CONCURRENT:-5}
+      - BASE_URL=${BASE_URL}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    restart: unless-stopped
+
 volumes:
   uploads:

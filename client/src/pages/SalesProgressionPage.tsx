@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
+    ArrowLeft,
     BarChart3,
     Search,
     MapPin,
@@ -45,6 +47,7 @@ const STAGES = [
 ];
 
 export default function SalesProgressionPage() {
+    const [, setLocation] = useLocation();
     const [searchTerm, setSearchTerm] = useState("");
 
     const { data: properties = [], isLoading } = useQuery({
@@ -56,12 +59,29 @@ export default function SalesProgressionPage() {
         }
     });
 
+    const { data: stats } = useQuery({
+        queryKey: ["/api/crm/sales-progression-stats"],
+        queryFn: async () => {
+            const res = await fetch("/api/crm/sales-progression-stats");
+            if (!res.ok) throw new Error("Failed to fetch stats");
+            return res.json();
+        }
+    });
+
     const salesProperties = properties.filter((p: any) =>
         p.listingType === 'sale' && p.status === 'under_offer'
     );
 
     return (
         <div className="p-8 max-w-7xl mx-auto space-y-8">
+            <Button
+                variant="ghost"
+                className="mb-4"
+                onClick={() => setLocation("/crm")}
+            >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Dashboard
+            </Button>
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-[#791E75]">Sales Progression</h1>
@@ -85,7 +105,7 @@ export default function SalesProgressionPage() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground uppercase">Under Offer</p>
-                                <h3 className="text-2xl font-bold mt-1">{salesProperties.length}</h3>
+                                <h3 className="text-2xl font-bold mt-1">{stats?.underOffer ?? 0}</h3>
                             </div>
                             <div className="p-2 bg-blue-100 rounded-full">
                                 <Clock className="h-6 w-6 text-blue-600" />
@@ -98,7 +118,7 @@ export default function SalesProgressionPage() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm font-medium text-muted-foreground uppercase">Exchanged</p>
-                                <h3 className="text-2xl font-bold mt-1">2</h3>
+                                <h3 className="text-2xl font-bold mt-1">{stats?.exchanged ?? 0}</h3>
                             </div>
                             <div className="p-2 bg-emerald-100 rounded-full">
                                 <FileText className="h-6 w-6 text-emerald-600" />
@@ -110,8 +130,8 @@ export default function SalesProgressionPage() {
                     <CardContent className="pt-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-muted-foreground uppercase">Target Completion (Monthly)</p>
-                                <h3 className="text-2xl font-bold mt-1">5</h3>
+                                <p className="text-sm font-medium text-muted-foreground uppercase">Completions This Month</p>
+                                <h3 className="text-2xl font-bold mt-1">{stats?.targetCompletionsThisMonth ?? 0}</h3>
                             </div>
                             <div className="p-2 bg-amber-100 rounded-full">
                                 <Calendar className="h-6 w-6 text-amber-600" />

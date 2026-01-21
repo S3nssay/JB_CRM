@@ -92,6 +92,8 @@ export default function RegisterRentalPage() {
     onSuccess: () => {
       setIsSubmitted(true);
       reset();
+      // Scroll to top of page
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       toast({
         title: "Registration submitted!",
         description: "We'll contact you within 24 hours to discuss your rental requirements.",
@@ -155,7 +157,7 @@ export default function RegisterRentalPage() {
     return (
       <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center">
         <div className="max-w-2xl mx-auto text-center px-6">
-          <div className="bg-[#791E75] text-white 600 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-8">
+          <div className="bg-[#791E75] rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-8">
             <CheckCircle className="h-12 w-12 text-white" />
           </div>
           <h1 className="text-4xl md:text-5xl font-black mb-6 text-[#5d1759]">
@@ -168,29 +170,39 @@ export default function RegisterRentalPage() {
             <h3 className="text-xl font-bold mb-4 text-[#5d1759]">Your rental journey starts now:</h3>
             <div className="space-y-3 text-left">
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">1</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">1</div>
                 <span className="text-gray-700">Property assessment and rental valuation</span>
               </div>
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">2</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">2</div>
                 <span className="text-gray-700">Professional photography and marketing setup</span>
               </div>
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">3</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">3</div>
                 <span className="text-gray-700">Tenant sourcing and reference checks</span>
               </div>
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">4</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">4</div>
                 <span className="text-gray-700">Ongoing property management and support</span>
               </div>
             </div>
           </div>
-          <Button 
-            onClick={() => setIsSubmitted(false)}
-            className="bg-[#791E75] text-white 600 hover:bg-[#791E75] text-white 700 text-white font-bold py-3 px-8 rounded-xl"
-          >
-            Register Another Property
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/">
+              <Button
+                className="bg-white text-[#791E75] hover:bg-gray-100 font-bold py-3 px-8 rounded-xl"
+              >
+                <Home className="mr-2 h-5 w-5" />
+                Back to Home
+              </Button>
+            </Link>
+            <Button
+              onClick={() => setIsSubmitted(false)}
+              className="bg-[#791E75] hover:bg-[#5d1759] text-white font-bold py-3 px-8 rounded-xl"
+            >
+              Register Another Property
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -238,17 +250,17 @@ export default function RegisterRentalPage() {
       {/* Main Content */}
       <section className="py-20 px-6 bg-gradient-to-b from-white to-slate-50">
         <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-16">
-            
+          <div className="grid lg:grid-cols-2 gap-16 items-stretch">
+
             {/* Registration Form */}
-            <div ref={formRef}>
-              <div className="bg-white backdrop-blur-sm rounded-2xl p-8 border border-slate-200 shadow-sm">
+            <div ref={formRef} className="flex flex-col">
+              <div className="bg-white backdrop-blur-sm rounded-2xl p-8 border border-slate-200 shadow-sm flex-grow flex flex-col">
                 <h2 className="text-3xl font-black mb-8 flex items-center text-[#5d1759]">
                   <Key className="h-8 w-8 text-[#791E75]600 mr-3" />
                   Property Registration
                 </h2>
                 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 flex-grow flex flex-col">
                   {/* Property Details */}
                   <div>
                     <Label htmlFor="propertyAddress" className="text-gray-700 mb-2 block font-medium">
@@ -479,25 +491,35 @@ export default function RegisterRentalPage() {
                     )}
                   </div>
 
-                  <div>
+                  <div className="flex-grow flex flex-col">
                     <Label htmlFor="message" className="text-gray-700 mb-2 block font-medium">
                       Additional Information
                     </Label>
                     <Textarea
                       {...register('message')}
                       id="message"
-                      placeholder="Any additional details about your property or requirements..."
-                      className="bg-white border border-slate-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-slate-500 min-h-[100px]"
+                      placeholder="Any additional details about your property or requirements...
+
+For example:
+• Current rental income (if applicable)
+• Key features of the property
+• Preferred tenant type
+• Any refurbishment needs
+• Parking availability
+• Garden or outdoor space
+• EPC rating (if known)
+• Gas/Electric certificates status"
+                      className="bg-white border border-slate-300 rounded-lg px-4 py-3 text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-slate-500 flex-grow min-h-[200px]"
                     />
                     {errors.message && (
                       <p className="text-red-500 text-sm mt-1">{errors.message.message}</p>
                     )}
                   </div>
 
-                  <Button 
+                  <Button
                     type="submit"
                     disabled={submitRegistration.isPending}
-                    className="w-full bg-[#791E75] text-white 600 hover:bg-[#791E75] text-white 700 text-white font-bold py-4 text-lg rounded-lg transition-all duration-300"
+                    className="w-full bg-[#791E75] hover:bg-[#5d1759] text-white font-bold py-4 text-lg rounded-lg transition-all duration-300 mt-auto"
                   >
                     {submitRegistration.isPending ? 'Submitting...' : 'Register My Property'}
                   </Button>
@@ -506,7 +528,7 @@ export default function RegisterRentalPage() {
             </div>
 
             {/* Services Section */}
-            <div ref={servicesRef}>
+            <div ref={servicesRef} className="flex flex-col">
               <h2 className="text-3xl font-black mb-8 text-[#5d1759]">Our Lettings Management Services</h2>
               
               <div className="space-y-6">
@@ -568,7 +590,7 @@ export default function RegisterRentalPage() {
               </div>
 
               {/* Letting Service Packages */}
-              <div className="mt-12 bg-[#5d1759] rounded-2xl p-8">
+              <div className="mt-12 bg-[#5d1759] rounded-2xl p-8 flex-grow flex flex-col">
                 <h3 className="text-xl font-bold mb-6 text-white">Letting Service Packages</h3>
                 <div className="space-y-4">
                   {lettingServicePackages.map((pkg) => (
@@ -622,10 +644,10 @@ export default function RegisterRentalPage() {
                   </div>
                 </div>
 
-                <div className="mt-6 pt-6 border-t border-gray-600">
+                <div className="mt-auto pt-6 border-t border-gray-600">
                   <div className="flex items-center">
                     <Phone className="h-5 w-5 text-[#F8B324] mr-3" />
-                    <span className="text-white">020 7372 4334</span>
+                    <span className="text-white">+44 7367 087752</span>
                   </div>
                 </div>
               </div>

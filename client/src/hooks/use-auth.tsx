@@ -14,6 +14,8 @@ type User = {
   email: string;
   fullName: string;
   phone?: string;
+  role: string;
+  securityClearance: number;
   createdAt: string;
 };
 

@@ -297,9 +297,9 @@ export function ScheduleViewingWizard({
   };
 
   const renderStepIndicator = () => (
-    <div className="flex items-center justify-center gap-2 mb-6" data-testid="wizard-step-indicator">
+    <div className="flex items-center justify-center mb-6" data-testid="wizard-step-indicator">
       {["property", "datetime", "attendees", "confirm"].map((s, i) => (
-        <div key={s} className="flex items-center gap-2">
+        <div key={s} className="flex items-center">
           <div
             data-testid={`step-indicator-${s}`}
             className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
@@ -314,7 +314,7 @@ export function ScheduleViewingWizard({
           </div>
           {i < 3 && (
             <div
-              className={`w-8 h-0.5 ${
+              className={`w-8 h-0.5 mx-1 ${
                 getStepNumber(step) > i + 1 ? "bg-primary" : "bg-muted"
               }`}
             />
@@ -337,7 +337,7 @@ export function ScheduleViewingWizard({
         />
       </div>
 
-      <ScrollArea className="h-[300px]" data-testid="property-list-container">
+      <ScrollArea className="h-[250px]" data-testid="property-list-container">
         <div className="space-y-2">
           {propertiesLoading ? (
             <div className="text-center py-8 text-muted-foreground" data-testid="text-loading-properties">
@@ -556,7 +556,7 @@ export function ScheduleViewingWizard({
             )}
           </div>
 
-          <ScrollArea className="h-[260px]" data-testid="attendee-list-container">
+          <ScrollArea className="h-[220px]" data-testid="attendee-list-container">
             <div className="space-y-4 pr-2">
               {attendees.map((_, index) => (
                 <Card key={index} data-testid={`card-attendee-${index}`}>
@@ -746,7 +746,7 @@ export function ScheduleViewingWizard({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[500px]" data-testid="dialog-schedule-viewing">
+      <DialogContent className="w-[95vw] max-w-[600px] md:max-w-[700px] lg:max-w-[800px]" data-testid="dialog-schedule-viewing">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2" data-testid="dialog-title">
             <Calendar className="w-5 h-5" />
@@ -762,48 +762,53 @@ export function ScheduleViewingWizard({
 
         {renderStepIndicator()}
 
-        {step === "property" && renderPropertyStep()}
-        {step === "datetime" && renderDateTimeStep()}
-        {step === "attendees" && renderAttendeesStep()}
-        {step === "confirm" && renderConfirmStep()}
+        <div>
+          {step === "property" && renderPropertyStep()}
+          {step === "datetime" && renderDateTimeStep()}
+          {step === "attendees" && renderAttendeesStep()}
+          {step === "confirm" && renderConfirmStep()}
+        </div>
 
-        <DialogFooter className="flex gap-2 mt-4">
-          {step !== "property" && (
-            <Button
-              variant="outline"
-              onClick={goBack}
-              data-testid="button-wizard-back"
-            >
-              <ChevronLeft className="w-4 h-4 mr-1" />
-              Back
-            </Button>
-          )}
-          <div className="flex-1" />
-          {step !== "confirm" ? (
-            <Button
-              onClick={goNext}
-              disabled={!canProceed()}
-              data-testid="button-wizard-next"
-            >
-              Next
-              <ChevronRight className="w-4 h-4 ml-1" />
-            </Button>
-          ) : (
-            <Button
-              onClick={handleConfirmClick}
-              disabled={scheduleViewingMutation.isPending}
-              data-testid="button-confirm-viewing"
-            >
-              {scheduleViewingMutation.isPending ? (
-                "Scheduling..."
-              ) : (
-                <>
-                  <Check className="w-4 h-4 mr-1" />
-                  Confirm Viewing
-                </>
-              )}
-            </Button>
-          )}
+        <DialogFooter className="mt-4 sm:justify-between">
+          <div>
+            {step !== "property" && (
+              <Button
+                variant="outline"
+                onClick={goBack}
+                data-testid="button-wizard-back"
+              >
+                <ChevronLeft className="w-4 h-4 mr-1" />
+                Back
+              </Button>
+            )}
+          </div>
+          <div>
+            {step !== "confirm" ? (
+              <Button
+                onClick={goNext}
+                disabled={!canProceed()}
+                data-testid="button-wizard-next"
+              >
+                Next
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            ) : (
+              <Button
+                onClick={handleConfirmClick}
+                disabled={scheduleViewingMutation.isPending}
+                data-testid="button-confirm-viewing"
+              >
+                {scheduleViewingMutation.isPending ? (
+                  "Scheduling..."
+                ) : (
+                  <>
+                    <Check className="w-4 h-4 mr-1" />
+                    Confirm Viewing
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

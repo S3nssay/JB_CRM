@@ -151,17 +151,26 @@
     background-color: #791E75; /* Royal Purple */
   }
   
-  /* Custom taller input boxes */
-  input, 
-  select, 
-  .select-trigger,
-  [data-radix-select-trigger],
-  .SelectTrigger,
-  [role="combobox"] {
-    height: 3.75rem !important; /* Approximately 50% taller than previous size */
-    padding-top: 0.75rem !important;
-    padding-bottom: 0.75rem !important;
-    font-size: 1.125rem !important;
+  /* Custom taller input boxes - only for main page forms, not dialogs */
+  .large-inputs input,
+  .large-inputs select,
+  .large-inputs .select-trigger,
+  .large-inputs [data-radix-select-trigger],
+  .large-inputs .SelectTrigger,
+  .large-inputs [role="combobox"] {
+    height: 3.75rem; /* Approximately 50% taller than previous size */
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    font-size: 1.125rem;
+  }
+
+  /* Dialog inputs should use standard sizing */
+  [role="dialog"] input,
+  [role="dialog"] select {
+    height: auto;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    font-size: 0.875rem;
   }
 
   .section-padding {

@@ -34,6 +34,8 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   phone: text("phone"),
   role: text("role").notNull().default("user"), // 'admin', 'agent', 'tenant', 'landlord', 'user', 'maintenance_staff'
+  securityClearance: integer("security_clearance").notNull().default(3), // 1-10 scale, default is basic user
+  accessLevelCode: text("access_level_code"), // References DEFAULT_ACCESS_LEVELS, e.g. 'owner', 'general_manager', 'sales_lettings_negotiator'
 
   // Additional fields for different user types
   companyName: text("company_name"), // For landlords/companies
@@ -139,8 +141,9 @@ export const properties = pgTable("properties", {
   minimumTenancy: integer("minimum_tenancy"), // in months
   deposit: integer("deposit"), // deposit amount for rentals
 
-  // Management fields (when status = 'let')
+  // Management and Listing fields
   isManaged: boolean("is_managed").default(false), // Is this property under John Barclay management?
+  isListed: boolean("is_listed").default(false), // Is this property actively listed for sale/rent on portals?
   landlordId: integer("landlord_id"), // FK to landlords table (when property is managed)
 
   // Timestamps
@@ -1656,11 +1659,18 @@ export const unifiedContacts = pgTable("unified_contacts", {
   preferredContactMethod: text("preferred_contact_method").default("email"),
 
   // Address info
+  address: text("address"), // Full address as single field
   addressLine1: text("address_line1"),
   addressLine2: text("address_line2"),
   city: text("city"),
   postcode: text("postcode"),
   country: text("country").default("United Kingdom"),
+
+  // Bank details (for landlords)
+  bankName: text("bank_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankSortCode: text("bank_sort_code"),
+  bankAccountName: text("bank_account_name"),
 
   // Metadata
   notes: text("notes"),
@@ -2151,6 +2161,9 @@ export const estateAgencyRoles = pgTable("estate_agency_roles", {
   // Compensation type
   compensationType: text("compensation_type"), // 'salary', 'commission', 'salary_plus_commission'
 
+  // Security clearance level required for this role (1-10)
+  requiredClearance: integer("required_clearance").notNull().default(5),
+
   // Status
   isActive: boolean("is_active").default(true),
 
@@ -2429,6 +2442,427 @@ export const PERMISSION_CATEGORIES = {
   ]
 } as const;
 
+// Security Clearance Levels - 1-10 scale for hierarchical access control
+export const SECURITY_CLEARANCE_LEVELS = {
+  // Level 1-2: Public/Guest
+  public: 1,
+  guest: 2,
+
+  // Level 3-4: Basic Users
+  user: 3,
+  tenant: 4,
+  landlord: 4,
+
+  // Level 5-6: Staff
+  maintenance_staff: 5,
+  branch_administrator: 5,
+  lettings_negotiator: 6,
+  sales_negotiator: 6,
+
+  // Level 7-8: Senior Staff
+  senior_sales_negotiator: 7,
+  property_manager: 7,
+  mortgage_advisor: 7,
+
+  // Level 9: Management
+  branch_manager: 9,
+
+  // Level 10: System Admin
+  admin: 10,
+  system_admin: 10
+} as const;
+
+export const SECURITY_CLEARANCE_LABELS: Record<number, string> = {
+  1: 'Public',
+  2: 'Guest',
+  3: 'Basic User',
+  4: 'Registered User',
+  5: 'Staff Level 1',
+  6: 'Staff Level 2',
+  7: 'Senior Staff',
+  8: 'Supervisor',
+  9: 'Management',
+  10: 'System Administrator'
+} as const;
+
+// Security Settings - feature-level access control
+export const securitySettings = pgTable("security_settings", {
+  id: serial("id").primaryKey(),
+  featureKey: text("feature_key").notNull().unique(), // 'integrations', 'user_management', 'security_matrix', etc.
+  featureName: text("feature_name").notNull(),
+  description: text("description"),
+  requiredClearance: integer("required_clearance").notNull().default(10), // Default to admin-only
+  category: text("category").notNull(), // 'system', 'crm', 'property_management', 'reports'
+  isEnabled: boolean("is_enabled").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Security Audit Log - track all security-related changes
+export const securityAuditLog = pgTable("security_audit_log", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(), // User who made the change
+  action: text("action").notNull(), // 'clearance_change', 'feature_access_change', 'role_assignment', etc.
+  targetType: text("target_type").notNull(), // 'user', 'feature', 'role'
+  targetId: integer("target_id"), // ID of affected entity
+  targetName: text("target_name"), // Name for display purposes
+  oldValue: text("old_value"), // JSON stringified old value
+  newValue: text("new_value"), // JSON stringified new value
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// Access Levels - defines the organizational hierarchy
+export const accessLevels = pgTable("access_levels", {
+  id: serial("id").primaryKey(),
+  levelCode: text("level_code").notNull().unique(), // 'owner', 'general_manager', 'sales_negotiator', etc.
+  levelName: text("level_name").notNull(),
+  description: text("description"),
+  clearanceLevel: integer("clearance_level").notNull(), // 1-10 scale
+  parentLevelCode: text("parent_level_code"), // For hierarchy (e.g., sales_negotiator reports to general_manager)
+  color: text("color"), // For UI display (e.g., '#791E75')
+  icon: text("icon"), // Icon name for UI
+  isSystemLevel: boolean("is_system_level").default(false), // Cannot be deleted if true
+  canBeAssigned: boolean("can_be_assigned").default(true), // Whether users can be assigned this level
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// User Custom Permissions - allows owner to override/add specific permissions per user
+export const userCustomPermissions = pgTable("user_custom_permissions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  featureKey: text("feature_key").notNull(), // Reference to security_settings.feature_key
+  accessGranted: boolean("access_granted").notNull().default(true), // true = grant, false = revoke
+  grantedBy: integer("granted_by").notNull(), // User who granted/revoked this permission
+  reason: text("reason"), // Why this override was applied
+  expiresAt: timestamp("expires_at"), // Optional expiration for temporary permissions
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Feature Module Groups - groups features into logical modules
+export const featureModules = pgTable("feature_modules", {
+  id: serial("id").primaryKey(),
+  moduleCode: text("module_code").notNull().unique(),
+  moduleName: text("module_name").notNull(),
+  description: text("description"),
+  icon: text("icon"),
+  displayOrder: integer("display_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// Access Level Permissions - defines which features each access level has
+export const accessLevelPermissions = pgTable("access_level_permissions", {
+  id: serial("id").primaryKey(),
+  accessLevelId: integer("access_level_id").notNull(),
+  featureKey: text("feature_key").notNull(),
+  canRead: boolean("can_read").default(true),
+  canWrite: boolean("can_write").default(false),
+  canDelete: boolean("can_delete").default(false),
+  canAdmin: boolean("can_admin").default(false), // Full control including settings
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// Default Access Levels for John Barclay
+export const DEFAULT_ACCESS_LEVELS = [
+  {
+    levelCode: 'system_admin',
+    levelName: 'System Administrator',
+    description: 'Full system access - technical administration',
+    clearanceLevel: 10,
+    parentLevelCode: null,
+    color: '#DC2626',
+    icon: 'Shield',
+    isSystemLevel: true,
+    canBeAssigned: false
+  },
+  {
+    levelCode: 'owner',
+    levelName: 'Director / Owner',
+    description: 'Business owner with full access to all operations except technical system admin',
+    clearanceLevel: 9,
+    parentLevelCode: 'system_admin',
+    color: '#791E75',
+    icon: 'Crown',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'general_manager',
+    levelName: 'General Manager',
+    description: 'Full operational access - manages all departments and staff',
+    clearanceLevel: 8,
+    parentLevelCode: 'owner',
+    color: '#2563EB',
+    icon: 'Briefcase',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'branch_manager',
+    levelName: 'Branch Manager',
+    description: 'Manages branch operations, staff performance, and can view reports',
+    clearanceLevel: 7,
+    parentLevelCode: 'general_manager',
+    color: '#059669',
+    icon: 'Building2',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'senior_negotiator',
+    levelName: 'Senior Sales/Lettings Negotiator',
+    description: 'Experienced negotiator with valuations and team mentoring responsibilities',
+    clearanceLevel: 6,
+    parentLevelCode: 'branch_manager',
+    color: '#D97706',
+    icon: 'Star',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'sales_lettings_negotiator',
+    levelName: 'Sales & Lettings Negotiator',
+    description: 'Core sales and lettings operations - viewings, negotiations, client management',
+    clearanceLevel: 5,
+    parentLevelCode: 'senior_negotiator',
+    color: '#7C3AED',
+    icon: 'UserCheck',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'property_manager',
+    levelName: 'Property Manager',
+    description: 'Manages tenancies, maintenance, landlord communications, and compliance',
+    clearanceLevel: 5,
+    parentLevelCode: 'branch_manager',
+    color: '#0891B2',
+    icon: 'Home',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'administrator',
+    levelName: 'Branch Administrator',
+    description: 'Admin support - document management, scheduling, front desk',
+    clearanceLevel: 4,
+    parentLevelCode: 'branch_manager',
+    color: '#6B7280',
+    icon: 'ClipboardList',
+    isSystemLevel: true,
+    canBeAssigned: true
+  },
+  {
+    levelCode: 'viewer',
+    levelName: 'Read-Only Access',
+    description: 'Can view data but cannot make changes',
+    clearanceLevel: 3,
+    parentLevelCode: null,
+    color: '#9CA3AF',
+    icon: 'Eye',
+    isSystemLevel: true,
+    canBeAssigned: true
+  }
+] as const;
+
+// Default Feature Modules
+export const DEFAULT_FEATURE_MODULES = [
+  { moduleCode: 'sales', moduleName: 'Sales Operations', description: 'Property sales, offers, and progression', icon: 'TrendingUp', displayOrder: 1 },
+  { moduleCode: 'lettings', moduleName: 'Lettings Operations', description: 'Rental listings, applications, and tenancies', icon: 'Key', displayOrder: 2 },
+  { moduleCode: 'property_mgmt', moduleName: 'Property Management', description: 'Managed properties, maintenance, and compliance', icon: 'Building', displayOrder: 3 },
+  { moduleCode: 'leads', moduleName: 'Leads & CRM', description: 'Lead management, contacts, and communications', icon: 'Users', displayOrder: 4 },
+  { moduleCode: 'viewings', moduleName: 'Viewings & Calendar', description: 'Viewing appointments and scheduling', icon: 'Calendar', displayOrder: 5 },
+  { moduleCode: 'finance', moduleName: 'Finance & Reports', description: 'Financial data, commissions, and reporting', icon: 'PoundSterling', displayOrder: 6 },
+  { moduleCode: 'staff', moduleName: 'Staff & HR', description: 'Staff management and performance', icon: 'UserCog', displayOrder: 7 },
+  { moduleCode: 'system', moduleName: 'System Settings', description: 'Integrations, security, and configuration', icon: 'Settings', displayOrder: 8 }
+] as const;
+
+// Comprehensive feature security settings
+export const DEFAULT_FEATURE_SECURITY = [
+  // Sales Operations
+  { featureKey: 'sales_listings_view', featureName: 'View Sales Listings', description: 'View properties for sale', requiredClearance: 5, category: 'sales', module: 'sales' },
+  { featureKey: 'sales_listings_create', featureName: 'Create Sales Listings', description: 'Add new properties for sale', requiredClearance: 5, category: 'sales', module: 'sales' },
+  { featureKey: 'sales_listings_edit', featureName: 'Edit Sales Listings', description: 'Modify sales property details', requiredClearance: 5, category: 'sales', module: 'sales' },
+  { featureKey: 'sales_listings_delete', featureName: 'Delete Sales Listings', description: 'Remove sales listings', requiredClearance: 7, category: 'sales', module: 'sales' },
+  { featureKey: 'sales_offers_manage', featureName: 'Manage Offers', description: 'Handle purchase offers and negotiations', requiredClearance: 5, category: 'sales', module: 'sales' },
+  { featureKey: 'sales_progression', featureName: 'Sales Progression', description: 'Progress sales through to completion', requiredClearance: 5, category: 'sales', module: 'sales' },
+  { featureKey: 'sales_valuations', featureName: 'Property Valuations', description: 'Conduct and manage valuations', requiredClearance: 6, category: 'sales', module: 'sales' },
+
+  // Lettings Operations
+  { featureKey: 'lettings_listings_view', featureName: 'View Rental Listings', description: 'View properties for rent', requiredClearance: 5, category: 'lettings', module: 'lettings' },
+  { featureKey: 'lettings_listings_create', featureName: 'Create Rental Listings', description: 'Add new rental properties', requiredClearance: 5, category: 'lettings', module: 'lettings' },
+  { featureKey: 'lettings_listings_edit', featureName: 'Edit Rental Listings', description: 'Modify rental property details', requiredClearance: 5, category: 'lettings', module: 'lettings' },
+  { featureKey: 'lettings_listings_delete', featureName: 'Delete Rental Listings', description: 'Remove rental listings', requiredClearance: 7, category: 'lettings', module: 'lettings' },
+  { featureKey: 'lettings_applications', featureName: 'Rental Applications', description: 'Process tenant applications', requiredClearance: 5, category: 'lettings', module: 'lettings' },
+  { featureKey: 'lettings_agreements', featureName: 'Tenancy Agreements', description: 'Create and manage tenancy agreements', requiredClearance: 5, category: 'lettings', module: 'lettings' },
+  { featureKey: 'lettings_renewals', featureName: 'Tenancy Renewals', description: 'Handle tenancy renewals', requiredClearance: 5, category: 'lettings', module: 'lettings' },
+
+  // Property Management
+  { featureKey: 'pm_properties_view', featureName: 'View Managed Properties', description: 'View properties under management', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_properties_manage', featureName: 'Manage Properties', description: 'Full property management operations', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_maintenance_view', featureName: 'View Maintenance', description: 'View maintenance tickets', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_maintenance_create', featureName: 'Create Maintenance Tickets', description: 'Log maintenance issues', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_maintenance_assign', featureName: 'Assign Contractors', description: 'Assign contractors to jobs', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_maintenance_approve', featureName: 'Approve Maintenance Costs', description: 'Approve quotes and invoices', requiredClearance: 7, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_compliance', featureName: 'Compliance & Certificates', description: 'Manage gas safety, EPC, EICR certificates', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_landlords_manage', featureName: 'Manage Landlords', description: 'Landlord communications and onboarding', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+  { featureKey: 'pm_tenants_manage', featureName: 'Manage Tenants', description: 'Tenant communications and support', requiredClearance: 5, category: 'property_management', module: 'property_mgmt' },
+
+  // Leads & CRM
+  { featureKey: 'leads_view', featureName: 'View Leads', description: 'View lead and contact records', requiredClearance: 5, category: 'crm', module: 'leads' },
+  { featureKey: 'leads_create', featureName: 'Create Leads', description: 'Add new leads and contacts', requiredClearance: 5, category: 'crm', module: 'leads' },
+  { featureKey: 'leads_edit', featureName: 'Edit Leads', description: 'Update lead information', requiredClearance: 5, category: 'crm', module: 'leads' },
+  { featureKey: 'leads_delete', featureName: 'Delete Leads', description: 'Remove lead records', requiredClearance: 7, category: 'crm', module: 'leads' },
+  { featureKey: 'leads_assign', featureName: 'Assign Leads', description: 'Assign leads to agents', requiredClearance: 6, category: 'crm', module: 'leads' },
+  { featureKey: 'leads_kyc', featureName: 'KYC & Verification', description: 'Verify ID, proof of funds', requiredClearance: 5, category: 'crm', module: 'leads' },
+  { featureKey: 'contacts_manage', featureName: 'Manage Contacts', description: 'Contact database management', requiredClearance: 5, category: 'crm', module: 'leads' },
+  { featureKey: 'communications_log', featureName: 'Log Communications', description: 'Record calls, emails, meetings', requiredClearance: 5, category: 'crm', module: 'leads' },
+
+  // Viewings & Calendar
+  { featureKey: 'viewings_view', featureName: 'View Viewings', description: 'See scheduled viewings', requiredClearance: 5, category: 'viewings', module: 'viewings' },
+  { featureKey: 'viewings_book', featureName: 'Book Viewings', description: 'Schedule property viewings', requiredClearance: 5, category: 'viewings', module: 'viewings' },
+  { featureKey: 'viewings_feedback', featureName: 'Viewing Feedback', description: 'Record viewing feedback', requiredClearance: 5, category: 'viewings', module: 'viewings' },
+  { featureKey: 'calendar_personal', featureName: 'Personal Calendar', description: 'View own appointments', requiredClearance: 5, category: 'viewings', module: 'viewings' },
+  { featureKey: 'calendar_team', featureName: 'Team Calendar', description: 'View team schedules', requiredClearance: 6, category: 'viewings', module: 'viewings' },
+
+  // Finance & Reports
+  { featureKey: 'finance_view_basic', featureName: 'View Basic Financials', description: 'See own commissions and fees', requiredClearance: 5, category: 'finance', module: 'finance' },
+  { featureKey: 'finance_view_all', featureName: 'View All Financials', description: 'See company financial data', requiredClearance: 8, category: 'finance', module: 'finance' },
+  { featureKey: 'finance_invoices', featureName: 'Manage Invoices', description: 'Create and manage invoices', requiredClearance: 7, category: 'finance', module: 'finance' },
+  { featureKey: 'finance_payments', featureName: 'Process Payments', description: 'Handle rent collection and payments', requiredClearance: 7, category: 'finance', module: 'finance' },
+  { featureKey: 'reports_personal', featureName: 'Personal Reports', description: 'View own performance reports', requiredClearance: 5, category: 'reports', module: 'finance' },
+  { featureKey: 'reports_team', featureName: 'Team Reports', description: 'View team performance reports', requiredClearance: 7, category: 'reports', module: 'finance' },
+  { featureKey: 'reports_company', featureName: 'Company Reports', description: 'View company-wide reports', requiredClearance: 8, category: 'reports', module: 'finance' },
+  { featureKey: 'analytics_dashboard', featureName: 'Analytics Dashboard', description: 'Access analytics and KPIs', requiredClearance: 6, category: 'reports', module: 'finance' },
+
+  // Staff & HR
+  { featureKey: 'staff_view', featureName: 'View Staff', description: 'See staff directory', requiredClearance: 5, category: 'staff', module: 'staff' },
+  { featureKey: 'staff_manage', featureName: 'Manage Staff', description: 'Edit staff details and roles', requiredClearance: 8, category: 'staff', module: 'staff' },
+  { featureKey: 'staff_performance', featureName: 'Staff Performance', description: 'View and manage performance reviews', requiredClearance: 7, category: 'staff', module: 'staff' },
+  { featureKey: 'staff_attendance', featureName: 'Attendance & Leave', description: 'Manage attendance and leave', requiredClearance: 7, category: 'staff', module: 'staff' },
+
+  // System Settings
+  { featureKey: 'integrations', featureName: 'Integrations', description: 'API keys and third-party service credentials', requiredClearance: 9, category: 'system', module: 'system' },
+  { featureKey: 'security_matrix', featureName: 'Security Matrix', description: 'Security clearance and access management', requiredClearance: 9, category: 'system', module: 'system' },
+  { featureKey: 'user_management', featureName: 'User Management', description: 'Create, edit, and delete user accounts', requiredClearance: 9, category: 'system', module: 'system' },
+  { featureKey: 'role_management', featureName: 'Role Management', description: 'Assign and manage user roles', requiredClearance: 9, category: 'system', module: 'system' },
+  { featureKey: 'audit_logs', featureName: 'Audit Logs', description: 'View system audit trail', requiredClearance: 9, category: 'system', module: 'system' },
+  { featureKey: 'workflows', featureName: 'Workflow Settings', description: 'Configure automated workflows', requiredClearance: 8, category: 'system', module: 'system' },
+  { featureKey: 'portal_config', featureName: 'Portal Configuration', description: 'Configure property portal syndication', requiredClearance: 7, category: 'system', module: 'system' },
+  { featureKey: 'email_templates', featureName: 'Email Templates', description: 'Manage email templates', requiredClearance: 7, category: 'system', module: 'system' }
+] as const;
+
+// Default permissions for each access level
+export const DEFAULT_ACCESS_LEVEL_PERMISSIONS = {
+  // Owner - Access to everything below admin
+  owner: [
+    'sales_listings_view', 'sales_listings_create', 'sales_listings_edit', 'sales_listings_delete',
+    'sales_offers_manage', 'sales_progression', 'sales_valuations',
+    'lettings_listings_view', 'lettings_listings_create', 'lettings_listings_edit', 'lettings_listings_delete',
+    'lettings_applications', 'lettings_agreements', 'lettings_renewals',
+    'pm_properties_view', 'pm_properties_manage', 'pm_maintenance_view', 'pm_maintenance_create',
+    'pm_maintenance_assign', 'pm_maintenance_approve', 'pm_compliance', 'pm_landlords_manage', 'pm_tenants_manage',
+    'leads_view', 'leads_create', 'leads_edit', 'leads_delete', 'leads_assign', 'leads_kyc',
+    'contacts_manage', 'communications_log',
+    'viewings_view', 'viewings_book', 'viewings_feedback', 'calendar_personal', 'calendar_team',
+    'finance_view_basic', 'finance_view_all', 'finance_invoices', 'finance_payments',
+    'reports_personal', 'reports_team', 'reports_company', 'analytics_dashboard',
+    'staff_view', 'staff_manage', 'staff_performance', 'staff_attendance',
+    'integrations', 'security_matrix', 'user_management', 'role_management', 'audit_logs',
+    'workflows', 'portal_config', 'email_templates'
+  ],
+
+  // General Manager - All operational access
+  general_manager: [
+    'sales_listings_view', 'sales_listings_create', 'sales_listings_edit', 'sales_listings_delete',
+    'sales_offers_manage', 'sales_progression', 'sales_valuations',
+    'lettings_listings_view', 'lettings_listings_create', 'lettings_listings_edit', 'lettings_listings_delete',
+    'lettings_applications', 'lettings_agreements', 'lettings_renewals',
+    'pm_properties_view', 'pm_properties_manage', 'pm_maintenance_view', 'pm_maintenance_create',
+    'pm_maintenance_assign', 'pm_maintenance_approve', 'pm_compliance', 'pm_landlords_manage', 'pm_tenants_manage',
+    'leads_view', 'leads_create', 'leads_edit', 'leads_delete', 'leads_assign', 'leads_kyc',
+    'contacts_manage', 'communications_log',
+    'viewings_view', 'viewings_book', 'viewings_feedback', 'calendar_personal', 'calendar_team',
+    'finance_view_basic', 'finance_view_all', 'finance_invoices', 'finance_payments',
+    'reports_personal', 'reports_team', 'reports_company', 'analytics_dashboard',
+    'staff_view', 'staff_manage', 'staff_performance', 'staff_attendance',
+    'workflows', 'portal_config', 'email_templates'
+  ],
+
+  // Branch Manager
+  branch_manager: [
+    'sales_listings_view', 'sales_listings_create', 'sales_listings_edit', 'sales_listings_delete',
+    'sales_offers_manage', 'sales_progression', 'sales_valuations',
+    'lettings_listings_view', 'lettings_listings_create', 'lettings_listings_edit', 'lettings_listings_delete',
+    'lettings_applications', 'lettings_agreements', 'lettings_renewals',
+    'pm_properties_view', 'pm_properties_manage', 'pm_maintenance_view', 'pm_maintenance_create',
+    'pm_maintenance_assign', 'pm_maintenance_approve', 'pm_compliance', 'pm_landlords_manage', 'pm_tenants_manage',
+    'leads_view', 'leads_create', 'leads_edit', 'leads_assign', 'leads_kyc',
+    'contacts_manage', 'communications_log',
+    'viewings_view', 'viewings_book', 'viewings_feedback', 'calendar_personal', 'calendar_team',
+    'finance_view_basic', 'reports_personal', 'reports_team', 'analytics_dashboard',
+    'staff_view', 'staff_performance', 'staff_attendance',
+    'portal_config', 'email_templates'
+  ],
+
+  // Senior Negotiator
+  senior_negotiator: [
+    'sales_listings_view', 'sales_listings_create', 'sales_listings_edit',
+    'sales_offers_manage', 'sales_progression', 'sales_valuations',
+    'lettings_listings_view', 'lettings_listings_create', 'lettings_listings_edit',
+    'lettings_applications', 'lettings_agreements', 'lettings_renewals',
+    'leads_view', 'leads_create', 'leads_edit', 'leads_assign', 'leads_kyc',
+    'contacts_manage', 'communications_log',
+    'viewings_view', 'viewings_book', 'viewings_feedback', 'calendar_personal', 'calendar_team',
+    'finance_view_basic', 'reports_personal', 'analytics_dashboard',
+    'staff_view'
+  ],
+
+  // Sales & Lettings Negotiator - Core sales/lettings CRUD and operations
+  sales_lettings_negotiator: [
+    'sales_listings_view', 'sales_listings_create', 'sales_listings_edit',
+    'sales_offers_manage', 'sales_progression',
+    'lettings_listings_view', 'lettings_listings_create', 'lettings_listings_edit',
+    'lettings_applications', 'lettings_agreements', 'lettings_renewals',
+    'leads_view', 'leads_create', 'leads_edit', 'leads_kyc',
+    'contacts_manage', 'communications_log',
+    'viewings_view', 'viewings_book', 'viewings_feedback', 'calendar_personal',
+    'finance_view_basic', 'reports_personal',
+    'staff_view'
+  ],
+
+  // Property Manager
+  property_manager: [
+    'lettings_listings_view', 'lettings_agreements', 'lettings_renewals',
+    'pm_properties_view', 'pm_properties_manage', 'pm_maintenance_view', 'pm_maintenance_create',
+    'pm_maintenance_assign', 'pm_compliance', 'pm_landlords_manage', 'pm_tenants_manage',
+    'leads_view', 'contacts_manage', 'communications_log',
+    'viewings_view', 'calendar_personal',
+    'finance_view_basic', 'reports_personal',
+    'staff_view'
+  ],
+
+  // Administrator
+  administrator: [
+    'sales_listings_view', 'lettings_listings_view',
+    'pm_properties_view', 'pm_maintenance_view',
+    'leads_view', 'contacts_manage', 'communications_log',
+    'viewings_view', 'calendar_personal', 'calendar_team',
+    'staff_view'
+  ],
+
+  // Viewer - Read only
+  viewer: [
+    'sales_listings_view', 'lettings_listings_view',
+    'pm_properties_view', 'pm_maintenance_view',
+    'leads_view', 'viewings_view', 'calendar_personal',
+    'staff_view'
+  ]
+} as const;
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -2490,6 +2924,11 @@ export const insertPortalCredentialsSchema = createInsertSchema(portalCredential
   updatedAt: true
 });
 
+export const insertContractorSchema = createInsertSchema(contractors).omit({
+  id: true,
+  createdAt: true
+});
+
 export const insertContractorQuoteSchema = createInsertSchema(contractorQuotes).omit({
   id: true,
   createdAt: true,
@@ -2526,6 +2965,17 @@ export const insertStaffRoleAssignmentSchema = createInsertSchema(staffRoleAssig
   id: true,
   createdAt: true,
   updatedAt: true
+});
+
+export const insertSecuritySettingSchema = createInsertSchema(securitySettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertSecurityAuditLogSchema = createInsertSchema(securityAuditLog).omit({
+  id: true,
+  createdAt: true
 });
 
 // V3 Insert Schemas
@@ -2624,6 +3074,9 @@ export type InsertMaintenanceCategory = z.infer<typeof insertMaintenanceCategory
 export type PortalCredentials = typeof portalCredentials.$inferSelect;
 export type InsertPortalCredentials = z.infer<typeof insertPortalCredentialsSchema>;
 
+export type Contractor = typeof contractors.$inferSelect;
+export type InsertContractor = z.infer<typeof insertContractorSchema>;
+
 export type ContractorQuote = typeof contractorQuotes.$inferSelect;
 export type InsertContractorQuote = z.infer<typeof insertContractorQuoteSchema>;
 
@@ -2646,6 +3099,12 @@ export type InsertRolePermission = z.infer<typeof insertRolePermissionSchema>;
 
 export type StaffRoleAssignment = typeof staffRoleAssignments.$inferSelect;
 export type InsertStaffRoleAssignment = z.infer<typeof insertStaffRoleAssignmentSchema>;
+
+export type SecuritySetting = typeof securitySettings.$inferSelect;
+export type InsertSecuritySetting = z.infer<typeof insertSecuritySettingSchema>;
+
+export type SecurityAuditLog = typeof securityAuditLog.$inferSelect;
+export type InsertSecurityAuditLog = z.infer<typeof insertSecurityAuditLogSchema>;
 
 // Authentication schemas (simplified for admin-only access)
 export const loginSchema = z.object({
@@ -4136,6 +4595,104 @@ export const insertPropertyChecklistSchema = createInsertSchema(propertyChecklis
 });
 export type InsertPropertyChecklist = z.infer<typeof insertPropertyChecklistSchema>;
 
+// ==========================================
+// TENANCY CHECKLIST DOCUMENTS
+// ==========================================
+
+// Define all checklist item types
+export const tenancyChecklistItemTypes = [
+  'tenancy_agreement',
+  'notices',
+  'guarantors_agreement',
+  'deposits_and_rent',
+  'standing_order',
+  'inventory',
+  'deposit_protection_dps',
+  'deposit_protection_tds',
+  'deposit_held_by_landlord',
+  'work_reference',
+  'bank_reference',
+  'previous_landlord_reference',
+  'tenants_id',
+  'authorization_to_landlord',
+  'terms_and_conditions_to_landlord',
+  'information_sheet_to_landlord',
+  'gas_safety_certificate',
+  'keys_given_to_tenant',
+  'spare_keys_in_office'
+] as const;
+
+export type TenancyChecklistItemType = typeof tenancyChecklistItemTypes[number];
+
+// Human-readable labels for checklist items
+export const tenancyChecklistItemLabels: Record<TenancyChecklistItemType, string> = {
+  'tenancy_agreement': 'Tenancy Agreement',
+  'notices': 'Notices',
+  'guarantors_agreement': 'Guarantors Agreement',
+  'deposits_and_rent': 'Deposits and Rent',
+  'standing_order': 'Standing Order',
+  'inventory': 'Inventory',
+  'deposit_protection_dps': 'Deposit Protection by DPS',
+  'deposit_protection_tds': 'Deposit Protection by TDS',
+  'deposit_held_by_landlord': 'Deposit Held by Landlord',
+  'work_reference': 'Work Reference',
+  'bank_reference': 'Bank Reference',
+  'previous_landlord_reference': 'Previous Landlord Reference',
+  'tenants_id': 'Tenant\'s ID',
+  'authorization_to_landlord': 'Authorization to Landlord',
+  'terms_and_conditions_to_landlord': 'Terms & Conditions to Landlord',
+  'information_sheet_to_landlord': 'Information Sheet to Landlord',
+  'gas_safety_certificate': 'Gas Safety Certificate',
+  'keys_given_to_tenant': 'Keys Given to Tenant',
+  'spare_keys_in_office': 'Spare Keys in Office'
+};
+
+// Individual checklist items with document support
+export const tenancyChecklistItems = pgTable("tenancy_checklist_items", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(), // References tenancyContracts.id
+  itemType: text("item_type").notNull(), // One of tenancyChecklistItemTypes
+
+  // Status
+  isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+  completedBy: integer("completed_by"), // User ID who marked it complete
+
+  // Document upload
+  documentUrl: text("document_url"),
+  documentName: text("document_name"),
+  documentUploadedAt: timestamp("document_uploaded_at"),
+  documentUploadedBy: integer("document_uploaded_by"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const tenancyChecklistItemsRelations = relations(tenancyChecklistItems, ({ one }) => ({
+  tenancy: one(tenancyContracts, {
+    fields: [tenancyChecklistItems.tenancyId],
+    references: [tenancyContracts.id]
+  }),
+  completedByUser: one(users, {
+    fields: [tenancyChecklistItems.completedBy],
+    references: [users.id]
+  }),
+  uploadedByUser: one(users, {
+    fields: [tenancyChecklistItems.documentUploadedBy],
+    references: [users.id]
+  })
+}));
+
+export const insertTenancyChecklistItemSchema = createInsertSchema(tenancyChecklistItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertTenancyChecklistItem = z.infer<typeof insertTenancyChecklistItemSchema>;
+export type TenancyChecklistItem = typeof tenancyChecklistItems.$inferSelect;
 
 // ==========================================
 // UK LANDLORD COMPLIANCE TRACKING
@@ -4239,3 +4796,1533 @@ export const communications = pgTable("communications", {
 export const insertCommunicationSchema = createInsertSchema(communications);
 export type Communication = typeof communications.$inferSelect;
 export type InsertCommunication = typeof communications.$inferInsert;
+
+// ==========================================
+// PROPERTY MANAGEMENT DATA MODEL (V2)
+// ==========================================
+// This is the clean data model for property management:
+// - pm_properties: Managed properties (distinct from listed properties)
+// - pm_landlords: Property owners
+// - pm_tenants: Tenants
+// - pm_tenancies: Tenancy contracts linking property, landlord, and tenant
+// ==========================================
+
+// Property types for all property tables
+export const propertyTypes = [
+  'flat',
+  'house',
+  'maisonette',
+  'penthouse',
+  'studio',
+  'bungalow',
+  'cottage',
+  'mansion',
+  'villa',
+  'townhouse',
+  'detached',
+  'semi_detached',
+  'terraced',
+  'end_terrace',
+  'office',
+  'retail',
+  'warehouse',
+  'industrial',
+  'mixed_use',
+  'land',
+  'other'
+] as const;
+
+export type PropertyType = typeof propertyTypes[number];
+
+// ==========================================
+// PM_LANDLORDS - Property Owners
+// ==========================================
+export const pmLandlords = pgTable("pm_landlords", {
+  id: serial("id").primaryKey(),
+
+  // Type: company or individual
+  landlordType: text("landlord_type").notNull().default("individual"), // 'company' or 'individual'
+
+  // Basic details (for individuals use name, for companies use companyName)
+  name: text("name").notNull(), // Full name for individuals, director/contact name for companies
+  email: text("email"),
+  phone: text("phone"),
+  mobile: text("mobile"),
+
+  // Personal address
+  address: text("address"), // Full address as single field
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country").default("United Kingdom"),
+
+  // Company details (if landlordType = 'company')
+  companyName: text("company_name"),
+  companyRegistrationNo: text("company_registration_no"),
+  companyVatNo: text("company_vat_no"),
+  companyAddress: text("company_address"),
+
+  // Bank details for rent payments
+  bankName: text("bank_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankSortCode: text("bank_sort_code"),
+  bankAccountHolderName: text("bank_account_holder_name"),
+
+  // Status
+  status: text("status").notNull().default("active"), // 'active', 'inactive', 'prospective'
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_TENANTS - Tenants
+// ==========================================
+export const pmTenants = pgTable("pm_tenants", {
+  id: serial("id").primaryKey(),
+
+  // Basic details
+  name: text("name").notNull(), // Full name
+  email: text("email"),
+  phone: text("phone"),
+  mobile: text("mobile"),
+
+  // Current address (before move-in or forwarding address)
+  address: text("address"),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country").default("United Kingdom"),
+
+  // Emergency contact
+  emergencyContactName: text("emergency_contact_name"),
+  emergencyContactPhone: text("emergency_contact_phone"),
+  emergencyContactRelationship: text("emergency_contact_relationship"),
+
+  // Employment details (for referencing)
+  employer: text("employer"),
+  employerAddress: text("employer_address"),
+  employerPhone: text("employer_phone"),
+  jobTitle: text("job_title"),
+  annualIncome: decimal("annual_income"),
+
+  // Status
+  status: text("status").notNull().default("active"), // 'active', 'inactive', 'prospective'
+
+  // ID Verification
+  idVerified: boolean("id_verified").default(false),
+  idVerificationStatus: text("id_verification_status").default("unverified"), // 'unverified', 'pending', 'verified', 'failed'
+  idDocumentUrl: text("id_document_url"),
+  idVerificationDate: timestamp("id_verification_date"),
+  idVerificationToken: text("id_verification_token"), // Token for self-service verification link
+  idVerificationTokenExpiry: timestamp("id_verification_token_expiry"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_PROPERTIES - Unified Properties Table
+// ==========================================
+// Single table for all properties with type flags:
+// - isManaged: Property is under management
+// - isListedRental: Property is listed for rental
+// - isListedSale: Property is listed for sale
+// ==========================================
+export const pmProperties = pgTable("pm_properties", {
+  id: serial("id").primaryKey(),
+
+  // PROPERTY TYPE FLAGS
+  isManaged: boolean("is_managed").default(false), // Property is under management
+  isListedRental: boolean("is_listed_rental").default(false), // Property is listed for rental
+  isListedSale: boolean("is_listed_sale").default(false), // Property is listed for sale
+
+  // Property category
+  propertyCategory: text("property_category").notNull().default("residential"), // 'residential' or 'commercial'
+  propertyType: text("property_type").notNull().default("flat"), // from propertyTypes
+
+  // Title (for listings)
+  title: text("title"),
+
+  // Property name (short name for display, e.g., "216A Walm Lane")
+  propertyName: text("property_name"),
+
+  // Address
+  address: text("address").notNull(), // Full address as single field for display
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode").notNull(),
+  country: text("country").default("United Kingdom"),
+
+  // Geolocation (for listings)
+  latitude: decimal("latitude"),
+  longitude: decimal("longitude"),
+  areaId: integer("area_id"), // FK to london_areas
+
+  // Property details
+  bedrooms: integer("bedrooms"),
+  bathrooms: integer("bathrooms"),
+  receptions: integer("receptions"),
+  squareFootage: integer("square_footage"),
+  yearBuilt: integer("year_built"),
+
+  // Property description
+  description: text("description"),
+
+  // Images
+  images: text("images").array(),
+  floorPlan: text("floor_plan"),
+
+  // Features (for listings)
+  features: text("features").array(),
+  amenities: text("amenities").array(),
+
+  // Property characteristics
+  tenure: text("tenure"), // 'freehold', 'leasehold', 'share_of_freehold'
+  leaseLength: integer("lease_length"), // Years remaining for leasehold
+  groundRent: integer("ground_rent"), // Annual ground rent in pence
+  serviceCharge: integer("service_charge"), // Annual service charge in pence
+  councilTaxBand: text("council_tax_band"),
+  energyRating: text("energy_rating"),
+
+  // Landlord (owner) - for managed properties
+  landlordId: integer("landlord_id"), // FK to pm_landlords
+
+  // Vendor ID (for sale properties)
+  vendorId: integer("vendor_id"), // FK to unified_contacts
+
+  // MANAGEMENT FIELDS (when isManaged = true)
+  managementType: text("management_type"), // 'full', 'let_only', 'rent_collection', 'managed'
+  managementPeriodMonths: integer("management_period_months"), // 12, 24, 36 months etc.
+  managementStartDate: timestamp("management_start_date"),
+  managementEndDate: timestamp("management_end_date"),
+  managementFeeType: text("management_fee_type"), // 'percentage' or 'fixed'
+  managementFeeValue: decimal("management_fee_value"),
+
+  // RENTAL LISTING FIELDS (when isListedRental = true)
+  rentAmount: integer("rent_amount"), // in pence
+  rentPeriod: text("rent_period"), // 'per_week', 'per_month'
+  deposit: integer("deposit"), // in pence
+  furnished: text("furnished"), // 'furnished', 'unfurnished', 'part_furnished'
+  availableFrom: timestamp("available_from"),
+  minimumTenancy: integer("minimum_tenancy"), // in months
+
+  // SALE LISTING FIELDS (when isListedSale = true)
+  price: integer("price"), // in pence
+  priceQualifier: text("price_qualifier"), // 'guide_price', 'offers_over', 'poa', etc.
+
+  // Portal syndication (for listings)
+  publishedToPortals: boolean("published_to_portals").default(false),
+
+  // Property status
+  status: text("status").notNull().default("active"), // 'active', 'inactive', 'void', 'in_arrears', 'under_offer', 'let', 'sold', 'withdrawn'
+
+  // Property manager (staff member responsible)
+  propertyManagerId: integer("property_manager_id"), // FK to users.id
+  agentId: integer("agent_id"), // FK to users.id (for listings)
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_TENANCIES - Tenancy Contracts
+// ==========================================
+export const pmTenancies = pgTable("pm_tenancies", {
+  id: serial("id").primaryKey(),
+
+  // Links to Property, Landlord, and Tenant
+  propertyId: integer("property_id").notNull(), // FK to pm_properties
+  landlordId: integer("landlord_id").notNull(), // FK to pm_landlords
+  tenantId: integer("tenant_id"), // FK to pm_tenants (null if property is void)
+
+  // Tenancy dates
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  periodMonths: integer("period_months"), // 6, 12, 24, 36 or null for periodic
+  isPeriodic: boolean("is_periodic").default(false),
+
+  // Rent details
+  rentAmount: decimal("rent_amount").notNull(),
+  rentFrequency: text("rent_frequency").notNull().default("monthly"), // 'weekly', 'monthly', 'quarterly', 'annually'
+  rentDueDay: integer("rent_due_day").default(1), // Day of month rent is due
+
+  // Deposit details
+  depositAmount: decimal("deposit_amount"),
+  depositScheme: text("deposit_scheme"), // 'dps', 'tds', 'landlord'
+  depositHolderType: text("deposit_holder_type"), // 'agency_insurance', 'agency_custodial', 'landlord'
+  depositCertificateNumber: text("deposit_certificate_number"),
+  depositProtectedDate: timestamp("deposit_protected_date"),
+
+  // Guarantor details
+  guarantorName: text("guarantor_name"),
+  guarantorEmail: text("guarantor_email"),
+  guarantorPhone: text("guarantor_phone"),
+  guarantorAddress: text("guarantor_address"),
+
+  // Status
+  status: text("status").notNull().default("active"), // 'active', 'expired', 'terminated', 'void'
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_TENANCY_CHECKLIST - Checklist Items for Tenancies
+// ==========================================
+export const pmTenancyChecklist = pgTable("pm_tenancy_checklist", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
+
+  itemType: text("item_type").notNull(), // One of tenancyChecklistItemTypes
+
+  // Status
+  isCompleted: boolean("is_completed").default(false),
+  completedAt: timestamp("completed_at"),
+  completedBy: integer("completed_by"), // User ID
+
+  // Document upload
+  documentUrl: text("document_url"),
+  documentName: text("document_name"),
+  documentUploadedAt: timestamp("document_uploaded_at"),
+  documentUploadedBy: integer("document_uploaded_by"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_INVENTORY - Property Inventory for Tenancies
+// ==========================================
+export const pmInventory = pgTable("pm_inventory", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
+  propertyId: integer("property_id").notNull(), // FK to pm_properties
+
+  // Inventory type
+  inventoryType: text("inventory_type").notNull().default("check_in"), // 'check_in', 'check_out', 'mid_term'
+
+  // Date and status
+  inventoryDate: timestamp("inventory_date").notNull(),
+  status: text("status").notNull().default("scheduled"), // 'scheduled', 'in_progress', 'completed', 'disputed'
+
+  // Clerk/Inspector details
+  clerkName: text("clerk_name"),
+  clerkCompany: text("clerk_company"),
+  clerkPhone: text("clerk_phone"),
+  clerkEmail: text("clerk_email"),
+
+  // Attendees
+  tenantAttended: boolean("tenant_attended").default(false),
+  landlordAttended: boolean("landlord_attended").default(false),
+  agentAttended: boolean("agent_attended").default(false),
+
+  // Document
+  inventoryDocumentUrl: text("inventory_document_url"),
+  inventoryDocumentName: text("inventory_document_name"),
+
+  // Signatures
+  tenantSignedAt: timestamp("tenant_signed_at"),
+  landlordSignedAt: timestamp("landlord_signed_at"),
+  agentSignedAt: timestamp("agent_signed_at"),
+
+  // Notes and disputes
+  notes: text("notes"),
+  disputeNotes: text("dispute_notes"),
+  disputeResolvedAt: timestamp("dispute_resolved_at"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_INVENTORY_ITEMS - Individual items in an inventory
+// ==========================================
+export const pmInventoryItems = pgTable("pm_inventory_items", {
+  id: serial("id").primaryKey(),
+  inventoryId: integer("inventory_id").notNull(), // FK to pm_inventory
+
+  // Location in property
+  room: text("room").notNull(), // 'living_room', 'bedroom_1', 'kitchen', 'bathroom', etc.
+
+  // Item details
+  itemName: text("item_name").notNull(),
+  itemDescription: text("item_description"),
+
+  // Condition
+  condition: text("condition").notNull(), // 'new', 'good', 'fair', 'poor', 'damaged'
+  conditionNotes: text("condition_notes"),
+
+  // Quantity
+  quantity: integer("quantity").default(1),
+
+  // Photos
+  photos: text("photos").array(),
+
+  // Check-out comparison (for check_out inventories)
+  checkInCondition: text("check_in_condition"), // Original condition from check-in
+  conditionChanged: boolean("condition_changed").default(false),
+  damageDescription: text("damage_description"),
+  estimatedRepairCost: decimal("estimated_repair_cost"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM RELATIONS
+// ==========================================
+
+export const pmLandlordsRelations = relations(pmLandlords, ({ many }) => ({
+  properties: many(pmProperties),
+  tenancies: many(pmTenancies)
+}));
+
+export const pmTenantsRelations = relations(pmTenants, ({ many }) => ({
+  tenancies: many(pmTenancies)
+}));
+
+export const pmPropertiesRelations = relations(pmProperties, ({ one, many }) => ({
+  landlord: one(pmLandlords, {
+    fields: [pmProperties.landlordId],
+    references: [pmLandlords.id]
+  }),
+  propertyManager: one(users, {
+    fields: [pmProperties.propertyManagerId],
+    references: [users.id]
+  }),
+  agent: one(users, {
+    fields: [pmProperties.agentId],
+    references: [users.id]
+  }),
+  area: one(londonAreas, {
+    fields: [pmProperties.areaId],
+    references: [londonAreas.id]
+  }),
+  tenancies: many(pmTenancies),
+  inventories: many(pmInventory)
+}));
+
+export const pmTenanciesRelations = relations(pmTenancies, ({ one, many }) => ({
+  property: one(pmProperties, {
+    fields: [pmTenancies.propertyId],
+    references: [pmProperties.id]
+  }),
+  landlord: one(pmLandlords, {
+    fields: [pmTenancies.landlordId],
+    references: [pmLandlords.id]
+  }),
+  tenant: one(pmTenants, {
+    fields: [pmTenancies.tenantId],
+    references: [pmTenants.id]
+  }),
+  checklist: many(pmTenancyChecklist)
+}));
+
+export const pmTenancyChecklistRelations = relations(pmTenancyChecklist, ({ one }) => ({
+  tenancy: one(pmTenancies, {
+    fields: [pmTenancyChecklist.tenancyId],
+    references: [pmTenancies.id]
+  }),
+  completedByUser: one(users, {
+    fields: [pmTenancyChecklist.completedBy],
+    references: [users.id]
+  }),
+  uploadedByUser: one(users, {
+    fields: [pmTenancyChecklist.documentUploadedBy],
+    references: [users.id]
+  })
+}));
+
+export const pmInventoryRelations = relations(pmInventory, ({ one, many }) => ({
+  tenancy: one(pmTenancies, {
+    fields: [pmInventory.tenancyId],
+    references: [pmTenancies.id]
+  }),
+  property: one(pmProperties, {
+    fields: [pmInventory.propertyId],
+    references: [pmProperties.id]
+  }),
+  items: many(pmInventoryItems)
+}));
+
+export const pmInventoryItemsRelations = relations(pmInventoryItems, ({ one }) => ({
+  inventory: one(pmInventory, {
+    fields: [pmInventoryItems.inventoryId],
+    references: [pmInventory.id]
+  })
+}));
+
+// ==========================================
+// PM_RENT_PAYMENTS - Tenant Payment History
+// ==========================================
+export const pmRentPayments = pgTable("pm_rent_payments", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
+  tenantId: integer("tenant_id").notNull(), // FK to pm_tenants
+  propertyId: integer("property_id").notNull(), // FK to pm_properties
+
+  // Payment details
+  paymentDate: timestamp("payment_date").notNull(),
+  amount: decimal("amount").notNull(), // Amount paid
+  expectedAmount: decimal("expected_amount"), // Expected rent amount
+
+  // Payment period this covers
+  periodStart: timestamp("period_start"), // Start of rent period covered
+  periodEnd: timestamp("period_end"), // End of rent period covered
+
+  // Payment method and reference
+  paymentMethod: text("payment_method"), // 'bank_transfer', 'standing_order', 'direct_debit', 'cash', 'cheque', 'card'
+  paymentReference: text("payment_reference"), // Bank reference or receipt number
+
+  // Status
+  status: text("status").notNull().default("confirmed"), // 'pending', 'confirmed', 'cleared', 'bounced', 'refunded'
+
+  // Late payment tracking
+  isLate: boolean("is_late").default(false),
+  daysLate: integer("days_late").default(0),
+  lateFeeCharged: decimal("late_fee_charged"),
+
+  // Arrears tracking
+  balanceBefore: decimal("balance_before"), // Balance before this payment
+  balanceAfter: decimal("balance_after"), // Balance after this payment
+
+  // Notes
+  notes: text("notes"),
+
+  // Admin tracking
+  recordedBy: integer("recorded_by"), // User ID who recorded this payment
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// PM_RENT_STATEMENTS - Monthly/Periodic Statements
+// ==========================================
+export const pmRentStatements = pgTable("pm_rent_statements", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
+  landlordId: integer("landlord_id").notNull(), // FK to pm_landlords
+  propertyId: integer("property_id").notNull(), // FK to pm_properties
+
+  // Statement period
+  statementDate: timestamp("statement_date").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+
+  // Financial summary
+  openingBalance: decimal("opening_balance").notNull(),
+  rentDue: decimal("rent_due").notNull(),
+  rentReceived: decimal("rent_received").notNull(),
+  managementFee: decimal("management_fee"),
+  otherDeductions: decimal("other_deductions"),
+  netToLandlord: decimal("net_to_landlord"),
+  closingBalance: decimal("closing_balance").notNull(),
+
+  // Payment to landlord
+  paidToLandlord: boolean("paid_to_landlord").default(false),
+  paidToLandlordDate: timestamp("paid_to_landlord_date"),
+  paymentReference: text("payment_reference"),
+
+  // Document
+  statementUrl: text("statement_url"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Relations for payment tables
+export const pmRentPaymentsRelations = relations(pmRentPayments, ({ one }) => ({
+  tenancy: one(pmTenancies, {
+    fields: [pmRentPayments.tenancyId],
+    references: [pmTenancies.id]
+  }),
+  tenant: one(pmTenants, {
+    fields: [pmRentPayments.tenantId],
+    references: [pmTenants.id]
+  }),
+  property: one(pmProperties, {
+    fields: [pmRentPayments.propertyId],
+    references: [pmProperties.id]
+  }),
+  recordedByUser: one(users, {
+    fields: [pmRentPayments.recordedBy],
+    references: [users.id]
+  })
+}));
+
+export const pmRentStatementsRelations = relations(pmRentStatements, ({ one }) => ({
+  tenancy: one(pmTenancies, {
+    fields: [pmRentStatements.tenancyId],
+    references: [pmTenancies.id]
+  }),
+  landlord: one(pmLandlords, {
+    fields: [pmRentStatements.landlordId],
+    references: [pmLandlords.id]
+  }),
+  property: one(pmProperties, {
+    fields: [pmRentStatements.propertyId],
+    references: [pmProperties.id]
+  })
+}));
+
+// ==========================================
+// LEADS - Property Enquiry Tracking
+// ==========================================
+// Captures all enquiries from any channel: website registration, calls, emails, WhatsApp
+// Tracks their interest (buy/rent), property browsing, and all communications
+// ==========================================
+export const leads = pgTable("leads", {
+  id: serial("id").primaryKey(),
+
+  // Basic contact details
+  fullName: text("full_name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  mobile: text("mobile"),
+
+  // Social media handles (for DM communication)
+  instagramHandle: text("instagram_handle"),
+  facebookId: text("facebook_id"),
+  tiktokHandle: text("tiktok_handle"),
+  twitterHandle: text("twitter_handle"),
+  linkedinUrl: text("linkedin_url"),
+
+  // Source tracking - where did this lead come from?
+  source: text("source").notNull().default("website"), // 'website', 'phone_call', 'email', 'whatsapp', 'walk_in', 'referral', 'portal', 'instagram', 'facebook', 'tiktok', 'twitter', 'linkedin'
+  sourceDetail: text("source_detail"), // e.g., 'Zoopla', 'Rightmove', 'Google Ads', specific property URL, etc.
+  referredBy: text("referred_by"), // Name of referrer if applicable
+
+  // Lead type - what are they looking for?
+  leadType: text("lead_type").notNull().default("rental"), // 'rental', 'purchase', 'both', 'landlord', 'seller'
+
+  // Property preferences
+  preferredPropertyType: text("preferred_property_type"), // 'flat', 'house', 'studio', etc.
+  preferredBedrooms: integer("preferred_bedrooms"),
+  preferredAreas: text("preferred_areas").array(), // Array of postcodes or area names
+  minBudget: integer("min_budget"), // In pence
+  maxBudget: integer("max_budget"), // In pence
+  moveInDate: timestamp("move_in_date"), // When do they want to move?
+
+  // Additional requirements
+  requirements: text("requirements"), // Free text for specific requirements
+  petsAllowed: boolean("pets_allowed"),
+  parkingRequired: boolean("parking_required"),
+  gardenRequired: boolean("garden_required"),
+
+  // KYC (Know Your Customer) Verification
+  kycStatus: text("kyc_status").default("not_started"), // 'not_started', 'pending', 'verified', 'failed', 'expired'
+  kycVerifiedAt: timestamp("kyc_verified_at"),
+  kycVerifiedBy: integer("kyc_verified_by"), // FK to users.id - staff who verified
+  kycNotes: text("kyc_notes"),
+
+  // ID Verification
+  idDocumentType: text("id_document_type"), // 'passport', 'driving_licence', 'national_id'
+  idDocumentUrl: text("id_document_url"), // URL to uploaded ID document
+  idVerified: boolean("id_verified").default(false),
+  idVerifiedAt: timestamp("id_verified_at"),
+
+  // Proof of Address
+  proofOfAddressType: text("proof_of_address_type"), // 'utility_bill', 'bank_statement', 'council_tax'
+  proofOfAddressUrl: text("proof_of_address_url"),
+  proofOfAddressVerified: boolean("proof_of_address_verified").default(false),
+  proofOfAddressVerifiedAt: timestamp("proof_of_address_verified_at"),
+
+  // Proof of Funds (for serious buyers/renters)
+  proofOfFundsStatus: text("proof_of_funds_status").default("not_provided"), // 'not_provided', 'pending_review', 'verified', 'rejected', 'expired'
+  proofOfFundsType: text("proof_of_funds_type"), // 'bank_letter', 'mortgage_offer', 'bank_statement', 'solicitor_letter', 'cash_buyer_proof'
+  proofOfFundsUrl: text("proof_of_funds_url"), // URL to uploaded document
+  proofOfFundsAmount: integer("proof_of_funds_amount"), // Amount in pence they can prove
+  proofOfFundsVerified: boolean("proof_of_funds_verified").default(false),
+  proofOfFundsVerifiedAt: timestamp("proof_of_funds_verified_at"),
+  proofOfFundsVerifiedBy: integer("proof_of_funds_verified_by"), // FK to users.id
+  proofOfFundsExpiryDate: timestamp("proof_of_funds_expiry_date"), // When does the proof expire?
+  proofOfFundsNotes: text("proof_of_funds_notes"),
+
+  // Mortgage Details (if applicable)
+  hasMortgageAip: boolean("has_mortgage_aip").default(false), // Agreement in Principle
+  mortgageBroker: text("mortgage_broker"),
+  mortgageLender: text("mortgage_lender"),
+  mortgageAipAmount: integer("mortgage_aip_amount"), // Amount approved in pence
+  mortgageAipExpiryDate: timestamp("mortgage_aip_expiry_date"),
+  mortgageAipUrl: text("mortgage_aip_url"), // URL to uploaded AIP document
+
+  // Lead status and scoring
+  status: text("status").notNull().default("new"), // 'new', 'contacted', 'qualified', 'viewing_booked', 'offer_made', 'converted', 'lost', 'archived'
+  priority: text("priority").default("medium"), // 'hot', 'warm', 'medium', 'cold'
+  score: integer("score").default(0), // Lead score 0-100 based on engagement
+  lostReason: text("lost_reason"), // If status is 'lost', why?
+
+  // Assignment
+  assignedTo: integer("assigned_to"), // FK to users.id - which agent is handling this lead
+
+  // Conversion tracking
+  convertedAt: timestamp("converted_at"), // When did they become a tenant/buyer?
+  convertedToTenantId: integer("converted_to_tenant_id"), // FK to pm_tenants if they became a tenant
+  convertedToPropertyId: integer("converted_to_property_id"), // Which property did they rent/buy?
+
+  // Last activity tracking
+  lastContactedAt: timestamp("last_contacted_at"),
+  lastActivityAt: timestamp("last_activity_at"),
+  nextFollowUpDate: timestamp("next_follow_up_date"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// LEAD_PROPERTY_VIEWS - Track Property Browsing
+// ==========================================
+// Records every property a lead has viewed on the website
+// ==========================================
+export const leadPropertyViews = pgTable("lead_property_views", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(), // FK to leads
+  propertyId: integer("property_id").notNull(), // FK to properties or pm_properties
+
+  // View details
+  viewedAt: timestamp("viewed_at").notNull().defaultNow(),
+  viewDuration: integer("view_duration"), // Seconds spent on property page
+  viewSource: text("view_source"), // 'website', 'email_link', 'whatsapp_link', 'portal'
+
+  // Engagement tracking
+  savedToFavorites: boolean("saved_to_favorites").default(false),
+  requestedViewing: boolean("requested_viewing").default(false),
+  requestedMoreInfo: boolean("requested_more_info").default(false),
+  sharedProperty: boolean("shared_property").default(false),
+
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// ==========================================
+// LEAD_COMMUNICATIONS - All Interactions
+// ==========================================
+// Tracks ALL communications with a lead across ALL channels
+// ==========================================
+export const leadCommunications = pgTable("lead_communications", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(), // FK to leads
+
+  // Communication type and channel
+  channel: text("channel").notNull(), // 'phone', 'email', 'whatsapp', 'sms', 'in_person', 'portal_message', 'instagram_dm', 'facebook_messenger', 'tiktok_dm', 'twitter_dm', 'linkedin'
+  direction: text("direction").notNull(), // 'inbound', 'outbound'
+  type: text("type").notNull(), // 'enquiry', 'follow_up', 'viewing_request', 'viewing_confirmation', 'offer', 'negotiation', 'general'
+
+  // Content
+  subject: text("subject"), // For emails
+  content: text("content").notNull(), // The message content
+  summary: text("summary"), // Brief summary of call/conversation
+
+  // Related property (if communication is about a specific property)
+  propertyId: integer("property_id"), // FK to properties
+
+  // Staff member who handled this
+  handledBy: integer("handled_by"), // FK to users.id
+
+  // External references
+  externalMessageId: text("external_message_id"), // Twilio SID, email message ID, etc.
+
+  // Attachments
+  attachments: text("attachments").array(), // URLs to attached files
+
+  // Outcome tracking
+  outcome: text("outcome"), // 'successful', 'no_answer', 'voicemail', 'callback_requested', 'not_interested'
+  followUpRequired: boolean("follow_up_required").default(false),
+  followUpDate: timestamp("follow_up_date"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// ==========================================
+// LEAD_VIEWINGS - Scheduled Property Viewings
+// ==========================================
+export const leadViewings = pgTable("lead_viewings", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(), // FK to leads
+  propertyId: integer("property_id").notNull(), // FK to properties
+
+  // Viewing details
+  scheduledAt: timestamp("scheduled_at").notNull(),
+  duration: integer("duration").default(30), // Duration in minutes
+  viewingType: text("viewing_type").default("in_person"), // 'in_person', 'video', 'virtual_tour'
+
+  // Assignment
+  conductedBy: integer("conducted_by"), // FK to users.id - agent conducting viewing
+
+  // Status
+  status: text("status").notNull().default("scheduled"), // 'scheduled', 'confirmed', 'completed', 'cancelled', 'no_show', 'rescheduled'
+  cancelledReason: text("cancelled_reason"),
+
+  // Feedback
+  feedback: text("feedback"), // Lead's feedback after viewing
+  agentNotes: text("agent_notes"), // Agent's notes about the viewing
+  interested: boolean("interested"), // Did they show interest?
+
+  // Follow-up
+  followUpRequired: boolean("follow_up_required").default(true),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// LEAD_ACTIVITIES - Activity Timeline
+// ==========================================
+// Captures all activities for a lead's timeline (auto-generated)
+// ==========================================
+export const leadActivities = pgTable("lead_activities", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(), // FK to leads
+
+  // Activity details
+  activityType: text("activity_type").notNull(), // 'created', 'status_change', 'property_viewed', 'communication', 'viewing_booked', 'note_added', 'assigned', 'converted'
+  description: text("description").notNull(),
+
+  // Related records
+  relatedPropertyId: integer("related_property_id"),
+  relatedCommunicationId: integer("related_communication_id"),
+  relatedViewingId: integer("related_viewing_id"),
+
+  // Who performed the activity
+  performedBy: integer("performed_by"), // FK to users.id (null if system-generated)
+
+  // Metadata
+  metadata: json("metadata"), // Additional context as JSON
+
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// ==========================================
+// LEADS RELATIONS
+// ==========================================
+export const leadsRelations = relations(leads, ({ many, one }) => ({
+  propertyViews: many(leadPropertyViews),
+  communications: many(leadCommunications),
+  viewings: many(leadViewings),
+  activities: many(leadActivities),
+  assignedAgent: one(users, {
+    fields: [leads.assignedTo],
+    references: [users.id]
+  }),
+  convertedTenant: one(pmTenants, {
+    fields: [leads.convertedToTenantId],
+    references: [pmTenants.id]
+  })
+}));
+
+export const leadPropertyViewsRelations = relations(leadPropertyViews, ({ one }) => ({
+  lead: one(leads, {
+    fields: [leadPropertyViews.leadId],
+    references: [leads.id]
+  })
+}));
+
+export const leadCommunicationsRelations = relations(leadCommunications, ({ one }) => ({
+  lead: one(leads, {
+    fields: [leadCommunications.leadId],
+    references: [leads.id]
+  }),
+  handler: one(users, {
+    fields: [leadCommunications.handledBy],
+    references: [users.id]
+  })
+}));
+
+export const leadViewingsRelations = relations(leadViewings, ({ one }) => ({
+  lead: one(leads, {
+    fields: [leadViewings.leadId],
+    references: [leads.id]
+  }),
+  conductor: one(users, {
+    fields: [leadViewings.conductedBy],
+    references: [users.id]
+  })
+}));
+
+export const leadActivitiesRelations = relations(leadActivities, ({ one }) => ({
+  lead: one(leads, {
+    fields: [leadActivities.leadId],
+    references: [leads.id]
+  }),
+  performer: one(users, {
+    fields: [leadActivities.performedBy],
+    references: [users.id]
+  })
+}));
+
+// ==========================================
+// OFFERS TABLE - Links Leads to Properties/Landlords
+// ==========================================
+// When a lead makes an offer on a property, this creates
+// a link between the lead and the property owner (landlord)
+// ==========================================
+export const offers = pgTable("offers", {
+  id: serial("id").primaryKey(),
+
+  // Lead making the offer
+  leadId: integer("lead_id").notNull(), // FK to leads
+
+  // Property being offered on
+  propertyId: integer("property_id").notNull(), // FK to properties or pm_properties
+
+  // Landlord/Owner (auto-populated from property)
+  landlordId: integer("landlord_id"), // FK to pm_landlords - the property owner
+
+  // Offer type
+  offerType: text("offer_type").notNull(), // 'rental', 'purchase'
+
+  // Offer details
+  offerAmount: integer("offer_amount").notNull(), // Amount in pence
+  originalAskingPrice: integer("original_asking_price"), // Original property price
+  depositOffered: integer("deposit_offered"), // Deposit amount offered (for rentals)
+  moveInDate: timestamp("move_in_date"), // Proposed move-in date
+  tenancyLength: integer("tenancy_length"), // Months (for rentals)
+
+  // Conditions
+  conditions: text("conditions"), // Any conditions attached to offer
+  chainFree: boolean("chain_free").default(false), // Is the buyer chain-free?
+  cashBuyer: boolean("cash_buyer").default(false), // Is this a cash purchase?
+  mortgageApproved: boolean("mortgage_approved").default(false), // Has mortgage AIP?
+
+  // Status tracking
+  status: text("status").notNull().default("pending"), // 'pending', 'under_review', 'counter_offered', 'accepted', 'rejected', 'withdrawn', 'expired'
+
+  // Counter offer (if landlord counters)
+  counterOfferAmount: integer("counter_offer_amount"),
+  counterOfferDate: timestamp("counter_offer_date"),
+  counterOfferConditions: text("counter_offer_conditions"),
+
+  // Negotiation tracking
+  negotiationRound: integer("negotiation_round").default(1),
+  previousOfferIds: integer("previous_offer_ids").array(), // Chain of previous offers
+
+  // Response tracking
+  respondedAt: timestamp("responded_at"),
+  respondedBy: integer("responded_by"), // FK to users - who responded to offer
+  responseNotes: text("response_notes"),
+
+  // Acceptance/Rejection details
+  acceptedAt: timestamp("accepted_at"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  withdrawalReason: text("withdrawal_reason"),
+
+  // Expiry
+  expiresAt: timestamp("expires_at"), // When does offer expire?
+
+  // Agent handling the offer
+  handledBy: integer("handled_by"), // FK to users.id
+
+  // Verification status (for serious offers)
+  proofOfFundsVerified: boolean("proof_of_funds_verified").default(false),
+  kycVerified: boolean("kyc_verified").default(false),
+
+  // Notes
+  internalNotes: text("internal_notes"), // Staff notes
+  landlordNotes: text("landlord_notes"), // Notes from landlord
+
+  // Conversion tracking
+  convertedToAgreementId: integer("converted_to_agreement_id"), // FK to pm_tenancies if accepted rental
+  convertedToSaleId: integer("converted_to_sale_id"), // FK to sales_progressions if accepted purchase
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// OFFER HISTORY - Track all offer changes
+// ==========================================
+export const offerHistory = pgTable("offer_history", {
+  id: serial("id").primaryKey(),
+  offerId: integer("offer_id").notNull(), // FK to offers
+
+  action: text("action").notNull(), // 'created', 'updated', 'counter_offered', 'accepted', 'rejected', 'withdrawn', 'expired'
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+
+  // What changed
+  previousAmount: integer("previous_amount"),
+  newAmount: integer("new_amount"),
+
+  // Who made the change
+  performedBy: integer("performed_by"), // FK to users
+  performedByType: text("performed_by_type"), // 'agent', 'landlord', 'lead', 'system'
+
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+// ==========================================
+// OFFERS RELATIONS
+// ==========================================
+export const offersRelations = relations(offers, ({ one, many }) => ({
+  lead: one(leads, {
+    fields: [offers.leadId],
+    references: [leads.id]
+  }),
+  landlord: one(pmLandlords, {
+    fields: [offers.landlordId],
+    references: [pmLandlords.id]
+  }),
+  handler: one(users, {
+    fields: [offers.handledBy],
+    references: [users.id]
+  }),
+  history: many(offerHistory)
+}));
+
+export const offerHistoryRelations = relations(offerHistory, ({ one }) => ({
+  offer: one(offers, {
+    fields: [offerHistory.offerId],
+    references: [offers.id]
+  }),
+  performer: one(users, {
+    fields: [offerHistory.performedBy],
+    references: [users.id]
+  })
+}));
+
+// ==========================================
+// PM INSERT SCHEMAS AND TYPES
+// ==========================================
+
+export const insertPmLandlordSchema = createInsertSchema(pmLandlords).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmLandlord = z.infer<typeof insertPmLandlordSchema>;
+export type PmLandlord = typeof pmLandlords.$inferSelect;
+
+export const insertPmTenantSchema = createInsertSchema(pmTenants).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmTenant = z.infer<typeof insertPmTenantSchema>;
+export type PmTenant = typeof pmTenants.$inferSelect;
+
+export const insertPmPropertySchema = createInsertSchema(pmProperties).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmProperty = z.infer<typeof insertPmPropertySchema>;
+export type PmProperty = typeof pmProperties.$inferSelect;
+
+export const insertPmTenancySchema = createInsertSchema(pmTenancies).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmTenancy = z.infer<typeof insertPmTenancySchema>;
+export type PmTenancy = typeof pmTenancies.$inferSelect;
+
+export const insertPmTenancyChecklistSchema = createInsertSchema(pmTenancyChecklist).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmTenancyChecklist = z.infer<typeof insertPmTenancyChecklistSchema>;
+export type PmTenancyChecklist = typeof pmTenancyChecklist.$inferSelect;
+
+export const insertPmInventorySchema = createInsertSchema(pmInventory).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmInventory = z.infer<typeof insertPmInventorySchema>;
+export type PmInventory = typeof pmInventory.$inferSelect;
+
+export const insertPmInventoryItemSchema = createInsertSchema(pmInventoryItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmInventoryItem = z.infer<typeof insertPmInventoryItemSchema>;
+export type PmInventoryItem = typeof pmInventoryItems.$inferSelect;
+
+export const insertPmRentPaymentSchema = createInsertSchema(pmRentPayments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmRentPayment = z.infer<typeof insertPmRentPaymentSchema>;
+export type PmRentPayment = typeof pmRentPayments.$inferSelect;
+
+export const insertPmRentStatementSchema = createInsertSchema(pmRentStatements).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertPmRentStatement = z.infer<typeof insertPmRentStatementSchema>;
+export type PmRentStatement = typeof pmRentStatements.$inferSelect;
+
+// ==========================================
+// LEADS INSERT SCHEMAS AND TYPES
+// ==========================================
+
+export const insertLeadSchema = createInsertSchema(leads).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertLead = z.infer<typeof insertLeadSchema>;
+export type Lead = typeof leads.$inferSelect;
+
+export const insertLeadPropertyViewSchema = createInsertSchema(leadPropertyViews).omit({
+  id: true,
+  createdAt: true
+});
+export type InsertLeadPropertyView = z.infer<typeof insertLeadPropertyViewSchema>;
+export type LeadPropertyView = typeof leadPropertyViews.$inferSelect;
+
+export const insertLeadCommunicationSchema = createInsertSchema(leadCommunications).omit({
+  id: true,
+  createdAt: true
+});
+export type InsertLeadCommunication = z.infer<typeof insertLeadCommunicationSchema>;
+export type LeadCommunication = typeof leadCommunications.$inferSelect;
+
+export const insertLeadViewingSchema = createInsertSchema(leadViewings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertLeadViewing = z.infer<typeof insertLeadViewingSchema>;
+export type LeadViewing = typeof leadViewings.$inferSelect;
+
+export const insertLeadActivitySchema = createInsertSchema(leadActivities).omit({
+  id: true,
+  createdAt: true
+});
+export type InsertLeadActivity = z.infer<typeof insertLeadActivitySchema>;
+export type LeadActivity = typeof leadActivities.$inferSelect;
+
+// ==========================================
+// VOICE CALL RECORDS - Detailed Call Transcripts
+// ==========================================
+// Stores full transcripts and AI analysis for voice calls
+// Links to existing leads table for caller identification
+// ==========================================
+export const voiceCallRecords = pgTable("voice_call_records", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id"), // FK to leads - null if new caller not yet saved
+
+  // Call identification
+  callSid: text("call_sid").notNull().unique(), // Twilio Call SID
+  direction: text("direction").notNull(), // 'inbound', 'outbound'
+  callerPhone: text("caller_phone").notNull(), // Phone number of caller
+  agentPhone: text("agent_phone"), // Our phone number used
+
+  // Call timing
+  startedAt: timestamp("started_at").notNull(),
+  endedAt: timestamp("ended_at"),
+  duration: integer("duration"), // Duration in seconds
+
+  // Call status
+  status: text("status").notNull().default("in_progress"), // 'in_progress', 'completed', 'failed', 'no_answer', 'busy', 'voicemail'
+
+  // Full transcript
+  transcript: text("transcript"), // Full conversation transcript
+  transcriptJson: json("transcript_json"), // Structured transcript with speaker labels and timestamps
+
+  // AI Analysis (generated after call)
+  aiSummary: text("ai_summary"), // Brief summary of the call
+  aiIntent: text("ai_intent"), // Detected intent: 'property_enquiry_rent', 'property_enquiry_buy', 'book_viewing', etc.
+  aiSentiment: text("ai_sentiment"), // 'positive', 'neutral', 'negative'
+  aiUrgency: text("ai_urgency"), // 'immediate', 'within_week', 'within_month', 'browsing'
+  aiLeadScore: integer("ai_lead_score"), // AI-calculated lead score 0-100
+
+  // Extracted information (AI-parsed from conversation)
+  extractedName: text("extracted_name"),
+  extractedEmail: text("extracted_email"),
+  extractedBudgetMin: integer("extracted_budget_min"),
+  extractedBudgetMax: integer("extracted_budget_max"),
+  extractedBedrooms: integer("extracted_bedrooms"),
+  extractedAreas: text("extracted_areas").array(), // ['W9', 'W10', 'NW6']
+  extractedPropertyType: text("extracted_property_type"), // 'flat', 'house', etc.
+  extractedMoveInDate: timestamp("extracted_move_in_date"),
+  extractedRequirements: text("extracted_requirements").array(), // ['garden', 'parking', 'pet friendly']
+
+  // Properties discussed during call
+  propertiesDiscussed: integer("properties_discussed").array(), // Array of property IDs mentioned
+  propertiesInterestedIn: integer("properties_interested_in").array(), // Properties they showed interest in
+  propertiesRejected: integer("properties_rejected").array(), // Properties they weren't interested in
+
+  // Actions taken during/after call
+  viewingBooked: boolean("viewing_booked").default(false),
+  viewingPropertyId: integer("viewing_property_id"),
+  viewingScheduledAt: timestamp("viewing_scheduled_at"),
+
+  valuationBooked: boolean("valuation_booked").default(false),
+  valuationScheduledAt: timestamp("valuation_scheduled_at"),
+  valuationAddress: text("valuation_address"),
+
+  infoSentVia: text("info_sent_via"), // 'email', 'whatsapp', 'both', null
+  infoSentAt: timestamp("info_sent_at"),
+  propertiesSent: integer("properties_sent").array(), // Property IDs sent to caller
+
+  maintenanceTicketCreated: boolean("maintenance_ticket_created").default(false),
+  maintenanceTicketId: integer("maintenance_ticket_id"),
+
+  // Follow-up
+  followUpRequired: boolean("follow_up_required").default(false),
+  followUpNotes: text("follow_up_notes"),
+  followUpDate: timestamp("follow_up_date"),
+  followUpAssignedTo: integer("follow_up_assigned_to"), // FK to users
+
+  // Recording (if consent given)
+  recordingUrl: text("recording_url"),
+  recordingConsent: boolean("recording_consent").default(false),
+
+  // Agent handling
+  handledBy: text("handled_by").default("ai"), // 'ai' or user ID if transferred to human
+  transferredToHuman: boolean("transferred_to_human").default(false),
+  transferredAt: timestamp("transferred_at"),
+  transferReason: text("transfer_reason"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// VOICE LEAD PROPERTY INTERESTS - Track Interest per Property
+// ==========================================
+// Detailed tracking of lead interest in specific properties from voice calls
+// ==========================================
+export const voiceLeadPropertyInterests = pgTable("voice_lead_property_interests", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(), // FK to leads
+  propertyId: integer("property_id").notNull(), // FK to properties
+
+  // How they learned about it
+  firstMentionedCallId: integer("first_mentioned_call_id"), // FK to voice_call_records
+  firstMentionedAt: timestamp("first_mentioned_at").notNull().defaultNow(),
+
+  // Interest tracking
+  timesMentioned: integer("times_mentioned").notNull().default(1),
+  interestLevel: text("interest_level").default("medium"), // 'high', 'medium', 'low', 'rejected'
+  rejectionReason: text("rejection_reason"), // Why they weren't interested
+
+  // Information sent
+  infoSentAt: timestamp("info_sent_at"),
+  infoSentVia: text("info_sent_via"), // 'email', 'whatsapp', 'both'
+
+  // Viewing
+  viewingRequested: boolean("viewing_requested").default(false),
+  viewingBookedAt: timestamp("viewing_booked_at"),
+  viewingCompletedAt: timestamp("viewing_completed_at"),
+  viewingFeedback: text("viewing_feedback"),
+  viewingInterested: boolean("viewing_interested"),
+
+  // Offer
+  offerMade: boolean("offer_made").default(false),
+  offerAmount: integer("offer_amount"),
+  offerStatus: text("offer_status"), // 'pending', 'accepted', 'rejected', 'countered'
+
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// VOICE CALL RECORDS INSERT SCHEMAS AND TYPES
+// ==========================================
+export const insertVoiceCallRecordSchema = createInsertSchema(voiceCallRecords).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertVoiceCallRecord = z.infer<typeof insertVoiceCallRecordSchema>;
+export type VoiceCallRecord = typeof voiceCallRecords.$inferSelect;
+
+export const insertVoiceLeadPropertyInterestSchema = createInsertSchema(voiceLeadPropertyInterests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertVoiceLeadPropertyInterest = z.infer<typeof insertVoiceLeadPropertyInterestSchema>;
+export type VoiceLeadPropertyInterest = typeof voiceLeadPropertyInterests.$inferSelect;
+
+// ==========================================
+// MICROSOFT 365 EMAIL INTEGRATION TABLES
+// ==========================================
+// These tables support OAuth-based email integration with Microsoft Graph API
+// for sending, receiving, and processing emails programmatically.
+// ==========================================
+
+// User email connections - stores OAuth tokens and mailbox configuration
+export const emailConnections = pgTable("email_connections", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(), // FK to users
+
+  // Microsoft identity
+  provider: text("provider").notNull().default("microsoft"), // 'microsoft' (extensible for future providers)
+  tenantId: text("tenant_id").notNull(), // Microsoft tenant ID
+  mailboxUpn: text("mailbox_upn").notNull(), // User principal name (email address)
+  microsoftUserId: text("microsoft_user_id"), // Microsoft Graph user ID
+
+  // OAuth tokens (encrypted at rest)
+  accessToken: text("access_token").notNull(), // Encrypted access token
+  refreshToken: text("refresh_token").notNull(), // Encrypted refresh token
+  tokenExpiresAt: timestamp("token_expires_at").notNull(),
+  scopes: text("scopes").array(), // Granted scopes ['Mail.Read', 'Mail.Send', etc.]
+
+  // Connection status
+  status: text("status").notNull().default("active"), // 'active', 'expired', 'revoked', 'error'
+  lastSyncAt: timestamp("last_sync_at"),
+  lastError: text("last_error"),
+  errorCount: integer("error_count").notNull().default(0),
+
+  // Settings
+  syncEnabled: boolean("sync_enabled").notNull().default(true),
+  syncFolders: text("sync_folders").array().default(["inbox"]), // Which folders to monitor
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Webhook subscriptions for Microsoft Graph change notifications
+export const emailWebhookSubscriptions = pgTable("email_webhook_subscriptions", {
+  id: serial("id").primaryKey(),
+  connectionId: integer("connection_id").notNull(), // FK to email_connections
+  userId: integer("user_id").notNull(), // FK to users (denormalized for quick lookup)
+
+  // Microsoft subscription details
+  subscriptionId: text("subscription_id").notNull().unique(), // Microsoft Graph subscription ID
+  resource: text("resource").notNull(), // e.g., "users/{id}/messages" or "me/mailFolders('inbox')/messages"
+  changeType: text("change_type").notNull(), // 'created', 'updated', 'deleted' or comma-separated list
+  notificationUrl: text("notification_url").notNull(), // Webhook URL
+
+  // Subscription lifecycle
+  expiresAt: timestamp("expires_at").notNull(),
+  clientState: text("client_state").notNull(), // Secret for validating notifications
+
+  // Status tracking
+  status: text("status").notNull().default("active"), // 'active', 'expired', 'deleted', 'error'
+  lastNotificationAt: timestamp("last_notification_at"),
+  renewalAttempts: integer("renewal_attempts").notNull().default(0),
+  lastError: text("last_error"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Email processing job queue (database-backed for portability)
+export const emailJobQueue = pgTable("email_job_queue", {
+  id: serial("id").primaryKey(),
+
+  // Job identification
+  jobType: text("job_type").notNull(), // 'process_email', 'send_email', 'sync_folder', 'renew_subscription'
+  connectionId: integer("connection_id"), // FK to email_connections (if applicable)
+  userId: integer("user_id"), // FK to users (if applicable)
+
+  // Job payload
+  payload: json("payload").notNull(), // Job-specific data (messageId, recipients, etc.)
+
+  // Job status
+  status: text("status").notNull().default("pending"), // 'pending', 'processing', 'completed', 'failed', 'dead'
+  priority: integer("priority").notNull().default(0), // Higher = more urgent
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+
+  // Timing
+  scheduledFor: timestamp("scheduled_for").notNull().defaultNow(), // When to process
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+
+  // Results
+  result: json("result"), // Job output on success
+  error: text("error"), // Error message on failure
+  errorStack: text("error_stack"), // Full stack trace
+
+  // Idempotency
+  idempotencyKey: text("idempotency_key").unique(), // Prevent duplicate processing
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Processed emails - stores structured data extracted from emails
+export const processedEmails = pgTable("processed_emails", {
+  id: serial("id").primaryKey(),
+  connectionId: integer("connection_id").notNull(), // FK to email_connections
+  userId: integer("user_id").notNull(), // FK to users
+
+  // Microsoft Graph identifiers
+  graphMessageId: text("graph_message_id").notNull(), // Microsoft Graph message ID
+  graphConversationId: text("graph_conversation_id"), // Thread/conversation ID
+  internetMessageId: text("internet_message_id"), // RFC 822 message ID
+
+  // Email metadata
+  fromAddress: text("from_address").notNull(),
+  fromName: text("from_name"),
+  toAddresses: text("to_addresses").array().notNull(),
+  ccAddresses: text("cc_addresses").array(),
+  bccAddresses: text("bcc_addresses").array(),
+  subject: text("subject"),
+
+  // Content
+  bodyPreview: text("body_preview"), // Truncated preview
+  bodyText: text("body_text"), // Plain text version
+  bodyHtml: text("body_html"), // HTML version
+  hasAttachments: boolean("has_attachments").notNull().default(false),
+  attachments: json("attachments"), // [{id, name, contentType, size, contentId}]
+
+  // Timestamps from email
+  receivedAt: timestamp("received_at").notNull(),
+  sentAt: timestamp("sent_at"),
+
+  // Categorization
+  importance: text("importance"), // 'low', 'normal', 'high'
+  categories: text("categories").array(), // Microsoft categories
+  isRead: boolean("is_read").notNull().default(false),
+  isDraft: boolean("is_draft").notNull().default(false),
+
+  // Folder info
+  folderId: text("folder_id"),
+  folderName: text("folder_name"),
+
+  // AI Processing results
+  aiProcessed: boolean("ai_processed").notNull().default(false),
+  aiProcessedAt: timestamp("ai_processed_at"),
+  aiCategory: text("ai_category"), // AI-determined category
+  aiSentiment: text("ai_sentiment"), // 'positive', 'neutral', 'negative'
+  aiPriority: text("ai_priority"), // 'urgent', 'high', 'normal', 'low'
+  aiSummary: text("ai_summary"), // AI-generated summary
+  aiExtractedEntities: json("ai_extracted_entities"), // {names, addresses, dates, amounts, etc.}
+  aiSuggestedActions: json("ai_suggested_actions"), // [{action, confidence, details}]
+  aiClassification: text("ai_classification"), // Business classification
+
+  // CRM linking
+  linkedConversationId: integer("linked_conversation_id"), // FK to conversations
+  linkedContactId: integer("linked_contact_id"), // FK to contacts/leads
+  linkedPropertyId: integer("linked_property_id"), // FK to properties
+  linkedEnquiryId: integer("linked_enquiry_id"), // FK to customerEnquiries
+
+  // Processing status
+  processingStatus: text("processing_status").notNull().default("pending"), // 'pending', 'processed', 'failed', 'skipped'
+  processingError: text("processing_error"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Sent emails tracking - for emails sent via Graph API
+export const sentEmails = pgTable("sent_emails", {
+  id: serial("id").primaryKey(),
+  connectionId: integer("connection_id").notNull(), // FK to email_connections
+  userId: integer("user_id").notNull(), // FK to users
+
+  // Microsoft Graph identifiers
+  graphMessageId: text("graph_message_id"), // Populated after send
+  internetMessageId: text("internet_message_id"),
+
+  // Recipients
+  toAddresses: text("to_addresses").array().notNull(),
+  ccAddresses: text("cc_addresses").array(),
+  bccAddresses: text("bcc_addresses").array(),
+  replyTo: text("reply_to"),
+
+  // Content
+  subject: text("subject").notNull(),
+  bodyText: text("body_text"),
+  bodyHtml: text("body_html"),
+  importance: text("importance").default("normal"),
+
+  // Attachments
+  hasAttachments: boolean("has_attachments").notNull().default(false),
+  attachments: json("attachments"), // [{name, contentType, size, contentBytes}]
+
+  // Send status
+  status: text("status").notNull().default("draft"), // 'draft', 'queued', 'sending', 'sent', 'failed'
+  sentAt: timestamp("sent_at"),
+  failedAt: timestamp("failed_at"),
+  failureReason: text("failure_reason"),
+
+  // Reply/Forward tracking
+  inReplyTo: text("in_reply_to"), // Internet message ID being replied to
+  referencesMessageId: integer("references_message_id"), // FK to processed_emails if replying
+
+  // CRM linking
+  linkedConversationId: integer("linked_conversation_id"),
+  linkedContactId: integer("linked_contact_id"),
+  linkedPropertyId: integer("linked_property_id"),
+  templateUsed: text("template_used"), // Template name if used
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// EMAIL INTEGRATION INSERT SCHEMAS AND TYPES
+// ==========================================
+
+export const insertEmailConnectionSchema = createInsertSchema(emailConnections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertEmailConnection = z.infer<typeof insertEmailConnectionSchema>;
+export type EmailConnection = typeof emailConnections.$inferSelect;
+
+export const insertEmailWebhookSubscriptionSchema = createInsertSchema(emailWebhookSubscriptions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertEmailWebhookSubscription = z.infer<typeof insertEmailWebhookSubscriptionSchema>;
+export type EmailWebhookSubscription = typeof emailWebhookSubscriptions.$inferSelect;
+
+export const insertEmailJobSchema = createInsertSchema(emailJobQueue).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertEmailJob = z.infer<typeof insertEmailJobSchema>;
+export type EmailJob = typeof emailJobQueue.$inferSelect;
+
+export const insertProcessedEmailSchema = createInsertSchema(processedEmails).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertProcessedEmail = z.infer<typeof insertProcessedEmailSchema>;
+export type ProcessedEmail = typeof processedEmails.$inferSelect;
+
+export const insertSentEmailSchema = createInsertSchema(sentEmails).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertSentEmail = z.infer<typeof insertSentEmailSchema>;
+export type SentEmail = typeof sentEmails.$inferSelect;

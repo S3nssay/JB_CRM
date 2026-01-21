@@ -11,7 +11,7 @@ import {
   MessageSquare, Share2, DollarSign, TrendingUp,
   FileText, Clock, AlertCircle, CheckCircle, Shield,
   GitBranch, Mic, Globe, Mail, Search, MapPin, Loader2,
-  Building, UserCircle, Key, ArrowLeft, User, Gavel
+  Building, UserCircle, Key, ArrowLeft, User, Gavel, Lock, UserPlus
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -96,29 +96,31 @@ export default function CRMDashboard() {
   });
 
   // Calculate property stats
-  // Managed properties = properties with isManaged flag set to true
+  // Managed properties = properties with isManaged flag set to true (under JB management)
   const managedProperties = properties.filter((p: any) => p.isManaged === true);
+  // Listed properties = properties actively listed on portals for sale/rent
+  const listedProperties = properties.filter((p: any) => p.isListed === true);
   const activeRentalAgreements = rentalAgreements.filter((ra: any) => ra.status === 'active');
 
-  // Listings Filters
-  const resSalesProperties = properties.filter((p: any) =>
+  // Listings Filters - Only show properties that are actively listed (isListed = true)
+  const resSalesProperties = listedProperties.filter((p: any) =>
     p.listingType === 'sale' && (p.propertyCategory === 'residential' || !p.propertyCategory)
   );
 
-  const resLetProperties = properties.filter((p: any) =>
+  const resLetProperties = listedProperties.filter((p: any) =>
     p.listingType === 'rental' && (p.propertyCategory === 'residential' || !p.propertyCategory) && p.status !== 'let'
   );
 
-  const comSalesProperties = properties.filter((p: any) =>
+  const comSalesProperties = listedProperties.filter((p: any) =>
     p.listingType === 'sale' && p.propertyCategory === 'commercial'
   );
 
-  const comLetProperties = properties.filter((p: any) =>
+  const comLetProperties = listedProperties.filter((p: any) =>
     p.listingType === 'rental' && p.propertyCategory === 'commercial' && p.status !== 'let'
   );
 
-  // Filter properties
-  const filteredProperties = properties.filter((p: any) => {
+  // Filter properties - for Listings tab, only show listed properties
+  const filteredProperties = listedProperties.filter((p: any) => {
     const matchesSearch = !propertySearch ||
       p.title?.toLowerCase().includes(propertySearch.toLowerCase()) ||
       p.postcode?.toLowerCase().includes(propertySearch.toLowerCase()) ||
@@ -134,9 +136,7 @@ export default function CRMDashboard() {
     else if (propertyFilter === 'commercial_sale') matchesType = p.listingType === 'sale' && isCommercial;
     else if (propertyFilter === 'commercial_rental') matchesType = p.listingType === 'rental' && isCommercial;
 
-    const isNotManaged = p.status !== 'let';
-
-    return matchesSearch && matchesType && isNotManaged;
+    return matchesSearch && matchesType;
   });
 
   const handleViewTicket = (ticket: any) => {
@@ -313,6 +313,14 @@ export default function CRMDashboard() {
               <Button
                 variant="ghost"
                 className="w-full justify-start"
+                onClick={() => setLocation('/crm/property-management')}
+              >
+                <Wrench className="mr-2 h-4 w-4" />
+                Managed Properties
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
                 onClick={() => setLocation('/crm/landlords')}
               >
                 <User className="mr-2 h-4 w-4" />
@@ -337,18 +345,33 @@ export default function CRMDashboard() {
               <Button
                 variant="ghost"
                 className="w-full justify-start"
-                onClick={() => setLocation('/crm/property-management')}
-              >
-                <Wrench className="mr-2 h-4 w-4" />
-                Managed Properties
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
                 onClick={() => setLocation('/crm/rental-agreements')}
               >
                 <Key className="mr-2 h-4 w-4" />
                 Agreements
+              </Button>
+            </div>
+
+            {/* Leads Section */}
+            <div className="pt-2 mt-2 border-t">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
+                Leads
+              </p>
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => setLocation('/crm/website-leads')}
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Landlord Leads
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                onClick={() => setLocation('/crm/leads')}
+              >
+                <Users className="mr-2 h-4 w-4" />
+                Buyer/Renter Leads
               </Button>
             </div>
 
@@ -392,9 +415,9 @@ export default function CRMDashboard() {
             </div>
 
             <Button
-              variant={activeTab === 'settings' ? 'default' : 'ghost'}
+              variant="ghost"
               className="w-full justify-start"
-              onClick={() => setActiveTab('settings')}
+              onClick={() => setLocation('/crm/integrations')}
             >
               <Settings className="mr-2 h-4 w-4" />
               Settings
@@ -445,7 +468,15 @@ export default function CRMDashboard() {
                     onClick={() => setLocation('/crm/integrations')}
                   >
                     <Key className="mr-2 h-4 w-4" />
-                    Integration Settings
+                    Integrations
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => setLocation('/crm/security-matrix')}
+                  >
+                    <Lock className="mr-2 h-4 w-4" />
+                    Security Matrix
                   </Button>
                 </div>
               </>
@@ -702,15 +733,15 @@ export default function CRMDashboard() {
                     </div>
                     <Tabs value={propertyFilter} onValueChange={(v) => setPropertyFilter(v as any)}>
                       <TabsList>
-                        <TabsTrigger value="all">All ({properties.length})</TabsTrigger>
+                        <TabsTrigger value="all">All ({listedProperties.length})</TabsTrigger>
                         <TabsTrigger value="sale">
-                          Sale ({properties.filter((p: any) => p.listingType === 'sale').length})
+                          Sale ({listedProperties.filter((p: any) => p.listingType === 'sale').length})
                         </TabsTrigger>
                         <TabsTrigger value="rental">
-                          Rent ({properties.filter((p: any) => p.listingType === 'rental').length})
+                          Rent ({listedProperties.filter((p: any) => p.listingType === 'rental').length})
                         </TabsTrigger>
                         <TabsTrigger value="commercial">
-                          Commercial ({properties.filter((p: any) => p.listingType === 'commercial').length})
+                          Commercial ({listedProperties.filter((p: any) => p.listingType === 'commercial').length})
                         </TabsTrigger>
                       </TabsList>
                     </Tabs>
@@ -728,17 +759,17 @@ export default function CRMDashboard() {
                   <CardContent className="py-12 text-center">
                     <Building2 className="h-12 w-12 mx-auto text-gray-300 mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      {properties.length === 0 ? 'No properties yet' : 'No matching properties'}
+                      {listedProperties.length === 0 ? 'No listed properties' : 'No matching properties'}
                     </h3>
                     <p className="text-gray-500 mb-4">
-                      {properties.length === 0
-                        ? 'Add your first property to get started'
+                      {listedProperties.length === 0
+                        ? 'Properties need to be marked as "listed" to appear here'
                         : 'Try adjusting your search or filter criteria'}
                     </p>
-                    {properties.length === 0 && (
+                    {listedProperties.length === 0 && (
                       <Button onClick={() => setLocation('/crm/properties/create')}>
                         <Plus className="h-4 w-4 mr-2" />
-                        Add Property
+                        Add Listed Property
                       </Button>
                     )}
                   </CardContent>

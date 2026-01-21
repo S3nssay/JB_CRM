@@ -25,12 +25,15 @@ import { queryClient } from '@/lib/queryClient';
 
 interface Landlord {
   id: number;
-  name: string;
+  fullName: string;
   email: string | null;
+  phone: string | null;
   mobile: string | null;
   bankAccountNo: string | null;
-  sortCode: string | null;
-  isActive: boolean;
+  bankSortCode: string | null;
+  status: string;
+  landlordType: string | null;
+  companyName: string | null;
   createdAt: string;
   propertyCount?: number;
 }
@@ -44,11 +47,11 @@ export default function LandlordManagement() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedLandlord, setSelectedLandlord] = useState<Landlord | null>(null);
   const [formData, setFormData] = useState({
-    name: '',
+    fullName: '',
     email: '',
     mobile: '',
     bankAccountNo: '',
-    sortCode: ''
+    bankSortCode: ''
   });
 
   // Fetch landlords
@@ -123,17 +126,17 @@ export default function LandlordManagement() {
   });
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', mobile: '', bankAccountNo: '', sortCode: '' });
+    setFormData({ fullName: '', email: '', mobile: '', bankAccountNo: '', bankSortCode: '' });
   };
 
   const handleEdit = (landlord: Landlord) => {
     setSelectedLandlord(landlord);
     setFormData({
-      name: landlord.name || '',
+      fullName: landlord.fullName || '',
       email: landlord.email || '',
       mobile: landlord.mobile || '',
       bankAccountNo: landlord.bankAccountNo || '',
-      sortCode: landlord.sortCode || ''
+      bankSortCode: landlord.bankSortCode || ''
     });
     setShowEditDialog(true);
   };
@@ -146,7 +149,7 @@ export default function LandlordManagement() {
 
   // Filter landlords
   const filteredLandlords = landlords.filter((l: Landlord) =>
-    l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    l.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     l.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     l.mobile?.includes(searchTerm)
   );
@@ -221,7 +224,7 @@ export default function LandlordManagement() {
                   <div>
                     <p className="text-sm font-medium text-gray-600">Active</p>
                     <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) => l.isActive).length}
+                      {landlords.filter((l: Landlord) => l.status === 'active').length}
                     </p>
                   </div>
                   <div className="p-3 rounded-full bg-green-500">
@@ -253,10 +256,7 @@ export default function LandlordManagement() {
                   <div>
                     <p className="text-sm font-medium text-gray-600">Companies</p>
                     <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) =>
-                        l.name?.toLowerCase().includes('ltd') ||
-                        l.name?.toLowerCase().includes('limited')
-                      ).length}
+                      {landlords.filter((l: Landlord) => l.landlordType === 'company').length}
                     </p>
                   </div>
                   <div className="p-3 rounded-full bg-purple-500">
@@ -320,12 +320,11 @@ export default function LandlordManagement() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-[#791E75] flex items-center justify-center text-white font-semibold">
-                              {landlord.name?.charAt(0).toUpperCase()}
+                              {landlord.fullName?.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{landlord.name}</p>
-                              {(landlord.name?.toLowerCase().includes('ltd') ||
-                                landlord.name?.toLowerCase().includes('limited')) && (
+                              <p className="font-medium">{landlord.fullName}</p>
+                              {landlord.landlordType === 'company' && (
                                 <Badge variant="outline" className="text-xs">Company</Badge>
                               )}
                             </div>
@@ -354,8 +353,8 @@ export default function LandlordManagement() {
                                 <CreditCard className="h-3 w-3 text-gray-400" />
                                 <span>****{landlord.bankAccountNo?.slice(-4)}</span>
                               </div>
-                              {landlord.sortCode && (
-                                <span className="text-gray-500">{landlord.sortCode}</span>
+                              {landlord.bankSortCode && (
+                                <span className="text-gray-500">{landlord.bankSortCode}</span>
                               )}
                             </div>
                           ) : (
@@ -363,8 +362,8 @@ export default function LandlordManagement() {
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge className={landlord.isActive ? 'bg-green-500' : 'bg-gray-500'}>
-                            {landlord.isActive ? 'Active' : 'Inactive'}
+                          <Badge className={landlord.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
+                            {landlord.status === 'active' ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
@@ -401,11 +400,11 @@ export default function LandlordManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="name">Name / Company Name *</Label>
+              <Label htmlFor="fullName">Name / Company Name *</Label>
               <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                id="fullName"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                 placeholder="Enter landlord or company name"
               />
             </div>
@@ -441,11 +440,11 @@ export default function LandlordManagement() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="sortCode">Sort Code</Label>
+                  <Label htmlFor="bankSortCode">Sort Code</Label>
                   <Input
-                    id="sortCode"
-                    value={formData.sortCode}
-                    onChange={(e) => setFormData({ ...formData, sortCode: e.target.value })}
+                    id="bankSortCode"
+                    value={formData.bankSortCode}
+                    onChange={(e) => setFormData({ ...formData, bankSortCode: e.target.value })}
                     placeholder="12-34-56"
                   />
                 </div>
@@ -458,7 +457,7 @@ export default function LandlordManagement() {
             </Button>
             <Button
               onClick={() => createMutation.mutate(formData)}
-              disabled={!formData.name || createMutation.isPending}
+              disabled={!formData.fullName || createMutation.isPending}
             >
               {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Add Landlord
@@ -475,11 +474,11 @@ export default function LandlordManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-name">Name / Company Name *</Label>
+              <Label htmlFor="edit-fullName">Name / Company Name *</Label>
               <Input
-                id="edit-name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                id="edit-fullName"
+                value={formData.fullName}
+                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
               />
             </div>
             <div>
@@ -511,11 +510,11 @@ export default function LandlordManagement() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="edit-sortCode">Sort Code</Label>
+                  <Label htmlFor="edit-bankSortCode">Sort Code</Label>
                   <Input
-                    id="edit-sortCode"
-                    value={formData.sortCode}
-                    onChange={(e) => setFormData({ ...formData, sortCode: e.target.value })}
+                    id="edit-bankSortCode"
+                    value={formData.bankSortCode}
+                    onChange={(e) => setFormData({ ...formData, bankSortCode: e.target.value })}
                   />
                 </div>
               </div>
@@ -527,7 +526,7 @@ export default function LandlordManagement() {
             </Button>
             <Button
               onClick={() => selectedLandlord && updateMutation.mutate({ id: selectedLandlord.id, data: formData })}
-              disabled={!formData.name || updateMutation.isPending}
+              disabled={!formData.fullName || updateMutation.isPending}
             >
               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes

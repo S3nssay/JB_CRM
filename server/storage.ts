@@ -129,6 +129,7 @@ export interface IStorage {
   createContact(contact: InsertContact): Promise<Contact>;
   getContact(id: number): Promise<Contact | undefined>;
   getAllContacts(): Promise<Contact[]>;
+  updateContactStatus(id: number, status: string): Promise<Contact | undefined>;
 
   // Valuation methods
   createValuation(valuation: InsertValuation): Promise<Valuation>;
@@ -140,6 +141,8 @@ export interface IStorage {
 
   // Managed Properties
   getManagedProperties(): Promise<any[]>;
+  getPropertiesByManagedStatus(isManaged: boolean): Promise<Property[]>;
+  getPropertiesByListedStatus(isListed: boolean): Promise<Property[]>;
 
   // Landlord methods
   getLandlords(): Promise<Landlord[]>;
@@ -268,6 +271,20 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(properties.createdAt));
   }
 
+  async getPropertiesByManagedStatus(isManaged: boolean): Promise<Property[]> {
+    return await db.select()
+      .from(properties)
+      .where(eq(properties.isManaged, isManaged))
+      .orderBy(desc(properties.createdAt));
+  }
+
+  async getPropertiesByListedStatus(isListed: boolean): Promise<Property[]> {
+    return await db.select()
+      .from(properties)
+      .where(eq(properties.isListed, isListed))
+      .orderBy(desc(properties.createdAt));
+  }
+
   // Property Inquiry methods
   async createPropertyInquiry(insertInquiry: InsertPropertyInquiry): Promise<PropertyInquiry> {
     const [inquiry] = await db
@@ -308,6 +325,14 @@ export class DatabaseStorage implements IStorage {
     return await db.select()
       .from(contacts)
       .orderBy(desc(contacts.createdAt));
+  }
+
+  async updateContactStatus(id: number, status: string): Promise<Contact | undefined> {
+    const [contact] = await db.update(contacts)
+      .set({ status })
+      .where(eq(contacts.id, id))
+      .returning();
+    return contact;
   }
 
   // Valuation methods

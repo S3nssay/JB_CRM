@@ -456,7 +456,7 @@ export default function ValuationPage() {
                 <div className="space-y-4">
                   <div className="flex items-center">
                     <Phone className="h-5 w-5 text-[#791E75]400 mr-3" />
-                    <span className="text-white">020 7123 4567</span>
+                    <span className="text-white">+44 7367 087752</span>
                   </div>
                   <div className="flex items-center">
                     <Mail className="h-5 w-5 text-[#791E75]400 mr-3" />

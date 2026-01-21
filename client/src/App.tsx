@@ -51,6 +51,8 @@ import PaymentPage from "@/pages/PaymentPage";
 import IntegrationsSettings from "@/pages/IntegrationsSettings";
 import AgentSettings from "@/pages/AgentSettings";
 import LeadGeneration from "@/pages/LeadGeneration";
+import LeadManagement from "@/pages/LeadManagement";
+import WebsiteLeads from "@/pages/WebsiteLeads";
 import AIAgentDashboard from "@/pages/AIAgentDashboard";
 import LandlordManagement from "@/pages/LandlordManagement";
 import LandlordProperties from "@/pages/LandlordProperties";
@@ -65,6 +67,12 @@ import ManagedPropertyCard from "@/pages/ManagedPropertyCard";
 import LandlordDetails from "@/pages/LandlordDetails";
 import ContactManagement from "@/pages/ContactManagement";
 import SalesProgressionPage from "@/pages/SalesProgressionPage";
+import ContractorManagement from "@/pages/ContractorManagement";
+import PropertyImport from "@/pages/PropertyImport";
+import TermsAndConditions from "@/pages/TermsAndConditions";
+import PrivacyPolicy from "@/pages/PrivacyPolicy";
+import SecurityMatrix from "@/pages/SecurityMatrix";
+import { ProtectedRoute as ClearanceProtectedRoute } from "@/components/ProtectedRoute";
 
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
@@ -146,11 +154,16 @@ function Router() {
         <Route path="/test-email" component={TestEmailPage} />
         <Route path="/test-sms" component={TestSmsPage} />
 
+        {/* Legal Pages */}
+        <Route path="/terms-and-conditions" component={TermsAndConditions} />
+        <Route path="/privacy-policy" component={PrivacyPolicy} />
+
         {/* CRM Routes */}
         <Route path="/crm" component={CRMDashboard} />
         <Route path="/crm/login" component={CRMLogin} />
         <Route path="/crm/dashboard" component={CRMDashboard} />
         <Route path="/crm/properties/create" component={PropertyCreate} />
+        <Route path="/crm/properties/import" component={PropertyImport} />
         <Route path="/crm/properties" component={CRMDashboard} />
         <Route path="/crm/workflows" component={WorkflowManagement} />
         <Route path="/crm/property-management" component={PropertyManagement} />
@@ -164,9 +177,15 @@ function Router() {
         <ProtectedRoute path="/crm/staff">
           <StaffManagement />
         </ProtectedRoute>
-        <Route path="/crm/integrations" component={IntegrationsSettings} />
+        <Route path="/crm/integrations">
+          <ClearanceProtectedRoute requiredClearance={9} featureKey="integrations" showAccessDenied={true}>
+            <IntegrationsSettings />
+          </ClearanceProtectedRoute>
+        </Route>
         <Route path="/crm/agents" component={AgentSettings} />
         <Route path="/crm/lead-generation" component={LeadGeneration} />
+        <Route path="/crm/leads" component={LeadManagement} />
+        <Route path="/crm/website-leads" component={WebsiteLeads} />
         <Route path="/crm/ai-agents" component={AIAgentDashboard} />
         <Route path="/crm/landlords" component={LandlordManagement} />
         <Route path="/crm/landlords/:id" component={LandlordDetails} />
@@ -182,7 +201,13 @@ function Router() {
         <Route path="/crm/onboarding/property" component={PropertyOnboarding} />
         <Route path="/crm/managed-property/:id" component={ManagedPropertyCard} />
         <Route path="/crm/sales-progression" component={SalesProgressionPage} />
+        <Route path="/crm/contractors" component={ContractorManagement} />
         <Route path="/crm/tenant/:id" component={TenantDetails} />
+        <Route path="/crm/security-matrix">
+          <ClearanceProtectedRoute requiredClearance={10} featureKey="security_matrix" showAccessDenied={true}>
+            <SecurityMatrix />
+          </ClearanceProtectedRoute>
+        </Route>
 
 
         {/* User Account Routes */}

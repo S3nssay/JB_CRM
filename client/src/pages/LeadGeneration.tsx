@@ -136,7 +136,7 @@ const MOCK_STALE_LISTINGS: StaleListing[] = [
     daysOnMarket: 156,
     listedDate: '2024-07-01',
     agentName: 'Local Agent Ltd',
-    agentPhone: '020 7123 4567',
+    agentPhone: '+44 7367 087752',
     lastPriceChange: '2024-10-01',
     priceHistory: [
       { date: '2024-07-01', price: 1395000 },
@@ -629,7 +629,7 @@ export default function LeadGeneration() {
                 <div className="border rounded-lg p-4 bg-white text-sm space-y-4 max-h-64 overflow-y-auto">
                   <p><strong>John Barclay Estate & Management</strong><br />
                   123 High Street, London W9 1AB<br />
-                  Tel: 020 7123 4567</p>
+                  Tel: +44 7367 087752</p>
 
                   <p>Dear Property Owner,</p>
 

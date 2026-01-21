@@ -59,7 +59,7 @@ export default function LandlordProperties() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
-              Properties for {landlord?.name || `Landlord #${landlordId}`}
+              Properties for {landlord?.fullName || `Landlord #${landlordId}`}
             </h1>
             <p className="text-muted-foreground">
               {landlordProperties.length} {landlordProperties.length === 1 ? 'property' : 'properties'} found

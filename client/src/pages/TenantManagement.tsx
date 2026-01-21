@@ -5,15 +5,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Building2, Users, Home, Plus, Eye, Edit, Trash2, Bell,
-  Search, Phone, Mail, LogOut, ArrowLeft,
-  Loader2, UserCircle, Key, Calendar, FileText, MessageCircle
+  Search, Phone, Mail, LogOut, ArrowLeft, ArrowRight, Check,
+  Loader2, UserCircle, Key, Calendar, FileText, MessageCircle,
+  Shield, ShieldCheck, ShieldAlert, Send, RefreshCw
 } from 'lucide-react';
 import { Link } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import {
   Table,
   TableBody,
@@ -26,15 +29,34 @@ import { queryClient } from '@/lib/queryClient';
 
 interface Tenant {
   id: number;
-  username: string;
-  email: string;
   fullName: string;
+  email: string | null;
   phone: string | null;
-  role: string;
-  isActive: boolean;
+  mobile: string | null;
+  address: string | null;
+  employer: string | null;
+  employerAddress: string | null;
+  employerPhone: string | null;
+  jobTitle: string | null;
+  annualIncome: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  status: string;
+  notes: string | null;
+  idVerified: boolean | null;
+  idVerificationStatus: 'unverified' | 'pending' | 'verified' | 'failed' | null;
+  idVerificationDate: string | null;
   createdAt: string;
-  assignedProperties: number[] | null;
+  updatedAt: string;
 }
+
+type WizardStep = 'details' | 'emergency' | 'verification';
+
+const wizardSteps: { key: WizardStep; label: string }[] = [
+  { key: 'details', label: 'Basic Details' },
+  { key: 'emergency', label: 'Emergency Contact' },
+  { key: 'verification', label: 'Verification' }
+];
 
 export default function TenantManagement() {
   const [, setLocation] = useLocation();
@@ -44,12 +66,17 @@ export default function TenantManagement() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
+  const [wizardStep, setWizardStep] = useState<WizardStep>('details');
+  const [sendVerification, setSendVerification] = useState(true);
   const [formData, setFormData] = useState({
-    username: '',
-    email: '',
     fullName: '',
+    email: '',
     phone: '',
-    password: ''
+    mobile: '',
+    address: '',
+    employer: '',
+    emergencyContactName: '',
+    emergencyContactPhone: ''
   });
 
   // Fetch tenants (users with role 'tenant')
@@ -64,23 +91,73 @@ export default function TenantManagement() {
 
   // Create tenant mutation
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
+    mutationFn: async (data: typeof formData & { sendVerification: boolean }) => {
       const response = await fetch('/api/crm/tenants', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, role: 'tenant' })
+        body: JSON.stringify(data)
       });
       if (!response.ok) throw new Error('Failed to create tenant');
       return response.json();
     },
-    onSuccess: () => {
-      toast({ title: 'Success', description: 'Tenant created successfully' });
+    onSuccess: (data) => {
+      const message = data.verificationSent
+        ? 'Tenant created and verification link sent via WhatsApp!'
+        : data.verificationError
+          ? `Tenant created but verification failed: ${data.verificationError}`
+          : sendVerification && formData.mobile
+            ? 'Tenant created. Verification link will be sent.'
+            : 'Tenant created successfully';
+      toast({ title: 'Success', description: message });
       setShowAddDialog(false);
       resetForm();
+      setWizardStep('details');
+      setSendVerification(true);
       refetch();
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to create tenant', variant: 'destructive' });
+    }
+  });
+
+  // Resend verification mutation
+  const resendVerificationMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/crm/tenants/${id}/resend-verification`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to resend verification');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Success', description: 'Verification link sent via WhatsApp' });
+      refetch();
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    }
+  });
+
+  // Mark verified mutation
+  const markVerifiedMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`/api/crm/tenants/${id}/mark-verified`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (!response.ok) throw new Error('Failed to mark as verified');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Success', description: 'Tenant marked as verified' });
+      refetch();
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to mark as verified', variant: 'destructive' });
     }
   });
 
@@ -124,17 +201,29 @@ export default function TenantManagement() {
   });
 
   const resetForm = () => {
-    setFormData({ username: '', email: '', fullName: '', phone: '', password: '' });
+    setFormData({
+      fullName: '',
+      email: '',
+      phone: '',
+      mobile: '',
+      address: '',
+      employer: '',
+      emergencyContactName: '',
+      emergencyContactPhone: ''
+    });
   };
 
   const handleEdit = (tenant: Tenant) => {
     setSelectedTenant(tenant);
     setFormData({
-      username: tenant.username || '',
-      email: tenant.email || '',
       fullName: tenant.fullName || '',
+      email: tenant.email || '',
       phone: tenant.phone || '',
-      password: ''
+      mobile: tenant.mobile || '',
+      address: tenant.address || '',
+      employer: tenant.employer || '',
+      emergencyContactName: tenant.emergencyContactName || '',
+      emergencyContactPhone: tenant.emergencyContactPhone || ''
     });
     setShowEditDialog(true);
   };
@@ -220,9 +309,9 @@ export default function TenantManagement() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Active Tenancies</p>
+                    <p className="text-sm font-medium text-gray-600">Active Tenants</p>
                     <p className="text-2xl font-bold mt-2">
-                      {tenants.filter((t: Tenant) => t.isActive).length}
+                      {tenants.filter((t: Tenant) => t.status === 'active').length}
                     </p>
                   </div>
                   <div className="p-3 rounded-full bg-green-500">
@@ -311,9 +400,9 @@ export default function TenantManagement() {
                     <TableRow>
                       <TableHead>Tenant</TableHead>
                       <TableHead>Contact</TableHead>
-                      <TableHead>Properties</TableHead>
+                      <TableHead>ID Verification</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Joined</TableHead>
+                      <TableHead>Created</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -327,7 +416,9 @@ export default function TenantManagement() {
                             </div>
                             <div>
                               <p className="font-medium">{tenant.fullName}</p>
-                              <p className="text-sm text-gray-500">@{tenant.username}</p>
+                              {tenant.address && (
+                                <p className="text-sm text-gray-500">{tenant.address}</p>
+                              )}
                             </div>
                           </div>
                         </TableCell>
@@ -339,27 +430,66 @@ export default function TenantManagement() {
                                 <span>{tenant.email}</span>
                               </div>
                             )}
-                            {tenant.phone && (
+                            {(tenant.phone || tenant.mobile) && (
                               <div className="flex items-center gap-2 text-sm">
                                 <Phone className="h-3 w-3 text-gray-400" />
-                                <span>{tenant.phone}</span>
+                                <span>{tenant.mobile || tenant.phone}</span>
                               </div>
                             )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          {tenant.assignedProperties && tenant.assignedProperties.length > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <Home className="h-4 w-4 text-gray-400" />
-                              <span>{tenant.assignedProperties.length} property(ies)</span>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">No properties assigned</span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {tenant.idVerificationStatus === 'verified' ? (
+                              <Badge className="bg-green-500 flex items-center gap-1">
+                                <ShieldCheck className="h-3 w-3" />
+                                Verified
+                              </Badge>
+                            ) : tenant.idVerificationStatus === 'pending' ? (
+                              <Badge variant="outline" className="text-amber-600 border-amber-600 flex items-center gap-1">
+                                <Shield className="h-3 w-3" />
+                                Pending
+                              </Badge>
+                            ) : tenant.idVerificationStatus === 'failed' ? (
+                              <Badge variant="destructive" className="flex items-center gap-1">
+                                <ShieldAlert className="h-3 w-3" />
+                                Failed
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="flex items-center gap-1">
+                                <Shield className="h-3 w-3" />
+                                Unverified
+                              </Badge>
+                            )}
+                            {tenant.idVerificationStatus !== 'verified' && tenant.mobile && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => resendVerificationMutation.mutate(tenant.id)}
+                                disabled={resendVerificationMutation.isPending}
+                                title="Send verification link"
+                              >
+                                <Send className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {tenant.idVerificationStatus !== 'verified' && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => markVerifiedMutation.mutate(tenant.id)}
+                                disabled={markVerifiedMutation.isPending}
+                                title="Mark as verified manually"
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
-                          <Badge className={tenant.isActive ? 'bg-green-500' : 'bg-gray-500'}>
-                            {tenant.isActive ? 'Active' : 'Inactive'}
+                          <Badge className={tenant.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
+                            {tenant.status === 'active' ? 'Active' : 'Inactive'}
                           </Badge>
                         </TableCell>
                         <TableCell>
@@ -393,72 +523,231 @@ export default function TenantManagement() {
         </div>
       </main>
 
-      {/* Add Tenant Dialog */}
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="max-w-md">
+      {/* Add Tenant Wizard Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={(open) => {
+        setShowAddDialog(open);
+        if (!open) {
+          setWizardStep('details');
+          setSendVerification(true);
+          resetForm();
+        }
+      }}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Add New Tenant</DialogTitle>
+            <DialogDescription>
+              Complete the steps below to add a new tenant
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="fullName">Full Name *</Label>
-              <Input
-                id="fullName"
-                value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                placeholder="Enter tenant's full name"
-              />
+
+          {/* Progress Steps */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              {wizardSteps.map((step, idx) => {
+                const currentIdx = wizardSteps.findIndex(s => s.key === wizardStep);
+                return (
+                  <div
+                    key={step.key}
+                    className={`flex items-center gap-1 ${idx <= currentIdx ? 'text-primary' : 'text-muted-foreground'}`}
+                  >
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
+                      idx < currentIdx
+                        ? 'bg-primary text-primary-foreground'
+                        : idx === currentIdx
+                          ? 'bg-primary/20 text-primary border-2 border-primary'
+                          : 'bg-muted text-muted-foreground'
+                    }`}>
+                      {idx < currentIdx ? <Check className="h-3 w-3" /> : idx + 1}
+                    </div>
+                    <span className="text-xs hidden sm:inline">{step.label}</span>
+                  </div>
+                );
+              })}
             </div>
-            <div>
-              <Label htmlFor="username">Username *</Label>
-              <Input
-                id="username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                placeholder="Enter username for portal login"
-              />
-            </div>
-            <div>
-              <Label htmlFor="email">Email *</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                placeholder="email@example.com"
-              />
-            </div>
-            <div>
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="07xxx xxxxxx"
-              />
-            </div>
-            <div>
-              <Label htmlFor="password">Initial Password *</Label>
-              <Input
-                id="password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Set initial password"
-              />
-            </div>
+            <Progress value={((wizardSteps.findIndex(s => s.key === wizardStep) + 1) / wizardSteps.length) * 100} className="h-2" />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowAddDialog(false); resetForm(); }}>
-              Cancel
-            </Button>
+
+          {/* Step 1: Basic Details */}
+          {wizardStep === 'details' && (
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="fullName">Full Name *</Label>
+                <Input
+                  id="fullName"
+                  value={formData.fullName}
+                  onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                  placeholder="Enter tenant's full name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="email@example.com"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="phone">Phone</Label>
+                  <Input
+                    id="phone"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="Home phone"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="mobile">Mobile *</Label>
+                  <Input
+                    id="mobile"
+                    value={formData.mobile}
+                    onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                    placeholder="07xxx xxxxxx"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Required for WhatsApp verification</p>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="address">Current Address</Label>
+                <Input
+                  id="address"
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  placeholder="Current address"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Emergency Contact */}
+          {wizardStep === 'emergency' && (
+            <div className="space-y-4">
+              <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-4">
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  Emergency contact details are important for safety reasons and should be collected for all tenants.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="emergencyContactName">Emergency Contact Name</Label>
+                <Input
+                  id="emergencyContactName"
+                  value={formData.emergencyContactName}
+                  onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value })}
+                  placeholder="Contact name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="emergencyContactPhone">Emergency Contact Phone</Label>
+                <Input
+                  id="emergencyContactPhone"
+                  value={formData.emergencyContactPhone}
+                  onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })}
+                  placeholder="Contact phone number"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Verification */}
+          {wizardStep === 'verification' && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <Shield className="h-5 w-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-blue-800 dark:text-blue-200">
+                      ID Verification
+                    </p>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                      The tenant will be saved as "unverified". A WhatsApp message will be sent to their mobile with a link to complete ID verification.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="border rounded-lg p-4 space-y-4">
+                <div className="flex items-start space-x-3">
+                  <Checkbox
+                    id="sendVerification"
+                    checked={sendVerification}
+                    onCheckedChange={(checked) => setSendVerification(checked as boolean)}
+                  />
+                  <div>
+                    <Label htmlFor="sendVerification" className="font-medium">
+                      Send WhatsApp verification link
+                    </Label>
+                    <p className="text-sm text-muted-foreground">
+                      Automatically send a verification link to {formData.mobile || 'the tenant\'s mobile'}
+                    </p>
+                  </div>
+                </div>
+
+                {!formData.mobile && sendVerification && (
+                  <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+                    Mobile number is required to send WhatsApp verification. Please go back and add a mobile number.
+                  </div>
+                )}
+              </div>
+
+              <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-900">
+                <h4 className="font-medium mb-2">Summary</h4>
+                <div className="space-y-1 text-sm">
+                  <p><span className="text-muted-foreground">Name:</span> {formData.fullName}</p>
+                  <p><span className="text-muted-foreground">Email:</span> {formData.email || 'Not provided'}</p>
+                  <p><span className="text-muted-foreground">Mobile:</span> {formData.mobile || 'Not provided'}</p>
+                  <p><span className="text-muted-foreground">Status:</span> Will be saved as <Badge variant="secondary" className="ml-1">Unverified</Badge></p>
+                  {sendVerification && formData.mobile && (
+                    <p className="text-green-600 dark:text-green-400 flex items-center gap-1 mt-2">
+                      <Send className="h-3 w-3" /> Verification link will be sent via WhatsApp
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex justify-between">
             <Button
-              onClick={() => createMutation.mutate(formData)}
-              disabled={!formData.fullName || !formData.username || !formData.email || !formData.password || createMutation.isPending}
+              variant="outline"
+              onClick={() => {
+                const currentIdx = wizardSteps.findIndex(s => s.key === wizardStep);
+                if (currentIdx === 0) {
+                  setShowAddDialog(false);
+                  resetForm();
+                  setWizardStep('details');
+                } else {
+                  setWizardStep(wizardSteps[currentIdx - 1].key);
+                }
+              }}
             >
-              {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add Tenant
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              {wizardStep === 'details' ? 'Cancel' : 'Back'}
             </Button>
+
+            {wizardStep === 'verification' ? (
+              <Button
+                onClick={() => createMutation.mutate({ ...formData, sendVerification })}
+                disabled={!formData.fullName || createMutation.isPending || (sendVerification && !formData.mobile)}
+                className="bg-gradient-to-r from-[#791E75] to-purple-600"
+              >
+                {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Add Tenant
+              </Button>
+            ) : (
+              <Button
+                onClick={() => {
+                  const currentIdx = wizardSteps.findIndex(s => s.key === wizardStep);
+                  setWizardStep(wizardSteps[currentIdx + 1].key);
+                }}
+                disabled={wizardStep === 'details' && !formData.fullName}
+              >
+                Next
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -479,7 +768,7 @@ export default function TenantManagement() {
               />
             </div>
             <div>
-              <Label htmlFor="edit-email">Email *</Label>
+              <Label htmlFor="edit-email">Email</Label>
               <Input
                 id="edit-email"
                 type="email"
@@ -487,23 +776,52 @@ export default function TenantManagement() {
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
             </div>
-            <div>
-              <Label htmlFor="edit-phone">Phone</Label>
-              <Input
-                id="edit-phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label htmlFor="edit-mobile">Mobile</Label>
+                <Input
+                  id="edit-mobile"
+                  value={formData.mobile}
+                  onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                />
+              </div>
             </div>
             <div>
-              <Label htmlFor="edit-password">New Password (leave blank to keep current)</Label>
+              <Label htmlFor="edit-address">Address</Label>
               <Input
-                id="edit-password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Leave blank to keep current"
+                id="edit-address"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
               />
+            </div>
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-3">Emergency Contact</h4>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-emergencyContactName">Name</Label>
+                  <Input
+                    id="edit-emergencyContactName"
+                    value={formData.emergencyContactName}
+                    onChange={(e) => setFormData({ ...formData, emergencyContactName: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="edit-emergencyContactPhone">Phone</Label>
+                  <Input
+                    id="edit-emergencyContactPhone"
+                    value={formData.emergencyContactPhone}
+                    onChange={(e) => setFormData({ ...formData, emergencyContactPhone: e.target.value })}
+                  />
+                </div>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -512,11 +830,9 @@ export default function TenantManagement() {
             </Button>
             <Button
               onClick={() => {
-                const updateData: any = { fullName: formData.fullName, email: formData.email, phone: formData.phone };
-                if (formData.password) updateData.password = formData.password;
-                selectedTenant && updateMutation.mutate({ id: selectedTenant.id, data: updateData });
+                selectedTenant && updateMutation.mutate({ id: selectedTenant.id, data: formData });
               }}
-              disabled={!formData.fullName || !formData.email || updateMutation.isPending}
+              disabled={!formData.fullName || updateMutation.isPending}
             >
               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes

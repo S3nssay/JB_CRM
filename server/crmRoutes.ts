@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { storage } from './storage';
-import { db } from './db';
+import { db, pool } from './db';
 import {
   insertPropertySchema,
   portalCredentialsFormSchema,
@@ -10,6 +10,7 @@ import {
   contractorQuotes,
   ticketWorkflowEvents,
   contractors,
+  insertContractorSchema,
   propertyCertificates,
   insertPropertyCertificateSchema,
   managementFees,
@@ -22,10 +23,47 @@ import {
   complianceStatus,
   insertComplianceRequirementSchema,
   insertComplianceStatusSchema,
-  maintenanceTickets
+  maintenanceTickets,
+  managedProperties,
+  unifiedContacts,
+  salesProgression,
+  // New Property Management (PM) tables
+  pmProperties,
+  pmLandlords,
+  pmTenants,
+  pmTenancies,
+  pmTenancyChecklist,
+  pmInventory,
+  pmInventoryItems,
+  insertPmPropertySchema,
+  insertPmLandlordSchema,
+  insertPmTenantSchema,
+  insertPmTenancySchema,
+  insertPmTenancyChecklistSchema,
+  insertPmInventorySchema,
+  insertPmInventoryItemSchema,
+  tenancyChecklistItemTypes,
+  tenancyChecklistItemLabels,
+  // Security tables
+  securitySettings,
+  securityAuditLog,
+  insertSecuritySettingSchema,
+  insertSecurityAuditLogSchema,
+  SECURITY_CLEARANCE_LEVELS,
+  SECURITY_CLEARANCE_LABELS,
+  DEFAULT_FEATURE_SECURITY,
+  DEFAULT_ACCESS_LEVELS,
+  DEFAULT_ACCESS_LEVEL_PERMISSIONS,
+  DEFAULT_FEATURE_MODULES,
+  accessLevels,
+  userCustomPermissions,
+  featureModules,
+  accessLevelPermissions,
+  estateAgencyRoles,
+  users
 } from '@shared/schema';
 
-import { eq, desc, and, sql } from 'drizzle-orm';
+import { eq, desc, and, sql, or } from 'drizzle-orm';
 import {
   parsePropertyFromNaturalLanguage,
   enhancePropertyDescription,
@@ -51,9 +89,11 @@ import { tenantSupportService } from './tenantSupportService';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
+import crypto from 'crypto';
 
 import { propertyImport } from './propertyImportService';
+import { websiteImport } from './websiteImportService';
 
 export const crmRouter = Router();
 
@@ -87,6 +127,38 @@ const uploadPropertyImage = multer({
       cb(null, true);
     } else {
       cb(new Error('Invalid file type. Only JPEG, PNG, WEBP, and GIF are allowed.'));
+    }
+  }
+});
+
+// Configure multer for CSV imports
+const csvUploadDir = path.join(process.cwd(), 'uploads', 'imports');
+if (!fs.existsSync(csvUploadDir)) {
+  fs.mkdirSync(csvUploadDir, { recursive: true });
+}
+
+const csvStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, csvUploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueId = randomUUID();
+    const ext = path.extname(file.originalname);
+    cb(null, `import-${uniqueId}${ext}`);
+  }
+});
+
+const uploadCsv = multer({
+  storage: csvStorage,
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB max
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+    if (allowedTypes.includes(file.mimetype) || file.originalname.endsWith('.csv')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only CSV files are allowed.'));
     }
   }
 });
@@ -248,62 +320,30 @@ crmRouter.delete('/upload/property-image/:filename', requireAgent, async (req, r
 
 crmRouter.get('/properties', requireAgent, async (req, res) => {
   try {
-    const allProperties = await storage.getAllProperties();
-    res.json(allProperties);
-  } catch (error) {
-    console.error('Error fetching properties:', error);
-    res.status(500).json({ error: 'Failed to fetch properties' });
-  }
-});
+    // Now using PM tables - pm_properties
+    const properties = await db.select({
+      id: pmProperties.id,
+      title: pmProperties.address,
+      addressLine1: pmProperties.addressLine1,
+      addressLine2: pmProperties.addressLine2,
+      city: pmProperties.city,
+      postcode: pmProperties.postcode,
+      propertyType: pmProperties.propertyType,
+      propertyCategory: pmProperties.propertyCategory,
+      bedrooms: pmProperties.bedrooms,
+      bathrooms: pmProperties.bathrooms,
+      isManaged: pmProperties.isManaged,
+      isListed: sql<boolean>`(COALESCE(${pmProperties.isListedRental}, false) OR COALESCE(${pmProperties.isListedSale}, false))::boolean`,
+      isListedRental: pmProperties.isListedRental,
+      isListedSale: pmProperties.isListedSale,
+      listingType: sql<string>`CASE WHEN ${pmProperties.isListedSale} = true THEN 'sale' WHEN ${pmProperties.isListedRental} = true THEN 'rental' ELSE 'managed' END`,
+      landlordId: pmProperties.landlordId,
+      status: pmProperties.status,
+      createdAt: pmProperties.createdAt
+    })
+    .from(pmProperties)
+    .orderBy(desc(pmProperties.createdAt));
 
-crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
-  try {
-    const allRentalAgreements = await storage.getAllRentalAgreements();
-    res.json(allRentalAgreements);
-  } catch (error) {
-    console.error('Error fetching rental agreements:', error);
-    res.status(500).json({ error: 'Failed to fetch rental agreements' });
-  }
-});
-
-crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
-  try {
-    const managedProps = await storage.getManagedPropertiesV3();
-
-    // Enrich with property details
-    const enriched = await Promise.all(managedProps.map(async (mp) => {
-      const property = await storage.getProperty(mp.propertyId as number);
-      const landlord = await storage.getUnifiedContact(mp.landlordId as number);
-
-      return {
-        ...mp,
-        id: mp.id, // managed_properties ID
-        propertyId: property?.id,
-        propertyAddress: property ? `${property.addressLine1}, ${property.postcode}` : 'Unknown',
-        postcode: property?.postcode,
-        propertyType: property?.propertyType,
-        bedrooms: property?.bedrooms,
-        landlordId: landlord?.id,
-        landlordName: landlord?.fullName,
-        landlordEmail: landlord?.email,
-        landlordMobile: landlord?.phone,
-        managementFeePercent: mp.managementFeeType === 'percentage' ? mp.managementFeeValue : null,
-        managementFeeFixed: mp.managementFeeType === 'fixed' ? mp.managementFeeValue : null,
-        managementPeriod: 'Monthly',
-        status: mp.status
-      };
-    }));
-
-    res.json(enriched);
-  } catch (error) {
-    console.error('Error fetching managed properties v3:', error);
-    res.status(500).json({ error: 'Failed to fetch managed properties' });
-  }
-});
-
-crmRouter.get('/properties', requireAgent, async (req, res) => {
-  try {
-    const properties = await storage.getAllProperties();
     res.json(properties);
   } catch (error) {
     console.error('Error fetching properties:', error);
@@ -311,9 +351,407 @@ crmRouter.get('/properties', requireAgent, async (req, res) => {
   }
 });
 
+// Rental agreements - NOW USING RAW SQL with PM TABLES (pm_tenancies)
+crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        t.id, t.property_id as "propertyId", t.landlord_id as "landlordId", t.tenant_id as "tenantId",
+        t.start_date as "startDate", t.end_date as "endDate", t.rent_amount as "rentAmount",
+        t.rent_frequency as "rentFrequency", t.deposit_amount as "depositAmount",
+        t.deposit_scheme as "depositScheme", t.deposit_certificate_number as "depositReference",
+        t.status, t.notes, t.created_at as "createdAt",
+        p.address_line1 as "propertyAddress", p.postcode, p.property_type as "propertyType", p.bedrooms,
+        p.management_fee_type as "managementFeeType", p.management_fee_value as "managementFeeValue",
+        l.name as "landlordName", l.email as "landlordEmail", l.phone as "landlordPhone"
+      FROM pm_tenancies t
+      LEFT JOIN pm_properties p ON t.property_id = p.id
+      LEFT JOIN pm_landlords l ON t.landlord_id = l.id
+      ORDER BY t.created_at DESC
+    `);
+
+    const transformed = result.rows.map(t => ({
+      ...t,
+      propertyAddress: t.propertyAddress ? `${t.propertyAddress}, ${t.postcode}` : 'Unknown',
+      landlordName: t.landlordName || 'Not assigned',
+      rentFrequency: t.rentFrequency || 'monthly',
+      managementFeePercent: t.managementFeeType === 'percentage' ? t.managementFeeValue : null,
+      managementFeeFixed: t.managementFeeType === 'fixed' ? t.managementFeeValue : null
+    }));
+
+    res.json(transformed);
+  } catch (error) {
+    console.error('Error fetching rental agreements:', error);
+    res.status(500).json({ error: 'Failed to fetch rental agreements' });
+  }
+});
+
+// Managed properties - DRIZZLE ORM (using correct field names: name not fullName)
+crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
+  try {
+    // Get all managed properties from the new PM system
+    const properties = await db.select({
+      id: pmProperties.id,
+      address: pmProperties.address,
+      addressLine1: pmProperties.addressLine1,
+      addressLine2: pmProperties.addressLine2,
+      city: pmProperties.city,
+      postcode: pmProperties.postcode,
+      propertyType: pmProperties.propertyType,
+      propertyCategory: pmProperties.propertyCategory,
+      bedrooms: pmProperties.bedrooms,
+      bathrooms: pmProperties.bathrooms,
+      isManaged: pmProperties.isManaged,
+      isListedRental: pmProperties.isListedRental,
+      isListedSale: pmProperties.isListedSale,
+      landlordId: pmProperties.landlordId,
+      managementFeeType: pmProperties.managementFeeType,
+      managementFeeValue: pmProperties.managementFeeValue,
+      managementPeriodMonths: pmProperties.managementPeriodMonths,
+      managementStartDate: pmProperties.managementStartDate,
+      status: pmProperties.status,
+      // Landlord info - using 'name' not 'fullName'
+      landlordName: pmLandlords.name,
+      landlordEmail: pmLandlords.email,
+      landlordPhone: pmLandlords.phone,
+      landlordMobile: pmLandlords.mobile,
+      landlordAddress: pmLandlords.address,
+      landlordCompanyName: pmLandlords.companyName
+    })
+    .from(pmProperties)
+    .leftJoin(pmLandlords, eq(pmProperties.landlordId, pmLandlords.id))
+    .where(eq(pmProperties.isManaged, true))
+    .orderBy(desc(pmProperties.createdAt));
+
+    // For each property, get any active tenancy info
+    const enriched = await Promise.all(properties.map(async (p) => {
+      // Get active tenancy for this property - using 'name' not 'fullName'
+      const [activeTenancy] = await db.select({
+        id: pmTenancies.id,
+        tenantId: pmTenancies.tenantId,
+        rentAmount: pmTenancies.rentAmount,
+        rentFrequency: pmTenancies.rentFrequency,
+        depositAmount: pmTenancies.depositAmount,
+        depositScheme: pmTenancies.depositScheme,
+        depositHolderType: pmTenancies.depositHolderType,
+        periodMonths: pmTenancies.periodMonths,
+        startDate: pmTenancies.startDate,
+        endDate: pmTenancies.endDate,
+        tenantName: pmTenants.name
+      })
+      .from(pmTenancies)
+      .leftJoin(pmTenants, eq(pmTenancies.tenantId, pmTenants.id))
+      .where(and(
+        eq(pmTenancies.propertyId, p.id),
+        eq(pmTenancies.status, 'active')
+      ))
+      .limit(1);
+
+      // Get checklist progress for the active tenancy
+      let checklistComplete = 0;
+      let checklistTotal = 19; // 19 checklist items
+      if (activeTenancy) {
+        const [checklistCount] = await db.select({
+          completed: sql<number>`count(*) filter (where ${pmTenancyChecklist.isCompleted} = true)`,
+          total: sql<number>`count(*)`
+        })
+        .from(pmTenancyChecklist)
+        .where(eq(pmTenancyChecklist.tenancyId, activeTenancy.id));
+
+        checklistComplete = Number(checklistCount?.completed) || 0;
+        checklistTotal = Number(checklistCount?.total) || 19;
+      }
+
+      // Format deposit holder for display
+      const formatDepositHolder = (holderType: string | null, scheme: string | null) => {
+        if (!holderType) return null;
+        if (holderType === 'landlord') return 'Held By Landlord';
+        if (holderType === 'agency_insurance') return 'Agency: Insurance';
+        if (holderType === 'agency_custodial') return scheme === 'dps' ? 'Agency: DPS' : scheme === 'tds' ? 'Agency: TDS' : 'Agency: Custodial';
+        return holderType;
+      };
+
+      // Format management period for display
+      const formatManagementPeriod = (months: number | null) => {
+        if (!months) return null;
+        if (months === 12) return '12 Months';
+        if (months === 24) return '24 Months';
+        if (months === 36) return '36 Months';
+        return `${months} Months`;
+      };
+
+      return {
+        id: p.id,
+        propertyId: p.id,
+        propertyAddress: p.addressLine1 || p.address,
+        postcode: p.postcode,
+        propertyType: p.propertyType,
+        propertyCategory: p.propertyCategory,
+        bedrooms: p.bedrooms,
+        bathrooms: p.bathrooms,
+        isManaged: p.isManaged,
+        isListedRental: p.isListedRental,
+        isListedSale: p.isListedSale,
+        status: p.status,
+        landlordId: p.landlordId,
+        landlordName: p.landlordName || 'Not assigned',
+        landlordEmail: p.landlordEmail,
+        landlordMobile: p.landlordMobile,
+        landlordAddress: p.landlordAddress,
+        landlordCompanyName: p.landlordCompanyName,
+        managementFeePercent: p.managementFeeType === 'percentage' ? p.managementFeeValue : null,
+        managementFeeFixed: p.managementFeeType === 'fixed' ? p.managementFeeValue : null,
+        managementPeriod: formatManagementPeriod(p.managementPeriodMonths) || (activeTenancy?.periodMonths ? formatManagementPeriod(activeTenancy.periodMonths) : null),
+        managementStartDate: p.managementStartDate,
+        // Tenancy info
+        tenancyId: activeTenancy?.id || null,
+        tenantId: activeTenancy?.tenantId || null,
+        tenantName: activeTenancy?.tenantName || null,
+        rentAmount: activeTenancy?.rentAmount || null,
+        rentFrequency: activeTenancy?.rentFrequency || 'monthly',
+        depositAmount: activeTenancy?.depositAmount || null,
+        depositHeldBy: formatDepositHolder(activeTenancy?.depositHolderType, activeTenancy?.depositScheme),
+        tenancyStart: activeTenancy?.startDate || null,
+        tenancyEnd: activeTenancy?.endDate || null,
+        // Checklist progress
+        checklistComplete,
+        checklistTotal
+      };
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching managed properties:', error);
+    res.status(500).json({ error: 'Failed to fetch managed properties' });
+  }
+});
+
+// Download managed properties import template
+crmRouter.get('/managed-properties/template', requireAgent, (req, res) => {
+  const templatePath = path.join(process.cwd(), 'public', 'templates', 'managed-properties-import-template.csv');
+  if (fs.existsSync(templatePath)) {
+    res.download(templatePath, 'managed-properties-import-template.csv');
+  } else {
+    res.status(404).json({ error: 'Template file not found' });
+  }
+});
+
+// Import managed properties from CSV
+crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileContent = fs.readFileSync(req.file.path, 'utf-8');
+    const lines = fileContent.split('\n').filter(line => line.trim());
+
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'CSV file is empty or has no data rows' });
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+    const results = { success: 0, errors: [] as string[], created: [] as any[] };
+
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        // Parse CSV line properly handling quoted values
+        const values: string[] = [];
+        let current = '';
+        let inQuotes = false;
+
+        for (const char of lines[i]) {
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            values.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        values.push(current.trim());
+
+        const row: Record<string, string> = {};
+        headers.forEach((header, index) => {
+          row[header] = values[index]?.replace(/"/g, '') || '';
+        });
+
+        // Validate required fields
+        if (!row.property_address || !row.landlord_name || !row.landlord_email) {
+          results.errors.push(`Row ${i + 1}: Missing required fields (property_address, landlord_name, landlord_email)`);
+          continue;
+        }
+
+        // Extract postcode from property address if not provided separately
+        const postcodeMatch = row.property_address.match(/([A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2})/i);
+        const postcode = postcodeMatch ? postcodeMatch[1].toUpperCase() : 'W10 5AD';
+
+        // Create or find landlord contact
+        let landlordContact = await db.select().from(unifiedContacts)
+          .where(eq(unifiedContacts.email, row.landlord_email))
+          .limit(1);
+
+        let landlordId: number;
+        if (landlordContact.length === 0) {
+          const [newLandlord] = await db.insert(unifiedContacts).values({
+            fullName: row.landlord_name,
+            email: row.landlord_email,
+            phone: row.landlord_phone || null,
+            mobile: row.landlord_mobile || null,
+            address: row.landlord_address || null,
+            bankName: row.landlord_bank_name || null,
+            bankAccountNumber: row.landlord_account_number || null,
+            bankSortCode: row.landlord_sort_code || null,
+            contactType: 'landlord',
+            status: 'active'
+          }).returning();
+          landlordId = newLandlord.id;
+        } else {
+          // Update existing landlord with any new bank/address details
+          landlordId = landlordContact[0].id;
+          if (row.landlord_address || row.landlord_mobile || row.landlord_bank_name) {
+            await db.update(unifiedContacts)
+              .set({
+                mobile: row.landlord_mobile || landlordContact[0].mobile,
+                address: row.landlord_address || landlordContact[0].address,
+                bankName: row.landlord_bank_name || landlordContact[0].bankName,
+                bankAccountNumber: row.landlord_account_number || landlordContact[0].bankAccountNumber,
+                bankSortCode: row.landlord_sort_code || landlordContact[0].bankSortCode
+              })
+              .where(eq(unifiedContacts.id, landlordId));
+          }
+        }
+
+        // Create property
+        const rentAmount = row.rent_amount ? parseInt(row.rent_amount) * 100 : 0; // Convert to pence
+        const depositAmount = row.deposit_amount ? parseInt(row.deposit_amount) * 100 : rentAmount * 2; // Default to 2x rent
+        const [newProperty] = await db.insert(properties).values({
+          title: `Property at ${row.property_address}`,
+          description: row.notes || `Managed property at ${row.property_address}`,
+          addressLine1: row.property_address,
+          postcode: postcode,
+          propertyType: 'flat',
+          bedrooms: 1,
+          bathrooms: 1,
+          price: rentAmount,
+          listingType: 'rental',
+          status: row.tenant_name ? 'let' : 'active',
+          tenure: 'leasehold',
+          rentPeriod: row.rent_frequency || 'monthly',
+          isManaged: true,
+          isListed: false,
+          landlordId: landlordId
+        }).returning();
+
+        // Create managed property record
+        const managementStartDate = row.tenancy_start_date ? new Date(row.tenancy_start_date) : new Date();
+        const [managedProp] = await db.insert(managedProperties).values({
+          propertyId: newProperty.id,
+          landlordId: landlordId,
+          managementStartDate: managementStartDate,
+          managementType: 'full',
+          status: 'active',
+          managementFeeType: 'percentage',
+          managementFeeValue: '12',
+          rentAmount: rentAmount,
+          rentFrequency: row.rent_frequency || 'monthly',
+          depositAmount: depositAmount
+        }).returning();
+
+        // Create tenant contact if provided
+        if (row.tenant_name && row.tenant_email) {
+          let tenantContact = await db.select().from(unifiedContacts)
+            .where(eq(unifiedContacts.email, row.tenant_email))
+            .limit(1);
+
+          let tenantId: number;
+          if (tenantContact.length === 0) {
+            const [newTenant] = await db.insert(unifiedContacts).values({
+              fullName: row.tenant_name,
+              email: row.tenant_email,
+              mobile: row.tenant_mobile || null,
+              contactType: 'tenant',
+              status: 'active'
+            }).returning();
+            tenantId = newTenant.id;
+          } else {
+            tenantId = tenantContact[0].id;
+          }
+
+          // Create tenancy contract if dates provided
+          if (row.tenancy_start_date) {
+            await db.insert(tenancyContracts).values({
+              propertyId: newProperty.id,
+              tenantId: tenantId,
+              landlordId: landlordId,
+              startDate: new Date(row.tenancy_start_date),
+              endDate: row.tenancy_end_date ? new Date(row.tenancy_end_date) : null,
+              rentAmount: rentAmount,
+              depositAmount: depositAmount,
+              rentFrequency: row.rent_frequency || 'monthly',
+              status: 'active'
+            });
+          }
+        }
+
+        results.success++;
+        results.created.push({
+          propertyId: newProperty.id,
+          address: row.property_address,
+          landlord: row.landlord_name
+        });
+
+      } catch (rowError: any) {
+        results.errors.push(`Row ${i + 1}: ${rowError.message}`);
+      }
+    }
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    res.json({
+      message: `Import completed. ${results.success} properties imported successfully.`,
+      success: results.success,
+      errors: results.errors,
+      created: results.created
+    });
+
+  } catch (error: any) {
+    console.error('Error importing managed properties:', error);
+    res.status(500).json({ error: 'Failed to import managed properties', details: error.message });
+  }
+});
+
+// DUPLICATE ROUTE REMOVED - /properties is defined at line 310
+
 crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
   try {
-    const property = await storage.getProperty(parseInt(req.params.id));
+    const id = parseInt(req.params.id);
+    // Using PM tables - pm_properties
+    const [property] = await db.select({
+      id: pmProperties.id,
+      title: pmProperties.address,
+      addressLine1: pmProperties.addressLine1,
+      addressLine2: pmProperties.addressLine2,
+      city: pmProperties.city,
+      postcode: pmProperties.postcode,
+      propertyType: pmProperties.propertyType,
+      propertyCategory: pmProperties.propertyCategory,
+      bedrooms: pmProperties.bedrooms,
+      bathrooms: pmProperties.bathrooms,
+      isManaged: pmProperties.isManaged,
+      isListedRental: pmProperties.isListedRental,
+      isListedSale: pmProperties.isListedSale,
+      landlordId: pmProperties.landlordId,
+      managementFeeType: pmProperties.managementFeeType,
+      managementFeeValue: pmProperties.managementFeeValue,
+      status: pmProperties.status,
+      createdAt: pmProperties.createdAt
+    })
+    .from(pmProperties)
+    .where(eq(pmProperties.id, id));
+
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
     }
@@ -469,22 +907,33 @@ crmRouter.post('/properties', requireAgent, async (req, res) => {
 crmRouter.put('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const updates = req.body;
+    const { address, postcode, city, propertyType, bedrooms, bathrooms, managementFeeValue, status, landlordId } = req.body;
 
-    // Convert price to pence if provided
-    if (updates.price) {
-      updates.price = updates.price * 100;
-    }
-    if (updates.deposit) {
-      updates.deposit = updates.deposit * 100;
-    }
+    const result = await pool.query(`
+      UPDATE pm_properties SET
+        address = COALESCE($2, address),
+        postcode = COALESCE($3, postcode),
+        city = COALESCE($4, city),
+        property_type = COALESCE($5, property_type),
+        bedrooms = COALESCE($6, bedrooms),
+        bathrooms = COALESCE($7, bathrooms),
+        management_fee_value = COALESCE($8, management_fee_value),
+        status = COALESCE($9, status),
+        landlord_id = COALESCE($10, landlord_id),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, address, address_line1 as "addressLine1", postcode, city,
+                property_type as "propertyType", bedrooms, bathrooms,
+                management_fee_type as "managementFeeType", management_fee_value as "managementFeeValue",
+                landlord_id as "landlordId", status, is_managed as "isManaged",
+                created_at as "createdAt", updated_at as "updatedAt"
+    `, [id, address, postcode, city, propertyType, bedrooms, bathrooms, managementFeeValue, status, landlordId]);
 
-    const property = await storage.updateProperty(id, updates);
-    if (!property) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Property not found' });
     }
 
-    res.json(property);
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating property:', error);
     res.status(500).json({ error: 'Failed to update property' });
@@ -565,16 +1014,272 @@ crmRouter.get('/communications', requireAgent, async (req, res) => {
   }
 });
 
+// Individual tenant lookup - RAW SQL
 crmRouter.get('/tenants/:id', requireAgent, async (req, res) => {
   try {
-    const tenant = await storage.getTenant(parseInt(req.params.id));
-    if (!tenant) {
+    const id = parseInt(req.params.id);
+    const result = await pool.query(`
+      SELECT id, name as "fullName", email, phone, mobile, address,
+             employer, employer_address as "employerAddress", employer_phone as "employerPhone",
+             job_title as "jobTitle", annual_income as "annualIncome",
+             emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone",
+             notes, status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM pm_tenants WHERE id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    res.json(tenant);
+
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching tenant:', error);
     res.status(500).json({ error: 'Failed to fetch tenant' });
+  }
+});
+
+// Get all tenants - RAW SQL
+crmRouter.get('/tenants', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, name as "fullName", email, phone, mobile, address,
+             employer, employer_address as "employerAddress", employer_phone as "employerPhone",
+             job_title as "jobTitle", annual_income as "annualIncome",
+             emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone",
+             notes, status,
+             id_verified as "idVerified", id_verification_status as "idVerificationStatus",
+             id_verification_date as "idVerificationDate",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM pm_tenants
+      ORDER BY created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching tenants:', error);
+    res.status(500).json({ error: 'Failed to fetch tenants' });
+  }
+});
+
+// Create tenant - RAW SQL
+crmRouter.post('/tenants', requireAgent, async (req, res) => {
+  try {
+    const { fullName, email, phone, mobile, address, employer, employerAddress, employerPhone, jobTitle, annualIncome, emergencyContactName, emergencyContactPhone, notes, sendVerification } = req.body;
+
+    if (!fullName) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    // Generate verification token if verification will be sent
+    let verificationToken = null;
+    let verificationTokenExpiry = null;
+    let idVerificationStatus = 'unverified';
+
+    if (sendVerification && mobile) {
+      verificationToken = crypto.randomBytes(32).toString('hex');
+      verificationTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+      idVerificationStatus = 'pending';
+    }
+
+    const result = await pool.query(`
+      INSERT INTO pm_tenants (name, email, phone, mobile, address, employer, employer_address, employer_phone, job_title, annual_income, emergency_contact_name, emergency_contact_phone, notes, status, id_verified, id_verification_status, id_verification_token, id_verification_token_expiry)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', false, $14, $15, $16)
+      RETURNING id, name as "fullName", email, phone, mobile, address, employer, employer_address as "employerAddress", employer_phone as "employerPhone", job_title as "jobTitle", annual_income as "annualIncome", emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone", notes, status, id_verified as "idVerified", id_verification_status as "idVerificationStatus", created_at as "createdAt"
+    `, [fullName, email || null, phone || mobile || null, mobile || null, address || null, employer || null, employerAddress || null, employerPhone || null, jobTitle || null, annualIncome || null, emergencyContactName || null, emergencyContactPhone || null, notes || null, idVerificationStatus, verificationToken, verificationTokenExpiry]);
+
+    const tenant = result.rows[0];
+
+    // Send WhatsApp verification link if requested
+    if (sendVerification && mobile && verificationToken) {
+      try {
+        // Get Twilio credentials from integration_credentials
+        const twilioResult = await pool.query(`
+          SELECT credentials FROM integration_credentials WHERE provider = 'twilio' AND is_active = true LIMIT 1
+        `);
+
+        if (twilioResult.rows.length > 0) {
+          const twilioConfig = twilioResult.rows[0].credentials;
+          if (twilioConfig.accountSid && twilioConfig.authToken && twilioConfig.whatsappNumber) {
+            const client = require('twilio')(twilioConfig.accountSid, twilioConfig.authToken);
+
+            // Format mobile for WhatsApp (UK format)
+            let whatsappNumber = mobile.replace(/\s/g, '');
+            if (whatsappNumber.startsWith('0')) {
+              whatsappNumber = '+44' + whatsappNumber.substring(1);
+            } else if (!whatsappNumber.startsWith('+')) {
+              whatsappNumber = '+44' + whatsappNumber;
+            }
+
+            const verificationUrl = `${process.env.BASE_URL || 'https://yoursite.com'}/verify-tenant/${verificationToken}`;
+
+            await client.messages.create({
+              from: `whatsapp:${twilioConfig.whatsappNumber}`,
+              to: `whatsapp:${whatsappNumber}`,
+              body: `Hello ${fullName},\n\nWelcome to John Barclay Property Management! To complete your tenant registration, please verify your identity by clicking the link below:\n\n${verificationUrl}\n\nThis link will expire in 7 days.\n\nIf you have any questions, please contact our office.`
+            });
+
+            tenant.verificationSent = true;
+          }
+        }
+      } catch (whatsappError) {
+        console.error('Error sending WhatsApp verification:', whatsappError);
+        // Don't fail the tenant creation if WhatsApp fails
+        tenant.verificationSent = false;
+        tenant.verificationError = 'Could not send WhatsApp message';
+      }
+    }
+
+    res.json(tenant);
+  } catch (error) {
+    console.error('Error creating tenant:', error);
+    res.status(500).json({ error: 'Failed to create tenant' });
+  }
+});
+
+// Update tenant - RAW SQL
+crmRouter.put('/tenants/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { fullName, email, phone, mobile, address, employer, employerAddress, employerPhone, jobTitle, annualIncome, emergencyContactName, emergencyContactPhone, notes, status } = req.body;
+
+    const result = await pool.query(`
+      UPDATE pm_tenants SET
+        name = COALESCE($2, name),
+        email = COALESCE($3, email),
+        phone = COALESCE($4, phone),
+        mobile = COALESCE($5, mobile),
+        address = COALESCE($6, address),
+        employer = COALESCE($7, employer),
+        employer_address = COALESCE($8, employer_address),
+        employer_phone = COALESCE($9, employer_phone),
+        job_title = COALESCE($10, job_title),
+        annual_income = COALESCE($11, annual_income),
+        emergency_contact_name = COALESCE($12, emergency_contact_name),
+        emergency_contact_phone = COALESCE($13, emergency_contact_phone),
+        notes = COALESCE($14, notes),
+        status = COALESCE($15, status),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, name as "fullName", email, phone, mobile, address, employer, employer_address as "employerAddress", employer_phone as "employerPhone", job_title as "jobTitle", annual_income as "annualIncome", emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone", notes, status, created_at as "createdAt", updated_at as "updatedAt"
+    `, [id, fullName, email, phone, mobile, address, employer, employerAddress, employerPhone, jobTitle, annualIncome, emergencyContactName, emergencyContactPhone, notes, status]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating tenant:', error);
+    res.status(500).json({ error: 'Failed to update tenant' });
+  }
+});
+
+// Delete tenant - RAW SQL
+crmRouter.delete('/tenants/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await pool.query('DELETE FROM pm_tenants WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting tenant:', error);
+    res.status(500).json({ error: 'Failed to delete tenant' });
+  }
+});
+
+// Resend verification link to tenant
+crmRouter.post('/tenants/:id/resend-verification', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    // Get tenant details
+    const tenantResult = await pool.query(`
+      SELECT id, name, mobile, id_verification_status FROM pm_tenants WHERE id = $1
+    `, [id]);
+
+    if (tenantResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    const tenant = tenantResult.rows[0];
+
+    if (!tenant.mobile) {
+      return res.status(400).json({ error: 'Tenant does not have a mobile number' });
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    const verificationTokenExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+
+    // Update tenant with new token
+    await pool.query(`
+      UPDATE pm_tenants SET
+        id_verification_token = $2,
+        id_verification_token_expiry = $3,
+        id_verification_status = 'pending',
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, verificationToken, verificationTokenExpiry]);
+
+    // Send WhatsApp message
+    try {
+      const twilioResult = await pool.query(`
+        SELECT credentials FROM integration_credentials WHERE provider = 'twilio' AND is_active = true LIMIT 1
+      `);
+
+      if (twilioResult.rows.length > 0) {
+        const twilioConfig = twilioResult.rows[0].credentials;
+        if (twilioConfig.accountSid && twilioConfig.authToken && twilioConfig.whatsappNumber) {
+          const client = require('twilio')(twilioConfig.accountSid, twilioConfig.authToken);
+
+          // Format mobile for WhatsApp (UK format)
+          let whatsappNumber = tenant.mobile.replace(/\s/g, '');
+          if (whatsappNumber.startsWith('0')) {
+            whatsappNumber = '+44' + whatsappNumber.substring(1);
+          } else if (!whatsappNumber.startsWith('+')) {
+            whatsappNumber = '+44' + whatsappNumber;
+          }
+
+          const verificationUrl = `${process.env.BASE_URL || 'https://yoursite.com'}/verify-tenant/${verificationToken}`;
+
+          await client.messages.create({
+            from: `whatsapp:${twilioConfig.whatsappNumber}`,
+            to: `whatsapp:${whatsappNumber}`,
+            body: `Hello ${tenant.name},\n\nPlease verify your identity to complete your tenant registration:\n\n${verificationUrl}\n\nThis link will expire in 7 days.`
+          });
+
+          return res.json({ success: true, message: 'Verification link sent via WhatsApp' });
+        }
+      }
+
+      return res.status(400).json({ error: 'WhatsApp not configured. Please configure Twilio WhatsApp integration.' });
+    } catch (whatsappError) {
+      console.error('Error sending WhatsApp verification:', whatsappError);
+      return res.status(500).json({ error: 'Failed to send WhatsApp message' });
+    }
+  } catch (error) {
+    console.error('Error resending verification:', error);
+    res.status(500).json({ error: 'Failed to resend verification' });
+  }
+});
+
+// Mark tenant as verified manually
+crmRouter.post('/tenants/:id/mark-verified', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      UPDATE pm_tenants SET
+        id_verified = true,
+        id_verification_status = 'verified',
+        id_verification_date = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, name as "fullName", id_verified as "idVerified", id_verification_status as "idVerificationStatus", id_verification_date as "idVerificationDate"
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error marking tenant as verified:', error);
+    res.status(500).json({ error: 'Failed to mark tenant as verified' });
   }
 });
 
@@ -588,9 +1293,1182 @@ crmRouter.get('/inbox', requireAgent, async (req, res) => {
   }
 });
 
+// ==========================================
+// LEADS API ENDPOINTS
+// ==========================================
 
+// Get all leads with optional filtering
+crmRouter.get('/leads', requireAgent, async (req, res) => {
+  try {
+    const { status, leadType, source, assignedTo, priority } = req.query;
 
-// Import property from URL
+    let query = `
+      SELECT l.*,
+             u.full_name as "assignedAgentName"
+      FROM leads l
+      LEFT JOIN users u ON l.assigned_to = u.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (status) {
+      query += ` AND l.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    if (leadType) {
+      query += ` AND l.lead_type = $${paramIndex++}`;
+      params.push(leadType);
+    }
+    if (source) {
+      query += ` AND l.source = $${paramIndex++}`;
+      params.push(source);
+    }
+    if (assignedTo) {
+      query += ` AND l.assigned_to = $${paramIndex++}`;
+      params.push(parseInt(assignedTo as string));
+    }
+    if (priority) {
+      query += ` AND l.priority = $${paramIndex++}`;
+      params.push(priority);
+    }
+
+    query += ` ORDER BY l.created_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching leads:', error);
+    res.status(500).json({ error: 'Failed to fetch leads' });
+  }
+});
+
+// Get single lead with full details
+crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    // Get lead
+    const leadResult = await pool.query(`
+      SELECT l.*,
+             u.full_name as "assignedAgentName"
+      FROM leads l
+      LEFT JOIN users u ON l.assigned_to = u.id
+      WHERE l.id = $1
+    `, [id]);
+
+    if (leadResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    const lead = leadResult.rows[0];
+
+    // Get property views
+    const viewsResult = await pool.query(`
+      SELECT lpv.*,
+             COALESCE(p.title, pp.title, pp.address) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress",
+             COALESCE(p.price, pp.price, pp.rent_amount) as "propertyPrice"
+      FROM lead_property_views lpv
+      LEFT JOIN properties p ON lpv.property_id = p.id
+      LEFT JOIN pm_properties pp ON lpv.property_id = pp.id
+      WHERE lpv.lead_id = $1
+      ORDER BY lpv.viewed_at DESC
+    `, [id]);
+
+    // Get communications
+    const commsResult = await pool.query(`
+      SELECT lc.*,
+             u.full_name as "handlerName"
+      FROM lead_communications lc
+      LEFT JOIN users u ON lc.handled_by = u.id
+      WHERE lc.lead_id = $1
+      ORDER BY lc.created_at DESC
+    `, [id]);
+
+    // Get viewings
+    const viewingsResult = await pool.query(`
+      SELECT lv.*,
+             u.full_name as "conductorName",
+             COALESCE(p.title, pp.title, pp.address) as "propertyTitle"
+      FROM lead_viewings lv
+      LEFT JOIN users u ON lv.conducted_by = u.id
+      LEFT JOIN properties p ON lv.property_id = p.id
+      LEFT JOIN pm_properties pp ON lv.property_id = pp.id
+      WHERE lv.lead_id = $1
+      ORDER BY lv.scheduled_at DESC
+    `, [id]);
+
+    // Get activities
+    const activitiesResult = await pool.query(`
+      SELECT la.*,
+             u.full_name as "performerName"
+      FROM lead_activities la
+      LEFT JOIN users u ON la.performed_by = u.id
+      WHERE la.lead_id = $1
+      ORDER BY la.created_at DESC
+      LIMIT 50
+    `, [id]);
+
+    res.json({
+      ...lead,
+      propertyViews: viewsResult.rows,
+      communications: commsResult.rows,
+      viewings: viewingsResult.rows,
+      activities: activitiesResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching lead:', error);
+    res.status(500).json({ error: 'Failed to fetch lead' });
+  }
+});
+
+// Create new lead
+crmRouter.post('/leads', requireAgent, async (req, res) => {
+  try {
+    const {
+      fullName, email, phone, mobile,
+      instagramHandle, facebookId, tiktokHandle, twitterHandle, linkedinUrl,
+      source, sourceDetail, referredBy,
+      leadType, preferredPropertyType, preferredBedrooms, preferredAreas,
+      minBudget, maxBudget, moveInDate,
+      requirements, petsAllowed, parkingRequired, gardenRequired,
+      priority, assignedTo, notes
+    } = req.body;
+
+    if (!fullName) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO leads (
+        full_name, email, phone, mobile,
+        instagram_handle, facebook_id, tiktok_handle, twitter_handle, linkedin_url,
+        source, source_detail, referred_by,
+        lead_type, preferred_property_type, preferred_bedrooms, preferred_areas,
+        min_budget, max_budget, move_in_date,
+        requirements, pets_allowed, parking_required, garden_required,
+        priority, assigned_to, notes,
+        status, last_activity_at
+      ) VALUES (
+        $1, $2, $3, $4,
+        $5, $6, $7, $8, $9,
+        $10, $11, $12,
+        $13, $14, $15, $16,
+        $17, $18, $19,
+        $20, $21, $22, $23,
+        $24, $25, $26,
+        'new', NOW()
+      )
+      RETURNING *
+    `, [
+      fullName, email || null, phone || null, mobile || null,
+      instagramHandle || null, facebookId || null, tiktokHandle || null, twitterHandle || null, linkedinUrl || null,
+      source || 'website', sourceDetail || null, referredBy || null,
+      leadType || 'rental', preferredPropertyType || null, preferredBedrooms || null, preferredAreas || null,
+      minBudget || null, maxBudget || null, moveInDate || null,
+      requirements || null, petsAllowed || null, parkingRequired || null, gardenRequired || null,
+      priority || 'medium', assignedTo || null, notes || null
+    ]);
+
+    const lead = result.rows[0];
+
+    // Create activity for lead creation
+    await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, performed_by)
+      VALUES ($1, 'created', $2, $3)
+    `, [lead.id, `Lead created from ${source || 'website'}`, req.user?.id || null]);
+
+    res.json(lead);
+  } catch (error) {
+    console.error('Error creating lead:', error);
+    res.status(500).json({ error: 'Failed to create lead' });
+  }
+});
+
+// Update lead
+crmRouter.put('/leads/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const {
+      fullName, email, phone, mobile,
+      instagramHandle, facebookId, tiktokHandle, twitterHandle, linkedinUrl,
+      source, sourceDetail, referredBy,
+      leadType, preferredPropertyType, preferredBedrooms, preferredAreas,
+      minBudget, maxBudget, moveInDate,
+      requirements, petsAllowed, parkingRequired, gardenRequired,
+      status, priority, assignedTo, notes, lostReason, nextFollowUpDate
+    } = req.body;
+
+    // Get current lead to check for status change
+    const currentLead = await pool.query('SELECT status, assigned_to FROM leads WHERE id = $1', [id]);
+    const oldStatus = currentLead.rows[0]?.status;
+    const oldAssignedTo = currentLead.rows[0]?.assigned_to;
+
+    const result = await pool.query(`
+      UPDATE leads SET
+        full_name = COALESCE($2, full_name),
+        email = COALESCE($3, email),
+        phone = COALESCE($4, phone),
+        mobile = COALESCE($5, mobile),
+        instagram_handle = COALESCE($6, instagram_handle),
+        facebook_id = COALESCE($7, facebook_id),
+        tiktok_handle = COALESCE($8, tiktok_handle),
+        twitter_handle = COALESCE($9, twitter_handle),
+        linkedin_url = COALESCE($10, linkedin_url),
+        source = COALESCE($11, source),
+        source_detail = COALESCE($12, source_detail),
+        referred_by = COALESCE($13, referred_by),
+        lead_type = COALESCE($14, lead_type),
+        preferred_property_type = COALESCE($15, preferred_property_type),
+        preferred_bedrooms = COALESCE($16, preferred_bedrooms),
+        preferred_areas = COALESCE($17, preferred_areas),
+        min_budget = COALESCE($18, min_budget),
+        max_budget = COALESCE($19, max_budget),
+        move_in_date = COALESCE($20, move_in_date),
+        requirements = COALESCE($21, requirements),
+        pets_allowed = COALESCE($22, pets_allowed),
+        parking_required = COALESCE($23, parking_required),
+        garden_required = COALESCE($24, garden_required),
+        status = COALESCE($25, status),
+        priority = COALESCE($26, priority),
+        assigned_to = COALESCE($27, assigned_to),
+        notes = COALESCE($28, notes),
+        lost_reason = COALESCE($29, lost_reason),
+        next_follow_up_date = COALESCE($30, next_follow_up_date),
+        last_activity_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [
+      id, fullName, email, phone, mobile,
+      instagramHandle, facebookId, tiktokHandle, twitterHandle, linkedinUrl,
+      source, sourceDetail, referredBy,
+      leadType, preferredPropertyType, preferredBedrooms, preferredAreas,
+      minBudget, maxBudget, moveInDate,
+      requirements, petsAllowed, parkingRequired, gardenRequired,
+      status, priority, assignedTo, notes, lostReason, nextFollowUpDate
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    // Log status change activity
+    if (status && status !== oldStatus) {
+      await pool.query(`
+        INSERT INTO lead_activities (lead_id, activity_type, description, performed_by, metadata)
+        VALUES ($1, 'status_change', $2, $3, $4)
+      `, [id, `Status changed from ${oldStatus} to ${status}`, req.user?.id || null, JSON.stringify({ oldStatus, newStatus: status })]);
+    }
+
+    // Log assignment change activity
+    if (assignedTo && assignedTo !== oldAssignedTo) {
+      await pool.query(`
+        INSERT INTO lead_activities (lead_id, activity_type, description, performed_by)
+        VALUES ($1, 'assigned', $2, $3)
+      `, [id, `Lead assigned to new agent`, req.user?.id || null]);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating lead:', error);
+    res.status(500).json({ error: 'Failed to update lead' });
+  }
+});
+
+// Delete lead
+crmRouter.delete('/leads/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    // Delete related records first
+    await pool.query('DELETE FROM lead_activities WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_viewings WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_communications WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_property_views WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM leads WHERE id = $1', [id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting lead:', error);
+    res.status(500).json({ error: 'Failed to delete lead' });
+  }
+});
+
+// Add property view for a lead
+crmRouter.post('/leads/:id/property-views', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const { propertyId, viewSource, viewDuration, savedToFavorites, requestedViewing, requestedMoreInfo } = req.body;
+
+    const result = await pool.query(`
+      INSERT INTO lead_property_views (lead_id, property_id, view_source, view_duration, saved_to_favorites, requested_viewing, requested_more_info)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING *
+    `, [leadId, propertyId, viewSource || 'website', viewDuration || null, savedToFavorites || false, requestedViewing || false, requestedMoreInfo || false]);
+
+    // Update lead activity timestamp
+    await pool.query('UPDATE leads SET last_activity_at = NOW() WHERE id = $1', [leadId]);
+
+    // Create activity
+    await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+      VALUES ($1, 'property_viewed', 'Viewed property', $2, $3)
+    `, [leadId, propertyId, req.user?.id || null]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding property view:', error);
+    res.status(500).json({ error: 'Failed to add property view' });
+  }
+});
+
+// Get property views for a lead
+crmRouter.get('/leads/:id/property-views', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT lpv.*,
+             COALESCE(p.title, pp.title, pp.address) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress",
+             COALESCE(p.price, pp.price, pp.rent_amount) as "propertyPrice",
+             COALESCE(p.images, pp.images) as "propertyImages"
+      FROM lead_property_views lpv
+      LEFT JOIN properties p ON lpv.property_id = p.id
+      LEFT JOIN pm_properties pp ON lpv.property_id = pp.id
+      WHERE lpv.lead_id = $1
+      ORDER BY lpv.viewed_at DESC
+    `, [leadId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property views:', error);
+    res.status(500).json({ error: 'Failed to fetch property views' });
+  }
+});
+
+// Add communication for a lead
+crmRouter.post('/leads/:id/communications', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const {
+      channel, direction, type, subject, content, summary,
+      propertyId, outcome, followUpRequired, followUpDate, externalMessageId
+    } = req.body;
+
+    if (!channel || !direction || !type || !content) {
+      return res.status(400).json({ error: 'Channel, direction, type, and content are required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO lead_communications (
+        lead_id, channel, direction, type, subject, content, summary,
+        property_id, handled_by, outcome, follow_up_required, follow_up_date, external_message_id
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `, [
+      leadId, channel, direction, type, subject || null, content, summary || null,
+      propertyId || null, req.user?.id || null, outcome || null, followUpRequired || false, followUpDate || null, externalMessageId || null
+    ]);
+
+    // Update lead timestamps
+    await pool.query(`
+      UPDATE leads SET
+        last_contacted_at = NOW(),
+        last_activity_at = NOW()
+      WHERE id = $1
+    `, [leadId]);
+
+    // Create activity
+    await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, related_communication_id, related_property_id, performed_by)
+      VALUES ($1, 'communication', $2, $3, $4, $5)
+    `, [leadId, `${direction === 'inbound' ? 'Received' : 'Sent'} ${channel} message`, result.rows[0].id, propertyId || null, req.user?.id || null]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding communication:', error);
+    res.status(500).json({ error: 'Failed to add communication' });
+  }
+});
+
+// Get communications for a lead
+crmRouter.get('/leads/:id/communications', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT lc.*,
+             u.full_name as "handlerName",
+             COALESCE(p.title, pp.title) as "propertyTitle"
+      FROM lead_communications lc
+      LEFT JOIN users u ON lc.handled_by = u.id
+      LEFT JOIN properties p ON lc.property_id = p.id
+      LEFT JOIN pm_properties pp ON lc.property_id = pp.id
+      WHERE lc.lead_id = $1
+      ORDER BY lc.created_at DESC
+    `, [leadId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching communications:', error);
+    res.status(500).json({ error: 'Failed to fetch communications' });
+  }
+});
+
+// Schedule viewing for a lead
+crmRouter.post('/leads/:id/viewings', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const {
+      propertyId, scheduledAt, duration, viewingType, conductedBy
+    } = req.body;
+
+    if (!propertyId || !scheduledAt) {
+      return res.status(400).json({ error: 'Property ID and scheduled time are required' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO lead_viewings (lead_id, property_id, scheduled_at, duration, viewing_type, conducted_by, status)
+      VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
+      RETURNING *
+    `, [leadId, propertyId, scheduledAt, duration || 30, viewingType || 'in_person', conductedBy || req.user?.id || null]);
+
+    // Update lead status to viewing_booked
+    await pool.query(`
+      UPDATE leads SET
+        status = CASE WHEN status IN ('new', 'contacted', 'qualified') THEN 'viewing_booked' ELSE status END,
+        last_activity_at = NOW()
+      WHERE id = $1
+    `, [leadId]);
+
+    // Create activity
+    await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, related_viewing_id, related_property_id, performed_by)
+      VALUES ($1, 'viewing_booked', 'Property viewing scheduled', $2, $3, $4)
+    `, [leadId, result.rows[0].id, propertyId, req.user?.id || null]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error scheduling viewing:', error);
+    res.status(500).json({ error: 'Failed to schedule viewing' });
+  }
+});
+
+// Get viewings for a lead
+crmRouter.get('/leads/:id/viewings', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT lv.*,
+             u.full_name as "conductorName",
+             COALESCE(p.title, pp.title, pp.address) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress"
+      FROM lead_viewings lv
+      LEFT JOIN users u ON lv.conducted_by = u.id
+      LEFT JOIN properties p ON lv.property_id = p.id
+      LEFT JOIN pm_properties pp ON lv.property_id = pp.id
+      WHERE lv.lead_id = $1
+      ORDER BY lv.scheduled_at DESC
+    `, [leadId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching viewings:', error);
+    res.status(500).json({ error: 'Failed to fetch viewings' });
+  }
+});
+
+// Update viewing status
+crmRouter.patch('/leads/viewings/:viewingId', requireAgent, async (req, res) => {
+  try {
+    const viewingId = parseInt(req.params.viewingId);
+    const { status, feedback, agentNotes, interested, cancelledReason } = req.body;
+
+    const result = await pool.query(`
+      UPDATE lead_viewings SET
+        status = COALESCE($2, status),
+        feedback = COALESCE($3, feedback),
+        agent_notes = COALESCE($4, agent_notes),
+        interested = COALESCE($5, interested),
+        cancelled_reason = COALESCE($6, cancelled_reason),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [viewingId, status, feedback, agentNotes, interested, cancelledReason]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Viewing not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating viewing:', error);
+    res.status(500).json({ error: 'Failed to update viewing' });
+  }
+});
+
+// Get activity timeline for a lead
+crmRouter.get('/leads/:id/activities', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const limit = parseInt(req.query.limit as string) || 50;
+
+    const result = await pool.query(`
+      SELECT la.*,
+             u.full_name as "performerName"
+      FROM lead_activities la
+      LEFT JOIN users u ON la.performed_by = u.id
+      WHERE la.lead_id = $1
+      ORDER BY la.created_at DESC
+      LIMIT $2
+    `, [leadId, limit]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching activities:', error);
+    res.status(500).json({ error: 'Failed to fetch activities' });
+  }
+});
+
+// Add note to lead
+crmRouter.post('/leads/:id/notes', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const { note } = req.body;
+
+    if (!note) {
+      return res.status(400).json({ error: 'Note is required' });
+    }
+
+    // Create activity for note
+    const result = await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, performed_by)
+      VALUES ($1, 'note_added', $2, $3)
+      RETURNING *
+    `, [leadId, note, req.user?.id || null]);
+
+    // Update last activity
+    await pool.query('UPDATE leads SET last_activity_at = NOW() WHERE id = $1', [leadId]);
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding note:', error);
+    res.status(500).json({ error: 'Failed to add note' });
+  }
+});
+
+// Convert lead to tenant
+crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const { propertyId } = req.body;
+
+    // Get lead details
+    const leadResult = await pool.query('SELECT * FROM leads WHERE id = $1', [leadId]);
+    if (leadResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Lead not found' });
+    }
+
+    const lead = leadResult.rows[0];
+
+    // Create tenant from lead
+    const tenantResult = await pool.query(`
+      INSERT INTO pm_tenants (name, email, phone, mobile, status, id_verification_status)
+      VALUES ($1, $2, $3, $4, 'active', 'unverified')
+      RETURNING *
+    `, [lead.full_name, lead.email, lead.phone, lead.mobile]);
+
+    const tenant = tenantResult.rows[0];
+
+    // Update lead as converted
+    await pool.query(`
+      UPDATE leads SET
+        status = 'converted',
+        converted_at = NOW(),
+        converted_to_tenant_id = $2,
+        converted_to_property_id = $3,
+        last_activity_at = NOW()
+      WHERE id = $1
+    `, [leadId, tenant.id, propertyId || null]);
+
+    // Create activity
+    await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+      VALUES ($1, 'converted', 'Lead converted to tenant', $2, $3)
+    `, [leadId, propertyId || null, req.user?.id || null]);
+
+    res.json({ lead: { ...lead, status: 'converted', converted_to_tenant_id: tenant.id }, tenant });
+  } catch (error) {
+    console.error('Error converting lead:', error);
+    res.status(500).json({ error: 'Failed to convert lead' });
+  }
+});
+
+// Get leads dashboard stats
+crmRouter.get('/leads/stats/dashboard', requireAgent, async (req, res) => {
+  try {
+    const statsResult = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE status = 'new') as new_leads,
+        COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
+        COUNT(*) FILTER (WHERE status = 'qualified') as qualified,
+        COUNT(*) FILTER (WHERE status = 'viewing_booked') as viewing_booked,
+        COUNT(*) FILTER (WHERE status = 'offer_made') as offer_made,
+        COUNT(*) FILTER (WHERE status = 'converted') as converted,
+        COUNT(*) FILTER (WHERE status = 'lost') as lost,
+        COUNT(*) FILTER (WHERE priority = 'hot') as hot_leads,
+        COUNT(*) FILTER (WHERE lead_type = 'rental') as rental_leads,
+        COUNT(*) FILTER (WHERE lead_type = 'purchase') as purchase_leads,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as new_this_week,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as new_this_month
+      FROM leads
+    `);
+
+    const sourceResult = await pool.query(`
+      SELECT source, COUNT(*) as count
+      FROM leads
+      GROUP BY source
+      ORDER BY count DESC
+    `);
+
+    res.json({
+      ...statsResult.rows[0],
+      bySource: sourceResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching lead stats:', error);
+    res.status(500).json({ error: 'Failed to fetch lead stats' });
+  }
+});
+
+// ==========================================
+// OFFERS API ENDPOINTS
+// ==========================================
+// Links leads to properties/landlords through offers
+
+// Get all offers (with filters)
+crmRouter.get('/offers', requireAgent, async (req, res) => {
+  try {
+    const { status, leadId, propertyId, landlordId, offerType } = req.query;
+
+    let query = `
+      SELECT o.*,
+             l.full_name as "leadName", l.email as "leadEmail", l.phone as "leadPhone",
+             l.kyc_status as "leadKycStatus", l.proof_of_funds_status as "leadFundsStatus",
+             COALESCE(p.title, pp.title) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address) as "propertyAddress",
+             COALESCE(p.postcode, pp.postcode) as "propertyPostcode",
+             pl.full_name as "landlordName",
+             u.full_name as "handlerName"
+      FROM offers o
+      LEFT JOIN leads l ON o.lead_id = l.id
+      LEFT JOIN properties p ON o.property_id = p.id
+      LEFT JOIN pm_properties pp ON o.property_id = pp.id
+      LEFT JOIN pm_landlords pl ON o.landlord_id = pl.id
+      LEFT JOIN users u ON o.handled_by = u.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (status && status !== 'all') {
+      query += ` AND o.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    if (leadId) {
+      query += ` AND o.lead_id = $${paramIndex++}`;
+      params.push(parseInt(leadId as string));
+    }
+    if (propertyId) {
+      query += ` AND o.property_id = $${paramIndex++}`;
+      params.push(parseInt(propertyId as string));
+    }
+    if (landlordId) {
+      query += ` AND o.landlord_id = $${paramIndex++}`;
+      params.push(parseInt(landlordId as string));
+    }
+    if (offerType && offerType !== 'all') {
+      query += ` AND o.offer_type = $${paramIndex++}`;
+      params.push(offerType);
+    }
+
+    query += ` ORDER BY o.created_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching offers:', error);
+    res.status(500).json({ error: 'Failed to fetch offers' });
+  }
+});
+
+// Get single offer with full details
+crmRouter.get('/offers/:id', requireAgent, async (req, res) => {
+  try {
+    const offerId = parseInt(req.params.id);
+
+    // Get offer with related data
+    const offerResult = await pool.query(`
+      SELECT o.*,
+             l.full_name as "leadName", l.email as "leadEmail", l.phone as "leadPhone", l.mobile as "leadMobile",
+             l.kyc_status as "leadKycStatus", l.proof_of_funds_status as "leadFundsStatus",
+             l.proof_of_funds_type as "leadFundsType", l.proof_of_funds_amount as "leadFundsAmount",
+             COALESCE(p.title, pp.title) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address) as "propertyAddress",
+             COALESCE(p.postcode, pp.postcode) as "propertyPostcode",
+             COALESCE(p.price, pp.price) as "propertyPrice",
+             pl.id as "landlordId", pl.full_name as "landlordName", pl.email as "landlordEmail", pl.phone as "landlordPhone",
+             u.full_name as "handlerName"
+      FROM offers o
+      LEFT JOIN leads l ON o.lead_id = l.id
+      LEFT JOIN properties p ON o.property_id = p.id
+      LEFT JOIN pm_properties pp ON o.property_id = pp.id
+      LEFT JOIN pm_landlords pl ON o.landlord_id = pl.id
+      LEFT JOIN users u ON o.handled_by = u.id
+      WHERE o.id = $1
+    `, [offerId]);
+
+    if (offerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Offer not found' });
+    }
+
+    // Get offer history
+    const historyResult = await pool.query(`
+      SELECT oh.*, u.full_name as "performerName"
+      FROM offer_history oh
+      LEFT JOIN users u ON oh.performed_by = u.id
+      WHERE oh.offer_id = $1
+      ORDER BY oh.created_at DESC
+    `, [offerId]);
+
+    res.json({
+      ...offerResult.rows[0],
+      history: historyResult.rows
+    });
+  } catch (error) {
+    console.error('Error fetching offer:', error);
+    res.status(500).json({ error: 'Failed to fetch offer' });
+  }
+});
+
+// Create new offer (links lead to property/landlord)
+crmRouter.post('/offers', requireAgent, async (req, res) => {
+  try {
+    const {
+      leadId, propertyId, offerType, offerAmount, depositOffered, moveInDate, tenancyLength,
+      conditions, chainFree, cashBuyer, mortgageApproved, expiresAt, internalNotes
+    } = req.body;
+
+    if (!leadId || !propertyId || !offerType || !offerAmount) {
+      return res.status(400).json({ error: 'Lead ID, property ID, offer type, and offer amount are required' });
+    }
+
+    // Get property to find landlord
+    let landlordId = null;
+    let originalAskingPrice = null;
+
+    // First try properties table
+    const propResult = await pool.query('SELECT landlord_id, price FROM properties WHERE id = $1', [propertyId]);
+    if (propResult.rows.length > 0) {
+      landlordId = propResult.rows[0].landlord_id;
+      originalAskingPrice = propResult.rows[0].price;
+    } else {
+      // Try pm_properties
+      const pmPropResult = await pool.query('SELECT landlord_id, price FROM pm_properties WHERE id = $1', [propertyId]);
+      if (pmPropResult.rows.length > 0) {
+        landlordId = pmPropResult.rows[0].landlord_id;
+        originalAskingPrice = pmPropResult.rows[0].price;
+      }
+    }
+
+    // Get lead verification status
+    const leadResult = await pool.query('SELECT kyc_status, proof_of_funds_verified FROM leads WHERE id = $1', [leadId]);
+    const lead = leadResult.rows[0];
+
+    // Create offer
+    const result = await pool.query(`
+      INSERT INTO offers (
+        lead_id, property_id, landlord_id, offer_type, offer_amount, original_asking_price,
+        deposit_offered, move_in_date, tenancy_length, conditions, chain_free, cash_buyer,
+        mortgage_approved, expires_at, handled_by, proof_of_funds_verified, kyc_verified, internal_notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING *
+    `, [
+      leadId, propertyId, landlordId, offerType, offerAmount, originalAskingPrice,
+      depositOffered || null, moveInDate || null, tenancyLength || null, conditions || null,
+      chainFree || false, cashBuyer || false, mortgageApproved || false, expiresAt || null,
+      req.user?.id || null, lead?.proof_of_funds_verified || false, lead?.kyc_status === 'verified', internalNotes || null
+    ]);
+
+    const offer = result.rows[0];
+
+    // Create history entry
+    await pool.query(`
+      INSERT INTO offer_history (offer_id, action, new_status, new_amount, performed_by, performed_by_type, notes)
+      VALUES ($1, 'created', 'pending', $2, $3, 'agent', 'Offer created')
+    `, [offer.id, offerAmount, req.user?.id || null]);
+
+    // Update lead status to offer_made
+    await pool.query(`
+      UPDATE leads SET
+        status = 'offer_made',
+        last_activity_at = NOW()
+      WHERE id = $1 AND status NOT IN ('converted', 'lost')
+    `, [leadId]);
+
+    // Create lead activity
+    await pool.query(`
+      INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+      VALUES ($1, 'offer_made', $2, $3, $4)
+    `, [leadId, `Made ${offerType} offer of £${(offerAmount / 100).toLocaleString()}`, propertyId, req.user?.id || null]);
+
+    res.status(201).json(offer);
+  } catch (error) {
+    console.error('Error creating offer:', error);
+    res.status(500).json({ error: 'Failed to create offer' });
+  }
+});
+
+// Update offer status (accept, reject, counter)
+crmRouter.put('/offers/:id', requireAgent, async (req, res) => {
+  try {
+    const offerId = parseInt(req.params.id);
+    const {
+      status, counterOfferAmount, counterOfferConditions, rejectionReason,
+      responseNotes, landlordNotes, internalNotes
+    } = req.body;
+
+    // Get current offer
+    const currentResult = await pool.query('SELECT * FROM offers WHERE id = $1', [offerId]);
+    if (currentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Offer not found' });
+    }
+
+    const currentOffer = currentResult.rows[0];
+    const now = new Date().toISOString();
+
+    // Build update query based on status change
+    let updateFields: string[] = ['updated_at = NOW()'];
+    const updateValues: any[] = [];
+    let valueIndex = 1;
+
+    if (status) {
+      updateFields.push(`status = $${valueIndex++}`);
+      updateValues.push(status);
+
+      // Handle specific status changes
+      if (status === 'accepted') {
+        updateFields.push(`accepted_at = $${valueIndex++}`);
+        updateValues.push(now);
+        updateFields.push(`responded_at = $${valueIndex++}`);
+        updateValues.push(now);
+        updateFields.push(`responded_by = $${valueIndex++}`);
+        updateValues.push(req.user?.id || null);
+      } else if (status === 'rejected') {
+        updateFields.push(`rejected_at = $${valueIndex++}`);
+        updateValues.push(now);
+        updateFields.push(`responded_at = $${valueIndex++}`);
+        updateValues.push(now);
+        updateFields.push(`responded_by = $${valueIndex++}`);
+        updateValues.push(req.user?.id || null);
+        if (rejectionReason) {
+          updateFields.push(`rejection_reason = $${valueIndex++}`);
+          updateValues.push(rejectionReason);
+        }
+      } else if (status === 'counter_offered') {
+        updateFields.push(`counter_offer_amount = $${valueIndex++}`);
+        updateValues.push(counterOfferAmount);
+        updateFields.push(`counter_offer_date = $${valueIndex++}`);
+        updateValues.push(now);
+        if (counterOfferConditions) {
+          updateFields.push(`counter_offer_conditions = $${valueIndex++}`);
+          updateValues.push(counterOfferConditions);
+        }
+        updateFields.push(`negotiation_round = negotiation_round + 1`);
+      } else if (status === 'withdrawn') {
+        updateFields.push(`withdrawn_at = $${valueIndex++}`);
+        updateValues.push(now);
+      }
+    }
+
+    if (responseNotes) {
+      updateFields.push(`response_notes = $${valueIndex++}`);
+      updateValues.push(responseNotes);
+    }
+    if (landlordNotes) {
+      updateFields.push(`landlord_notes = $${valueIndex++}`);
+      updateValues.push(landlordNotes);
+    }
+    if (internalNotes) {
+      updateFields.push(`internal_notes = $${valueIndex++}`);
+      updateValues.push(internalNotes);
+    }
+
+    updateValues.push(offerId);
+
+    const updateQuery = `
+      UPDATE offers SET ${updateFields.join(', ')}
+      WHERE id = $${valueIndex}
+      RETURNING *
+    `;
+
+    const result = await pool.query(updateQuery, updateValues);
+
+    // Create history entry
+    await pool.query(`
+      INSERT INTO offer_history (
+        offer_id, action, previous_status, new_status, previous_amount, new_amount,
+        performed_by, performed_by_type, notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'agent', $8)
+    `, [
+      offerId,
+      status === 'counter_offered' ? 'counter_offered' : status || 'updated',
+      currentOffer.status,
+      status || currentOffer.status,
+      currentOffer.offer_amount,
+      counterOfferAmount || currentOffer.offer_amount,
+      req.user?.id || null,
+      responseNotes || `Status changed to ${status}`
+    ]);
+
+    // Update lead status based on offer outcome
+    if (status === 'accepted') {
+      await pool.query(`
+        INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+        VALUES ($1, 'status_change', 'Offer accepted by landlord', $2, $3)
+      `, [currentOffer.lead_id, currentOffer.property_id, req.user?.id || null]);
+    } else if (status === 'rejected') {
+      await pool.query(`
+        INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+        VALUES ($1, 'status_change', $2, $3, $4)
+      `, [currentOffer.lead_id, `Offer rejected: ${rejectionReason || 'No reason given'}`, currentOffer.property_id, req.user?.id || null]);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating offer:', error);
+    res.status(500).json({ error: 'Failed to update offer' });
+  }
+});
+
+// Delete offer
+crmRouter.delete('/offers/:id', requireAgent, async (req, res) => {
+  try {
+    const offerId = parseInt(req.params.id);
+
+    // Delete history first
+    await pool.query('DELETE FROM offer_history WHERE offer_id = $1', [offerId]);
+
+    // Delete offer
+    const result = await pool.query('DELETE FROM offers WHERE id = $1 RETURNING *', [offerId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Offer not found' });
+    }
+
+    res.json({ message: 'Offer deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting offer:', error);
+    res.status(500).json({ error: 'Failed to delete offer' });
+  }
+});
+
+// Get offers for a specific lead
+crmRouter.get('/leads/:id/offers', requireAgent, async (req, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT o.*,
+             COALESCE(p.title, pp.title) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address) as "propertyAddress",
+             pl.full_name as "landlordName"
+      FROM offers o
+      LEFT JOIN properties p ON o.property_id = p.id
+      LEFT JOIN pm_properties pp ON o.property_id = pp.id
+      LEFT JOIN pm_landlords pl ON o.landlord_id = pl.id
+      WHERE o.lead_id = $1
+      ORDER BY o.created_at DESC
+    `, [leadId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching lead offers:', error);
+    res.status(500).json({ error: 'Failed to fetch lead offers' });
+  }
+});
+
+// Get offers for a specific property
+crmRouter.get('/properties/:id/offers', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT o.*,
+             l.full_name as "leadName", l.email as "leadEmail", l.phone as "leadPhone",
+             l.kyc_status as "leadKycStatus", l.proof_of_funds_status as "leadFundsStatus"
+      FROM offers o
+      LEFT JOIN leads l ON o.lead_id = l.id
+      WHERE o.property_id = $1
+      ORDER BY o.created_at DESC
+    `, [propertyId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property offers:', error);
+    res.status(500).json({ error: 'Failed to fetch property offers' });
+  }
+});
+
+// Get offers for a specific landlord
+crmRouter.get('/landlords/:id/offers', requireAgent, async (req, res) => {
+  try {
+    const landlordId = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT o.*,
+             l.full_name as "leadName", l.email as "leadEmail", l.phone as "leadPhone",
+             l.kyc_status as "leadKycStatus", l.proof_of_funds_status as "leadFundsStatus",
+             COALESCE(p.title, pp.title) as "propertyTitle",
+             COALESCE(p.address_line1, pp.address) as "propertyAddress"
+      FROM offers o
+      LEFT JOIN leads l ON o.lead_id = l.id
+      LEFT JOIN properties p ON o.property_id = p.id
+      LEFT JOIN pm_properties pp ON o.property_id = pp.id
+      WHERE o.landlord_id = $1
+      ORDER BY o.created_at DESC
+    `, [landlordId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching landlord offers:', error);
+    res.status(500).json({ error: 'Failed to fetch landlord offers' });
+  }
+});
+
+// Convert accepted offer to tenancy (for rentals)
+crmRouter.post('/offers/:id/convert-to-tenancy', requireAgent, async (req, res) => {
+  try {
+    const offerId = parseInt(req.params.id);
+
+    // Get offer
+    const offerResult = await pool.query(`
+      SELECT o.*, l.full_name, l.email, l.phone, l.mobile
+      FROM offers o
+      LEFT JOIN leads l ON o.lead_id = l.id
+      WHERE o.id = $1
+    `, [offerId]);
+
+    if (offerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Offer not found' });
+    }
+
+    const offer = offerResult.rows[0];
+
+    if (offer.status !== 'accepted') {
+      return res.status(400).json({ error: 'Only accepted offers can be converted to tenancy' });
+    }
+
+    if (offer.offer_type !== 'rental') {
+      return res.status(400).json({ error: 'Only rental offers can be converted to tenancy' });
+    }
+
+    // Create tenant from lead if not already exists
+    let tenantId = null;
+    const existingTenantResult = await pool.query(
+      'SELECT id FROM pm_tenants WHERE email = $1 OR mobile = $2 LIMIT 1',
+      [offer.email, offer.mobile]
+    );
+
+    if (existingTenantResult.rows.length > 0) {
+      tenantId = existingTenantResult.rows[0].id;
+    } else {
+      const tenantResult = await pool.query(`
+        INSERT INTO pm_tenants (name, email, phone, mobile, status)
+        VALUES ($1, $2, $3, $4, 'active')
+        RETURNING id
+      `, [offer.full_name, offer.email, offer.phone, offer.mobile]);
+      tenantId = tenantResult.rows[0].id;
+    }
+
+    // Create tenancy
+    const tenancyResult = await pool.query(`
+      INSERT INTO pm_tenancies (
+        property_id, tenant_id, landlord_id, rent_amount, deposit_amount,
+        start_date, end_date, status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      RETURNING *
+    `, [
+      offer.property_id,
+      tenantId,
+      offer.landlord_id,
+      offer.counter_offer_amount || offer.offer_amount, // Use counter offer if exists
+      offer.deposit_offered,
+      offer.move_in_date,
+      offer.move_in_date && offer.tenancy_length
+        ? new Date(new Date(offer.move_in_date).setMonth(new Date(offer.move_in_date).getMonth() + offer.tenancy_length))
+        : null,
+    ]);
+
+    // Update offer with conversion
+    await pool.query(`
+      UPDATE offers SET converted_to_agreement_id = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [tenancyResult.rows[0].id, offerId]);
+
+    // Update lead as converted
+    await pool.query(`
+      UPDATE leads SET
+        status = 'converted',
+        converted_at = NOW(),
+        converted_to_tenant_id = $1,
+        converted_to_property_id = $2
+      WHERE id = $3
+    `, [tenantId, offer.property_id, offer.lead_id]);
+
+    res.json({
+      tenancy: tenancyResult.rows[0],
+      tenantId,
+      message: 'Offer converted to tenancy successfully'
+    });
+  } catch (error) {
+    console.error('Error converting offer to tenancy:', error);
+    res.status(500).json({ error: 'Failed to convert offer to tenancy' });
+  }
+});
+
+// Get supported property import portals
+crmRouter.get('/properties/import/portals', requireAgent, (req, res) => {
+  res.json(propertyImport.getSupportedPortals());
+});
+
+// Preview property import from URL (scrapes but doesn't save)
+crmRouter.post('/properties/import/preview', requireAgent, async (req, res) => {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    const result = await propertyImport.previewImport(url);
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error previewing property import:', error);
+    res.status(500).json({ success: false, error: error.message || 'Failed to preview property' });
+  }
+});
+
+// Import property from URL (scrapes and saves to database)
 crmRouter.post('/properties/import', requireAgent, async (req, res) => {
   try {
     const { url } = req.body;
@@ -599,11 +2477,11 @@ crmRouter.post('/properties/import', requireAgent, async (req, res) => {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    const property = await propertyImport.importFromUrl(url, req.user?.id);
-    res.json({ success: true, property });
+    const result = await propertyImport.importFromUrl(url, req.user?.id, true);
+    res.json(result);
   } catch (error: any) {
     console.error('Error importing property:', error);
-    res.status(500).json({ error: error.message || 'Failed to import property' });
+    res.status(500).json({ success: false, error: error.message || 'Failed to import property' });
   }
 });
 
@@ -3433,6 +5311,396 @@ crmRouter.post('/integrations/:integrationId/test', requireAdmin, async (req, re
   }
 });
 
+// ============= Environment Settings API (for Integrations Settings Page) =============
+
+// Define all integration environment variables grouped by section
+const ENV_SECTIONS = {
+  ai: {
+    title: 'AI APIs',
+    variables: [
+      { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', secret: true },
+      { key: 'AI_INTEGRATIONS_OPENAI_API_KEY', label: 'OpenAI API Key (Integrations)', secret: true },
+      { key: 'AI_INTEGRATIONS_OPENAI_BASE_URL', label: 'OpenAI Base URL (Optional)', secret: false },
+      { key: 'GEMINI_API_KEY', label: 'Google Gemini API Key', secret: true },
+      { key: 'ANTHROPIC_API_KEY', label: 'Anthropic Claude API Key', secret: true },
+    ]
+  },
+  twilio: {
+    title: 'Twilio (SMS/Voice)',
+    variables: [
+      { key: 'TWILIO_ACCOUNT_SID', label: 'Account SID', secret: false },
+      { key: 'TWILIO_AUTH_TOKEN', label: 'Auth Token', secret: true },
+      { key: 'TWILIO_PHONE_NUMBER', label: 'Phone Number', secret: false },
+      { key: 'TWILIO_VOICE_WEBHOOK_URL', label: 'Voice Webhook URL', secret: false },
+      { key: 'TWILIO_SMS_WEBHOOK_URL', label: 'SMS Webhook URL', secret: false },
+    ]
+  },
+  whatsapp: {
+    title: 'WhatsApp Business',
+    variables: [
+      { key: 'TWILIO_WHATSAPP_NUMBER', label: 'WhatsApp Number', secret: false },
+      { key: 'WHATSAPP_BUSINESS_PHONE_ID', label: 'Business Phone ID', secret: false },
+      { key: 'WHATSAPP_BUSINESS_ACCOUNT_ID', label: 'Business Account ID', secret: false },
+      { key: 'WHATSAPP_ACCESS_TOKEN', label: 'Access Token', secret: true },
+      { key: 'WHATSAPP_WEBHOOK_VERIFY_TOKEN', label: 'Webhook Verify Token', secret: true },
+      { key: 'WHATSAPP_WEBHOOK_URL', label: 'Webhook URL', secret: false },
+    ]
+  },
+  social: {
+    title: 'Social Media Logins',
+    variables: [
+      { key: 'FACEBOOK_USERNAME', label: 'Facebook Username/Email', secret: false },
+      { key: 'FACEBOOK_PASSWORD', label: 'Facebook Password', secret: true },
+      { key: 'FACEBOOK_APP_ID', label: 'Facebook App ID (API - Optional)', secret: false },
+      { key: 'FACEBOOK_APP_SECRET', label: 'Facebook App Secret (API - Optional)', secret: true },
+      { key: 'INSTAGRAM_USERNAME', label: 'Instagram Username/Email', secret: false },
+      { key: 'INSTAGRAM_PASSWORD', label: 'Instagram Password', secret: true },
+      { key: 'INSTAGRAM_BUSINESS_ID', label: 'Instagram Business ID (Optional)', secret: false },
+      { key: 'LINKEDIN_USERNAME', label: 'LinkedIn Username/Email', secret: false },
+      { key: 'LINKEDIN_PASSWORD', label: 'LinkedIn Password', secret: true },
+      { key: 'TWITTER_USERNAME', label: 'Twitter/X Username/Email', secret: false },
+      { key: 'TWITTER_PASSWORD', label: 'Twitter/X Password', secret: true },
+      { key: 'GOOGLE_BUSINESS_EMAIL', label: 'Google Business Email', secret: false },
+      { key: 'GOOGLE_BUSINESS_PASSWORD', label: 'Google Business Password', secret: true },
+    ]
+  },
+  portals: {
+    title: 'Property Portals (Zoopla/Rightmove)',
+    variables: [
+      { key: 'ZOOPLA_USERNAME', label: 'Zoopla Username', secret: false },
+      { key: 'ZOOPLA_PASSWORD', label: 'Zoopla Password', secret: true },
+      { key: 'ZOOPLA_API_KEY', label: 'Zoopla API Key', secret: true },
+      { key: 'ZOOPLA_BRANCH_ID', label: 'Zoopla Branch ID', secret: false },
+      { key: 'RIGHTMOVE_USERNAME', label: 'Rightmove Username', secret: false },
+      { key: 'RIGHTMOVE_PASSWORD', label: 'Rightmove Password', secret: true },
+      { key: 'RIGHTMOVE_NETWORK_ID', label: 'Rightmove Network ID', secret: false },
+      { key: 'RIGHTMOVE_BRANCH_ID', label: 'Rightmove Branch ID', secret: false },
+      { key: 'ONTHEMARKET_USERNAME', label: 'OnTheMarket Username', secret: false },
+      { key: 'ONTHEMARKET_PASSWORD', label: 'OnTheMarket Password', secret: true },
+      { key: 'PRIMELOCATION_USERNAME', label: 'PrimeLocation Username', secret: false },
+      { key: 'PRIMELOCATION_PASSWORD', label: 'PrimeLocation Password', secret: true },
+    ]
+  },
+  advertisers: {
+    title: 'Advertising Platforms',
+    variables: [
+      { key: 'GOOGLE_ADS_CUSTOMER_ID', label: 'Google Ads Customer ID', secret: false },
+      { key: 'GOOGLE_ADS_DEVELOPER_TOKEN', label: 'Google Ads Developer Token', secret: true },
+      { key: 'GOOGLE_ADS_CLIENT_ID', label: 'Google Ads Client ID', secret: false },
+      { key: 'GOOGLE_ADS_CLIENT_SECRET', label: 'Google Ads Client Secret', secret: true },
+      { key: 'GOOGLE_ADS_REFRESH_TOKEN', label: 'Google Ads Refresh Token', secret: true },
+      { key: 'META_ADS_ACCESS_TOKEN', label: 'Meta Ads Access Token', secret: true },
+      { key: 'META_ADS_ACCOUNT_ID', label: 'Meta Ads Account ID', secret: false },
+      { key: 'META_PIXEL_ID', label: 'Meta Pixel ID', secret: false },
+      { key: 'TABOOLA_ACCOUNT_ID', label: 'Taboola Account ID', secret: false },
+      { key: 'TABOOLA_CLIENT_ID', label: 'Taboola Client ID', secret: false },
+      { key: 'TABOOLA_CLIENT_SECRET', label: 'Taboola Client Secret', secret: true },
+      { key: 'OUTBRAIN_ACCOUNT_ID', label: 'Outbrain Account ID', secret: false },
+      { key: 'OUTBRAIN_API_KEY', label: 'Outbrain API Key', secret: true },
+    ]
+  },
+  payments: {
+    title: 'Payment Processing',
+    variables: [
+      { key: 'STRIPE_SECRET_KEY', label: 'Stripe Secret Key', secret: true },
+      { key: 'STRIPE_PUBLISHABLE_KEY', label: 'Stripe Publishable Key', secret: false },
+      { key: 'STRIPE_WEBHOOK_SECRET', label: 'Stripe Webhook Secret', secret: true },
+    ]
+  },
+  documents: {
+    title: 'Document Signing',
+    variables: [
+      { key: 'DOCUSIGN_INTEGRATION_KEY', label: 'DocuSign Integration Key', secret: true },
+      { key: 'DOCUSIGN_SECRET_KEY', label: 'DocuSign Secret Key', secret: true },
+      { key: 'DOCUSIGN_ACCOUNT_ID', label: 'DocuSign Account ID', secret: false },
+      { key: 'DOCUSIGN_USER_ID', label: 'DocuSign User ID', secret: false },
+      { key: 'DOCUSIGN_ENVIRONMENT', label: 'DocuSign Environment', secret: false },
+    ]
+  },
+  maps: {
+    title: 'Maps & Location',
+    variables: [
+      { key: 'GOOGLE_MAPS_API_KEY', label: 'Google Maps API Key', secret: true },
+      { key: 'VITE_GOOGLE_MAPS_API_KEY', label: 'Google Maps API Key (Frontend)', secret: true },
+      { key: 'GETADDRESS_API_KEY', label: 'getAddress.io API Key', secret: true },
+    ]
+  },
+  email: {
+    title: 'Email Service (SMTP/IMAP)',
+    variables: [
+      { key: 'SMTP_HOST', label: 'SMTP Host', secret: false },
+      { key: 'SMTP_PORT', label: 'SMTP Port', secret: false },
+      { key: 'SMTP_USER', label: 'SMTP Username', secret: false },
+      { key: 'SMTP_PASSWORD', label: 'SMTP Password', secret: true },
+      { key: 'SMTP_SECURE', label: 'SMTP Secure (true/false)', secret: false },
+      { key: 'SMTP_FROM', label: 'SMTP From Address', secret: false },
+      { key: 'IMAP_HOST', label: 'IMAP Host', secret: false },
+      { key: 'IMAP_PORT', label: 'IMAP Port', secret: false },
+      { key: 'IMAP_USER', label: 'IMAP Username', secret: false },
+      { key: 'IMAP_PASSWORD', label: 'IMAP Password', secret: true },
+      { key: 'IMAP_TLS', label: 'IMAP TLS (true/false)', secret: false },
+    ]
+  },
+  general: {
+    title: 'General Settings',
+    variables: [
+      { key: 'BASE_URL', label: 'Application Base URL', secret: false },
+      { key: 'PORTAL_ENCRYPTION_KEY', label: 'Portal Encryption Key', secret: true },
+    ]
+  }
+};
+
+// Parse .env file content into key-value object
+function parseEnvFile(content: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  const lines = content.split('\n');
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    // Skip comments and empty lines
+    if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+
+    const equalIndex = trimmedLine.indexOf('=');
+    if (equalIndex > 0) {
+      const key = trimmedLine.substring(0, equalIndex).trim();
+      let value = trimmedLine.substring(equalIndex + 1).trim();
+      // Remove surrounding quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+// Convert key-value object to .env file content
+function generateEnvFileContent(values: Record<string, string>, existingContent: string): string {
+  const existingLines = existingContent.split('\n');
+  const existingKeys = new Set<string>();
+  const updatedLines: string[] = [];
+
+  // Update existing lines
+  for (const line of existingLines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine || trimmedLine.startsWith('#')) {
+      updatedLines.push(line);
+      continue;
+    }
+
+    const equalIndex = trimmedLine.indexOf('=');
+    if (equalIndex > 0) {
+      const key = trimmedLine.substring(0, equalIndex).trim();
+      existingKeys.add(key);
+
+      if (key in values) {
+        // Update the value
+        const newValue = values[key];
+        // Quote values that contain spaces or special characters
+        const needsQuotes = newValue.includes(' ') || newValue.includes('#') || newValue.includes('=');
+        updatedLines.push(`${key}=${needsQuotes ? `"${newValue}"` : newValue}`);
+      } else {
+        // Keep the existing line
+        updatedLines.push(line);
+      }
+    } else {
+      updatedLines.push(line);
+    }
+  }
+
+  // Add new keys that don't exist
+  for (const [key, value] of Object.entries(values)) {
+    if (!existingKeys.has(key) && value) {
+      const needsQuotes = value.includes(' ') || value.includes('#') || value.includes('=');
+      updatedLines.push(`${key}=${needsQuotes ? `"${value}"` : value}`);
+    }
+  }
+
+  return updatedLines.join('\n');
+}
+
+// Get environment settings schema (structure without values)
+crmRouter.get('/env-settings/schema', requireAdmin, async (req, res) => {
+  try {
+    res.json(ENV_SECTIONS);
+  } catch (error) {
+    console.error('Error fetching env schema:', error);
+    res.status(500).json({ error: 'Failed to fetch environment schema' });
+  }
+});
+
+// Get current environment settings
+crmRouter.get('/env-settings', requireAdmin, async (req, res) => {
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+
+    if (!fs.existsSync(envPath)) {
+      return res.json({ sections: ENV_SECTIONS, values: {} });
+    }
+
+    const envContent = fs.readFileSync(envPath, 'utf-8');
+    const envValues = parseEnvFile(envContent);
+
+    // Mask sensitive values for client display
+    const maskedValues: Record<string, string> = {};
+
+    for (const section of Object.values(ENV_SECTIONS)) {
+      for (const variable of section.variables) {
+        const value = envValues[variable.key] || '';
+        if (variable.secret && value) {
+          // Show masked value for secrets that have a value
+          maskedValues[variable.key] = '••••••••';
+        } else {
+          maskedValues[variable.key] = value;
+        }
+      }
+    }
+
+    res.json({
+      sections: ENV_SECTIONS,
+      values: maskedValues,
+      // Also send which keys have values set (for showing connection status)
+      configured: Object.fromEntries(
+        Object.entries(envValues)
+          .filter(([_, v]) => v && v.length > 0)
+          .map(([k, _]) => [k, true])
+      )
+    });
+  } catch (error) {
+    console.error('Error fetching env settings:', error);
+    res.status(500).json({ error: 'Failed to fetch environment settings' });
+  }
+});
+
+// Update environment settings (writes to .env file)
+crmRouter.put('/env-settings', requireAdmin, async (req, res) => {
+  try {
+    const { values } = req.body;
+
+    if (!values || typeof values !== 'object') {
+      return res.status(400).json({ error: 'Invalid values object' });
+    }
+
+    const envPath = path.join(process.cwd(), '.env');
+
+    // Read existing content
+    let existingContent = '';
+    if (fs.existsSync(envPath)) {
+      existingContent = fs.readFileSync(envPath, 'utf-8');
+    }
+
+    // Parse existing values
+    const existingValues = parseEnvFile(existingContent);
+
+    // Only update values that aren't masked
+    const updatedValues: Record<string, string> = {};
+    for (const [key, value] of Object.entries(values)) {
+      // Skip masked values - user didn't change them
+      if (value === '••••••••') continue;
+      // Only include non-empty values or values that override existing
+      if (value || existingValues[key]) {
+        updatedValues[key] = value as string;
+      }
+    }
+
+    // Generate new content
+    const newContent = generateEnvFileContent(updatedValues, existingContent);
+
+    // Write to .env file
+    fs.writeFileSync(envPath, newContent, 'utf-8');
+
+    // Update process.env for immediate effect (optional, requires server restart for full effect)
+    for (const [key, value] of Object.entries(updatedValues)) {
+      if (value) {
+        process.env[key] = value;
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Environment settings saved. Some changes may require a server restart to take effect.'
+    });
+  } catch (error) {
+    console.error('Error saving env settings:', error);
+    res.status(500).json({ error: 'Failed to save environment settings' });
+  }
+});
+
+// Test a specific integration section
+crmRouter.post('/env-settings/test/:section', requireAdmin, async (req, res) => {
+  try {
+    const { section } = req.params;
+
+    let testResult = { success: false, message: 'Test not implemented for this section' };
+
+    switch (section) {
+      case 'ai':
+        testResult = {
+          success: !!process.env.OPENAI_API_KEY || !!process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+          message: process.env.OPENAI_API_KEY ? 'OpenAI API Key configured' : 'No AI API keys configured'
+        };
+        break;
+      case 'twilio':
+        testResult = {
+          success: !!process.env.TWILIO_ACCOUNT_SID && !!process.env.TWILIO_AUTH_TOKEN,
+          message: process.env.TWILIO_ACCOUNT_SID ? 'Twilio credentials configured' : 'Twilio credentials missing'
+        };
+        break;
+      case 'whatsapp':
+        testResult = {
+          success: !!process.env.TWILIO_WHATSAPP_NUMBER || !!process.env.WHATSAPP_ACCESS_TOKEN,
+          message: process.env.TWILIO_WHATSAPP_NUMBER ? 'WhatsApp configured' : 'WhatsApp credentials missing'
+        };
+        break;
+      case 'social':
+        const hasSocial = process.env.FACEBOOK_APP_ID || process.env.LINKEDIN_CLIENT_ID || process.env.TWITTER_API_KEY;
+        testResult = {
+          success: !!hasSocial,
+          message: hasSocial ? 'Social media credentials configured' : 'No social media credentials configured'
+        };
+        break;
+      case 'portals':
+        const hasPortals = process.env.ZOOPLA_USERNAME || process.env.RIGHTMOVE_USERNAME;
+        testResult = {
+          success: !!hasPortals,
+          message: hasPortals ? 'Property portal credentials configured' : 'No portal credentials configured'
+        };
+        break;
+      case 'advertisers':
+        const hasAds = process.env.GOOGLE_ADS_CUSTOMER_ID || process.env.META_ADS_ACCESS_TOKEN || process.env.TABOOLA_ACCOUNT_ID;
+        testResult = {
+          success: !!hasAds,
+          message: hasAds ? 'Advertising platform credentials configured' : 'No advertising credentials configured'
+        };
+        break;
+      case 'payments':
+        testResult = {
+          success: isStripeConfigured(),
+          message: isStripeConfigured() ? 'Stripe configured' : 'Stripe credentials missing'
+        };
+        break;
+      case 'email':
+        const emailStatus = emailService.getStatus();
+        testResult = {
+          success: emailStatus.configured,
+          message: emailStatus.configured ? 'Email service configured' : 'Email not configured'
+        };
+        break;
+      default:
+        testResult = {
+          success: true,
+          message: 'Configuration saved'
+        };
+    }
+
+    res.json(testResult);
+  } catch (error) {
+    console.error('Error testing section:', error);
+    res.status(500).json({ error: 'Failed to test section' });
+  }
+});
+
 // ============= AI Agent Settings Routes =============
 
 // In-memory agent settings storage
@@ -4263,279 +6531,114 @@ crmRouter.post('/docusign/envelopes/:envelopeId/signing-url', requireAgent, asyn
 });
 
 // ==========================================
-// LANDLORD MANAGEMENT ROUTES
+// LANDLORD MANAGEMENT ROUTES - RAW SQL with PM TABLES
 // ==========================================
 
-// Get all landlords
+// Get all landlords - RAW SQL
 crmRouter.get('/landlords', requireAgent, async (req, res) => {
   try {
-    const landlordsList = await storage.getAllLandlords();
-    res.json(landlordsList);
+    const result = await pool.query(`
+      SELECT id, name as "fullName", email, phone, mobile, address,
+             bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode",
+             landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo",
+             notes, status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM pm_landlords
+      ORDER BY created_at DESC
+    `);
+    res.json(result.rows);
   } catch (error) {
     console.error('Error fetching landlords:', error);
     res.status(500).json({ error: 'Failed to fetch landlords' });
   }
 });
 
-// Get single landlord
+// Get single landlord - RAW SQL
 crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const landlord = await storage.getLandlord(id);
+    const result = await pool.query(`
+      SELECT id, name as "fullName", email, phone, mobile, address,
+             bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode",
+             landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo",
+             notes, status, created_at as "createdAt", updated_at as "updatedAt"
+      FROM pm_landlords WHERE id = $1
+    `, [id]);
 
-    if (!landlord) {
+    if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Landlord not found' });
     }
 
-    res.json(landlord);
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching landlord:', error);
     res.status(500).json({ error: 'Failed to fetch landlord' });
   }
 });
 
-// Create landlord
+// Create landlord - RAW SQL
 crmRouter.post('/landlords', requireAgent, async (req, res) => {
   try {
-    const { name, email, mobile, bankAccountNo, sortCode } = req.body;
+    const { fullName, email, phone, mobile, address, bankName, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes } = req.body;
 
-    if (!name) {
-      return res.status(400).json({ error: 'Name is required' });
+    if (!fullName) {
+      return res.status(400).json({ error: 'Full name is required' });
     }
 
-    const landlord = await storage.createLandlord({
-      name,
-      email: email || null,
-      mobile: mobile || null,
-      bankAccountNo: bankAccountNo || null,
-      sortCode: sortCode || null,
-      isActive: true
-    });
+    const result = await pool.query(`
+      INSERT INTO pm_landlords (name, email, phone, mobile, address, bank_name, bank_account_number, bank_sort_code, landlord_type, company_name, company_registration_no, notes, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+      RETURNING id, name as "fullName", email, phone, mobile, address, bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt"
+    `, [fullName, email || null, phone || mobile || null, mobile || null, address || null, bankName || null, bankAccountNo || null, bankSortCode || null, landlordType || 'individual', companyName || null, companyRegNo || null, notes || null]);
 
-    res.json(landlord);
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error creating landlord:', error);
     res.status(500).json({ error: 'Failed to create landlord' });
   }
 });
 
-// Update landlord
+// Update landlord - RAW SQL
 crmRouter.put('/landlords/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const updates = req.body;
+    const { fullName, email, phone, mobile, address, bankName, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes, status } = req.body;
 
-    const landlord = await storage.updateLandlord(id, updates);
-    res.json(landlord);
+    const result = await pool.query(`
+      UPDATE pm_landlords SET
+        name = COALESCE($2, name),
+        email = COALESCE($3, email),
+        phone = COALESCE($4, phone),
+        mobile = COALESCE($5, mobile),
+        address = COALESCE($6, address),
+        bank_name = COALESCE($7, bank_name),
+        bank_account_number = COALESCE($8, bank_account_number),
+        bank_sort_code = COALESCE($9, bank_sort_code),
+        landlord_type = COALESCE($10, landlord_type),
+        company_name = COALESCE($11, company_name),
+        company_registration_no = COALESCE($12, company_registration_no),
+        notes = COALESCE($13, notes),
+        status = COALESCE($14, status),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, name as "fullName", email, phone, mobile, address, bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt", updated_at as "updatedAt"
+    `, [id, fullName, email, phone, mobile, address, bankName, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes, status]);
+
+    res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating landlord:', error);
     res.status(500).json({ error: 'Failed to update landlord' });
   }
 });
 
-// Delete landlord
+// Delete landlord - RAW SQL
 crmRouter.delete('/landlords/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await storage.deleteLandlord(id);
+    await pool.query('DELETE FROM pm_landlords WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting landlord:', error);
     res.status(500).json({ error: 'Failed to delete landlord' });
-  }
-});
-
-// ==========================================
-// TENANT MANAGEMENT ROUTES
-// ==========================================
-
-// Get all tenants
-crmRouter.get('/tenants', requireAgent, async (req, res) => {
-  try {
-    const allUsers = await storage.getAllUsers();
-    const tenants = allUsers.filter(u => u.role === 'tenant');
-
-    const tenantsWithoutPasswords = tenants.map(t => ({
-      ...t,
-      password: undefined
-    }));
-
-    res.json(tenantsWithoutPasswords);
-  } catch (error) {
-    console.error('Error fetching tenants:', error);
-    res.status(500).json({ error: 'Failed to fetch tenants' });
-  }
-});
-
-// Get single tenant
-crmRouter.get('/tenants/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const tenant = await storage.getUser(id);
-
-    if (!tenant || tenant.role !== 'tenant') {
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-
-    res.json({ ...tenant, password: undefined });
-  } catch (error) {
-    console.error('Error fetching tenant:', error);
-    res.status(500).json({ error: 'Failed to fetch tenant' });
-  }
-});
-
-// Create tenant
-crmRouter.post('/tenants', requireAgent, async (req, res) => {
-  try {
-    const { username, password, email, fullName, phone } = req.body;
-
-    if (!username || !password || !email || !fullName) {
-      return res.status(400).json({ error: 'Username, password, email, and full name are required' });
-    }
-
-    const existingUser = await storage.getUserByUsername(username);
-    if (existingUser) {
-      return res.status(400).json({ error: 'Username already exists' });
-    }
-
-    const tenant = await storage.createUser({
-      username,
-      password,
-      email,
-      fullName,
-      phone: phone || null,
-      role: 'tenant',
-      isActive: true
-    });
-
-    res.json({ ...tenant, password: undefined });
-  } catch (error) {
-    console.error('Error creating tenant:', error);
-    res.status(500).json({ error: 'Failed to create tenant' });
-  }
-});
-
-// Update tenant
-crmRouter.put('/tenants/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const { fullName, email, phone, password, isActive } = req.body;
-
-    const updates: any = {};
-    if (fullName) updates.fullName = fullName;
-    if (email) updates.email = email;
-    if (phone !== undefined) updates.phone = phone;
-    if (typeof isActive === 'boolean') updates.isActive = isActive;
-    if (password) updates.password = password;
-
-    const tenant = await storage.updateUser(id, updates);
-    res.json({ ...tenant, password: undefined });
-  } catch (error) {
-    console.error('Error updating tenant:', error);
-    res.status(500).json({ error: 'Failed to update tenant' });
-  }
-});
-
-// Delete tenant (soft delete - deactivate)
-crmRouter.delete('/tenants/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    await storage.updateUser(id, { isActive: false });
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting tenant:', error);
-    res.status(500).json({ error: 'Failed to delete tenant' });
-  }
-});
-
-// ==========================================
-// RENTAL AGREEMENTS ROUTES
-// ==========================================
-
-// Get all rental agreements with joined data
-crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
-  try {
-    const agreements = await storage.getAllRentalAgreements();
-    res.json(agreements);
-  } catch (error) {
-    console.error('Error fetching rental agreements:', error);
-    res.status(500).json({ error: 'Failed to fetch rental agreements' });
-  }
-});
-
-// Get single rental agreement
-crmRouter.get('/rental-agreements/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const agreement = await storage.getRentalAgreement(id);
-
-    if (!agreement) {
-      return res.status(404).json({ error: 'Rental agreement not found' });
-    }
-
-    res.json(agreement);
-  } catch (error) {
-    console.error('Error fetching rental agreement:', error);
-    res.status(500).json({ error: 'Failed to fetch rental agreement' });
-  }
-});
-
-// Create rental agreement
-crmRouter.post('/rental-agreements', requireAgent, async (req, res) => {
-  try {
-    const {
-      propertyId, landlordId, rentAmount, rentFrequency,
-      managementFeePercent, tenancyStart, tenancyEnd,
-      depositHeldBy, depositAmount
-    } = req.body;
-
-    if (!propertyId || !landlordId || !rentAmount || !rentFrequency) {
-      return res.status(400).json({ error: 'Property ID, landlord ID, rent amount, and frequency are required' });
-    }
-
-    const agreement = await storage.createRentalAgreement({
-      propertyId,
-      landlordId,
-      rentAmount,
-      rentFrequency,
-      managementFeePercent: managementFeePercent || null,
-      tenancyStart: tenancyStart ? new Date(tenancyStart) : null,
-      tenancyEnd: tenancyEnd ? new Date(tenancyEnd) : null,
-      depositHeldBy: depositHeldBy || null,
-      depositAmount: depositAmount || null,
-      status: 'active'
-    });
-
-    res.json(agreement);
-  } catch (error) {
-    console.error('Error creating rental agreement:', error);
-    res.status(500).json({ error: 'Failed to create rental agreement' });
-  }
-});
-
-// Update rental agreement
-crmRouter.put('/rental-agreements/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const updates = req.body;
-
-    const agreement = await storage.updateRentalAgreement(id, updates);
-    res.json(agreement);
-  } catch (error) {
-    console.error('Error updating rental agreement:', error);
-    res.status(500).json({ error: 'Failed to update rental agreement' });
-  }
-});
-
-// Delete rental agreement
-crmRouter.delete('/rental-agreements/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    await storage.deleteRentalAgreement(id);
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting rental agreement:', error);
-    res.status(500).json({ error: 'Failed to delete rental agreement' });
   }
 });
 
@@ -5888,35 +7991,21 @@ crmRouter.get('/support-tickets/stats/overview', requireAgent, async (req, res) 
   }
 });
 
-// Contractor data imported from Excel (uploads/contractors/Contractor List.xlsx)
-const contractorData = [
-  { id: 1, companyName: 'Gansukh', contactName: 'Gansukh', phone: '+447883580505', specializations: ['plumbing', 'gas', 'heating'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 2, companyName: 'Mustapha', contactName: 'Mustapha', phone: '+447912041796', specializations: ['plumbing', 'gas', 'heating'], availableEmergency: true, responseTime: '4 hours', preferredContractor: true },
-  { id: 3, companyName: "Ahmed's Plumber", contactName: 'Ahmed', phone: '+447925287198', specializations: ['plumbing', 'gas', 'heating'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 4, companyName: 'Sarder (Oasis)', contactName: 'Sarder', phone: '+447717122229', specializations: ['removals'], availableEmergency: false, responseTime: '48 hours', preferredContractor: false },
-  { id: 5, companyName: 'Elias', contactName: 'Elias', phone: '+447XXXXXXXXX', specializations: ['appliances'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 6, companyName: 'George', contactName: 'George', phone: '+447XXXXXXXXX', specializations: ['electrical'], availableEmergency: true, responseTime: '4 hours', preferredContractor: true },
-  { id: 7, companyName: 'Rilind', contactName: 'Rilind', phone: '+447XXXXXXXXX', specializations: ['electrical'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 8, companyName: 'Quick Pest', contactName: 'Quick Pest', phone: '+447XXXXXXXXX', specializations: ['pest_control'], availableEmergency: true, responseTime: '4 hours', preferredContractor: true },
-  { id: 9, companyName: 'Nadel', contactName: 'Nadel', phone: '+447XXXXXXXXX', specializations: ['general', 'handyman', 'roofing'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 10, companyName: 'Assis', contactName: 'Assis', phone: '+447XXXXXXXXX', specializations: ['general', 'handyman'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 11, companyName: 'Ericson', contactName: 'Ericson', phone: '+447XXXXXXXXX', specializations: ['general', 'handyman'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false },
-  { id: 12, companyName: 'Said - Waldorf Carpet', contactName: 'Said', phone: '+447XXXXXXXXX', specializations: ['cleaning', 'carpet'], availableEmergency: false, responseTime: '48 hours', preferredContractor: false },
-  { id: 13, companyName: 'Fatima - Waldorf Carpet', contactName: 'Fatima', phone: '+447XXXXXXXXX', specializations: ['cleaning', 'carpet'], availableEmergency: false, responseTime: '48 hours', preferredContractor: false },
-  { id: 14, companyName: 'Tayz', contactName: 'Tayz', phone: '+447XXXXXXXXX', specializations: ['cleaning'], availableEmergency: false, responseTime: '24 hours', preferredContractor: false }
-];
+// ==========================================
+// CONTRACTOR MANAGEMENT ENDPOINTS
+// ==========================================
 
-// Get all contractors for assignment dropdown
+// Get all contractors
 crmRouter.get('/contractors', requireAgent, async (req, res) => {
   try {
     const { specialization, available } = req.query;
 
-    let filtered = [...contractorData];
+    let allContractors = await db.select().from(contractors).orderBy(desc(contractors.createdAt));
 
-    // Filter by specialization
+    // Filter by specialization if provided
     if (specialization) {
-      filtered = filtered.filter(c =>
-        c.specializations.some(s =>
+      allContractors = allContractors.filter(c =>
+        c.specializations?.some(s =>
           s.toLowerCase().includes((specialization as string).toLowerCase()) ||
           (specialization as string).toLowerCase().includes(s.toLowerCase())
         )
@@ -5925,20 +8014,79 @@ crmRouter.get('/contractors', requireAgent, async (req, res) => {
 
     // Filter for emergency availability
     if (available === 'emergency') {
-      filtered = filtered.filter(c => c.availableEmergency);
+      allContractors = allContractors.filter(c => c.availableEmergency);
     }
 
-    // Sort preferred contractors first
-    filtered.sort((a, b) => {
+    // Sort preferred contractors first, then by company name
+    allContractors.sort((a, b) => {
       if (a.preferredContractor && !b.preferredContractor) return -1;
       if (!a.preferredContractor && b.preferredContractor) return 1;
-      return 0;
+      return (a.companyName || '').localeCompare(b.companyName || '');
     });
 
-    res.json(filtered);
+    res.json(allContractors);
   } catch (error) {
     console.error('Error fetching contractors:', error);
     res.status(500).json({ error: 'Failed to fetch contractors' });
+  }
+});
+
+// Get single contractor
+crmRouter.get('/contractors/:id', requireAgent, async (req, res) => {
+  try {
+    const [contractor] = await db.select().from(contractors).where(eq(contractors.id, parseInt(req.params.id)));
+    if (!contractor) {
+      return res.status(404).json({ error: 'Contractor not found' });
+    }
+    res.json(contractor);
+  } catch (error) {
+    console.error('Error fetching contractor:', error);
+    res.status(500).json({ error: 'Failed to fetch contractor' });
+  }
+});
+
+// Create contractor
+crmRouter.post('/contractors', requireAgent, async (req, res) => {
+  try {
+    const data = insertContractorSchema.parse(req.body);
+    const [contractor] = await db.insert(contractors).values(data).returning();
+    res.status(201).json(contractor);
+  } catch (error) {
+    console.error('Error creating contractor:', error);
+    res.status(400).json({ error: 'Failed to create contractor' });
+  }
+});
+
+// Update contractor
+crmRouter.patch('/contractors/:id', requireAgent, async (req, res) => {
+  try {
+    const [contractor] = await db.update(contractors)
+      .set(req.body)
+      .where(eq(contractors.id, parseInt(req.params.id)))
+      .returning();
+    if (!contractor) {
+      return res.status(404).json({ error: 'Contractor not found' });
+    }
+    res.json(contractor);
+  } catch (error) {
+    console.error('Error updating contractor:', error);
+    res.status(400).json({ error: 'Failed to update contractor' });
+  }
+});
+
+// Delete contractor
+crmRouter.delete('/contractors/:id', requireAgent, async (req, res) => {
+  try {
+    const [deleted] = await db.delete(contractors)
+      .where(eq(contractors.id, parseInt(req.params.id)))
+      .returning();
+    if (!deleted) {
+      return res.status(404).json({ error: 'Contractor not found' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting contractor:', error);
+    res.status(500).json({ error: 'Failed to delete contractor' });
   }
 });
 
@@ -5962,8 +8110,10 @@ crmRouter.get('/contractors/find-best', requireAgent, async (req, res) => {
 
     const requiredSpecs = categoryMapping[category as string] || ['general'];
 
-    let candidates = contractorData.filter(c =>
-      c.specializations.some(s => requiredSpecs.includes(s))
+    const allContractors = await db.select().from(contractors).where(eq(contractors.isActive, true));
+
+    let candidates = allContractors.filter(c =>
+      c.specializations?.some(s => requiredSpecs.includes(s))
     );
 
     // If emergency, prioritize emergency contractors
@@ -5974,11 +8124,11 @@ crmRouter.get('/contractors/find-best', requireAgent, async (req, res) => {
       }
     }
 
-    // Sort by preferred status
+    // Sort by preferred status, then by rating
     candidates.sort((a, b) => {
       if (a.preferredContractor && !b.preferredContractor) return -1;
       if (!a.preferredContractor && b.preferredContractor) return 1;
-      return 0;
+      return (b.rating || 0) - (a.rating || 0);
     });
 
     res.json({
@@ -6107,220 +8257,7 @@ crmRouter.post('/admin/properties/set-managed', requireAdmin, async (req, res) =
   }
 });
 
-// ==========================================
-// MANAGED PROPERTIES API ROUTES
-// ==========================================
-
-// Get all landlords
-crmRouter.get('/landlords', requireAgent, async (req, res) => {
-  try {
-    const landlordsList = await storage.getAllLandlords();
-    res.json(landlordsList);
-  } catch (error) {
-    console.error('Error fetching landlords:', error);
-    res.status(500).json({ error: 'Failed to fetch landlords' });
-  }
-});
-
-// Get single landlord
-crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
-  try {
-    const landlord = await storage.getLandlord(parseInt(req.params.id));
-    if (!landlord) {
-      return res.status(404).json({ error: 'Landlord not found' });
-    }
-    res.json(landlord);
-  } catch (error) {
-    console.error('Error fetching landlord:', error);
-    res.status(500).json({ error: 'Failed to fetch landlord' });
-  }
-});
-
-// Create landlord
-crmRouter.post('/landlords', requireAgent, async (req, res) => {
-  try {
-    const landlord = await storage.createLandlord(req.body);
-    res.json(landlord);
-  } catch (error) {
-    console.error('Error creating landlord:', error);
-    res.status(500).json({ error: 'Failed to create landlord' });
-  }
-});
-
-// Update landlord
-crmRouter.patch('/landlords/:id', requireAgent, async (req, res) => {
-  try {
-    const landlord = await storage.updateLandlord(parseInt(req.params.id), req.body);
-    res.json(landlord);
-  } catch (error) {
-    console.error('Error updating landlord:', error);
-    res.status(500).json({ error: 'Failed to update landlord' });
-  }
-});
-
-// Get all tenants
-crmRouter.get('/tenants', requireAgent, async (req, res) => {
-  try {
-    const tenantsList = await storage.getAllTenants();
-    res.json(tenantsList);
-  } catch (error) {
-    console.error('Error fetching tenants:', error);
-    res.status(500).json({ error: 'Failed to fetch tenants' });
-  }
-});
-
-// Get single tenant
-crmRouter.get('/tenants/:id', requireAgent, async (req, res) => {
-  try {
-    const tenant = await storage.getTenant(parseInt(req.params.id));
-    if (!tenant) {
-      return res.status(404).json({ error: 'Tenant not found' });
-    }
-    res.json(tenant);
-  } catch (error) {
-    console.error('Error fetching tenant:', error);
-    res.status(500).json({ error: 'Failed to fetch tenant' });
-  }
-});
-
-// Create tenant
-crmRouter.post('/tenants', requireAgent, async (req, res) => {
-  try {
-    const tenant = await storage.createTenant(req.body);
-    res.json(tenant);
-  } catch (error) {
-    console.error('Error creating tenant:', error);
-    res.status(500).json({ error: 'Failed to create tenant' });
-  }
-});
-
-// Get all rental agreements with property, landlord, and tenant details
-crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
-  try {
-    const agreements = await storage.getAllRentalAgreements();
-    res.json(agreements);
-  } catch (error) {
-    console.error('Error fetching rental agreements:', error);
-    res.status(500).json({ error: 'Failed to fetch rental agreements' });
-  }
-});
-
-// Get single rental agreement
-crmRouter.get('/rental-agreements/:id', requireAgent, async (req, res) => {
-  try {
-    const agreement = await storage.getRentalAgreement(parseInt(req.params.id));
-    if (!agreement) {
-      return res.status(404).json({ error: 'Rental agreement not found' });
-    }
-    res.json(agreement);
-  } catch (error) {
-    console.error('Error fetching rental agreement:', error);
-    res.status(500).json({ error: 'Failed to fetch rental agreement' });
-  }
-});
-
-// Create rental agreement
-crmRouter.post('/rental-agreements', requireAgent, async (req, res) => {
-  try {
-    const agreement = await storage.createRentalAgreement(req.body);
-    res.json(agreement);
-  } catch (error) {
-    console.error('Error creating rental agreement:', error);
-    res.status(500).json({ error: 'Failed to create rental agreement' });
-  }
-});
-
-// Update rental agreement
-crmRouter.patch('/rental-agreements/:id', requireAgent, async (req, res) => {
-  try {
-    const agreement = await storage.updateRentalAgreement(parseInt(req.params.id), req.body);
-    res.json(agreement);
-  } catch (error) {
-    console.error('Error updating rental agreement:', error);
-    res.status(500).json({ error: 'Failed to update rental agreement' });
-  }
-});
-
-// Get comprehensive managed properties list (properties with landlord, tenant, agreement details)
-crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
-  try {
-    // Get all properties with status='let'
-    const allProperties = await storage.getAllProperties();
-    const managedProperties = allProperties.filter(p => p.status === 'let');
-
-    // Get all landlords and agreements
-    const landlords = await storage.getAllLandlords();
-    const tenants = await storage.getAllTenants();
-    const agreements = await storage.getAllRentalAgreements();
-
-    // Build comprehensive managed properties list
-    const managedList = managedProperties.map(property => {
-      // Find related agreement
-      const agreement = agreements.find(a => a.propertyId === property.id);
-
-      // Find related landlord
-      const landlord = agreement ? landlords.find(l => l.id === agreement.landlordId) : null;
-
-      // Find related tenant (from agreement or tenants table)
-      const tenant = tenants.find(t => t.propertyId === property.id);
-
-      return {
-        id: property.id,
-        propertyAddress: `${property.addressLine1}${property.addressLine2 ? ', ' + property.addressLine2 : ''}, ${property.postcode}`,
-        propertyType: property.propertyType,
-        bedrooms: property.bedrooms,
-
-        // Landlord info
-        landlordId: landlord?.id || null,
-        landlordName: landlord?.name || 'Not assigned',
-        landlordEmail: landlord?.email || null,
-        landlordMobile: landlord?.mobile || null,
-        landlordCompanyName: landlord?.companyName || null,
-
-        // Tenant info
-        tenantId: tenant?.id || null,
-        tenantUserId: tenant?.userId || null,
-        tenantMoveInDate: tenant?.moveInDate || null,
-        tenantMoveOutDate: tenant?.moveOutDate || null,
-        tenantStatus: tenant?.status || null,
-
-        // Agreement/rental info
-        agreementId: agreement?.id || null,
-        rentAmount: agreement?.rentAmount || property.price || 0,
-        rentFrequency: agreement?.rentFrequency || property.rentPeriod || 'Monthly',
-        rentStartDate: agreement?.rentStartDate || agreement?.tenancyStart || null,
-        rentEndDate: agreement?.rentEndDate || agreement?.tenancyEnd || null,
-
-        // Deposit info
-        depositAmount: agreement?.depositAmount || property.deposit || 0,
-        depositHeldBy: agreement?.depositHeldBy || 'Not specified',
-        depositProtectionRef: agreement?.depositProtectionRef || null,
-
-        // Management info
-        managementFeePercent: agreement?.managementFeePercent || null,
-        managementFeeFixed: agreement?.managementFeeFixed || null,
-        managementPeriod: agreement?.managementPeriod || 'Monthly',
-        managementStartDate: agreement?.managementStartDate || null,
-        managementEndDate: agreement?.managementEndDate || null,
-
-        // Standing order
-        standingOrderSetup: agreement?.standingOrderSetup || false,
-        standingOrderRef: agreement?.standingOrderRef || null,
-
-        // Checklist completion (placeholder - would need document tracking)
-        checklistComplete: 0,
-        checklistTotal: 17,
-
-        createdAt: property.createdAt
-      };
-    });
-
-    res.json(managedList);
-  } catch (error) {
-    console.error('Error fetching managed properties:', error);
-    res.status(500).json({ error: 'Failed to fetch managed properties' });
-  }
-});
+// LEGACY MANAGED PROPERTIES API ROUTES REMOVED - Using pmLandlords/pmTenants/pmTenancies routes above
 
 // ==========================================
 // CALENDAR & VIEWING ENDPOINTS
@@ -6938,35 +8875,7 @@ crmRouter.post('/admin/seed-managed-properties', requireAdmin, async (req, res) 
   }
 });
 
-// ==========================================
-// LANDLORD ROUTES
-// ==========================================
-
-// Get all landlords
-crmRouter.get('/landlords', requireAgent, async (req, res) => {
-  try {
-    const landlords = await storage.getLandlords();
-    res.json(landlords);
-  } catch (error) {
-    console.error('Error fetching landlords:', error);
-    res.status(500).json({ error: 'Failed to fetch landlords' });
-  }
-});
-
-// Get single landlord
-crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const landlord = await storage.getLandlord(id);
-    if (!landlord) {
-      return res.status(404).json({ error: 'Landlord not found' });
-    }
-    res.json(landlord);
-  } catch (error) {
-    console.error('Error fetching landlord:', error);
-    res.status(500).json({ error: 'Failed to fetch landlord' });
-  }
-});
+// LEGACY LANDLORD ROUTES REMOVED - Using pmLandlords routes above
 
 // Set all properties as managed
 crmRouter.post('/admin/set-all-managed', requireAdmin, async (req, res) => {
@@ -6986,14 +8895,87 @@ crmRouter.post('/admin/set-all-managed', requireAdmin, async (req, res) => {
 
 crmRouter.get('/contacts', requireAgent, async (req, res) => {
   try {
-    const filters = {
-      contactType: req.query.contactType as string,
-      status: req.query.status as string
-    };
-    const contacts = await storage.getUnifiedContacts(filters);
-    res.json(contacts);
+    const contactType = req.query.contactType as string;
+
+    // Aggregate contacts from pm_landlords, pm_tenants, and contractors tables
+    const allContacts: any[] = [];
+
+    // Get landlords (unless filtering for a different type)
+    if (!contactType || contactType === 'landlord') {
+      const landlordRows = await db.select().from(pmLandlords).orderBy(desc(pmLandlords.createdAt));
+      for (const l of landlordRows) {
+        allContacts.push({
+          id: `landlord-${l.id}`,
+          originalId: l.id,
+          contactType: 'landlord',
+          fullName: l.name,
+          email: l.email,
+          phone: l.phone || l.mobile,
+          mobile: l.mobile,
+          status: l.status || 'active',
+          kycStatus: 'not_started', // Landlords don't have KYC in PM schema
+          isCompany: l.landlordType === 'company',
+          companyName: l.companyName,
+          lastActive: l.updatedAt,
+          createdAt: l.createdAt
+        });
+      }
+    }
+
+    // Get tenants (unless filtering for a different type)
+    if (!contactType || contactType === 'tenant') {
+      const tenantRows = await db.select().from(pmTenants).orderBy(desc(pmTenants.createdAt));
+      for (const t of tenantRows) {
+        allContacts.push({
+          id: `tenant-${t.id}`,
+          originalId: t.id,
+          contactType: 'tenant',
+          fullName: t.name,
+          email: t.email,
+          phone: t.phone || t.mobile,
+          mobile: t.mobile,
+          status: t.status || 'active',
+          kycStatus: 'not_started', // Could be enhanced with actual KYC tracking
+          isCompany: false,
+          companyName: null,
+          lastActive: t.updatedAt,
+          createdAt: t.createdAt
+        });
+      }
+    }
+
+    // Get contractors (unless filtering for a different type)
+    if (!contactType || contactType === 'contractor') {
+      const contractorRows = await db.select().from(contractors).orderBy(desc(contractors.createdAt));
+      for (const c of contractorRows) {
+        allContacts.push({
+          id: `contractor-${c.id}`,
+          originalId: c.id,
+          contactType: 'contractor',
+          fullName: c.contactName,
+          email: c.email,
+          phone: c.phone,
+          mobile: c.emergencyPhone,
+          status: c.status || 'active',
+          kycStatus: 'not_started',
+          isCompany: true,
+          companyName: c.companyName,
+          lastActive: c.updatedAt,
+          createdAt: c.createdAt
+        });
+      }
+    }
+
+    // Sort by createdAt desc
+    allContacts.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    res.json(allContacts);
   } catch (error) {
-    console.error('Error fetching v3 contacts:', error);
+    console.error('Error fetching contacts:', error);
     res.status(500).json({ error: 'Failed to fetch contacts' });
   }
 });
@@ -7066,5 +9048,2013 @@ crmRouter.get('/sales-progression/:propertyId', requireAgent, async (req, res) =
   } catch (error) {
     console.error('Error fetching sales progression:', error);
     res.status(500).json({ error: 'Failed to fetch sales progression' });
+  }
+});
+
+// Get sales progression stats (for dashboard)
+crmRouter.get('/sales-progression-stats', requireAgent, async (req, res) => {
+  try {
+    // Get count of properties under offer (active sales progressions not yet exchanged)
+    const underOfferResult = await db.select({ count: sql<number>`count(*)` })
+      .from(salesProgression)
+      .where(and(
+        eq(salesProgression.status, 'active'),
+        eq(salesProgression.contractsExchanged, false)
+      ));
+
+    // Get count of exchanged properties (contracts exchanged but not completed)
+    const exchangedResult = await db.select({ count: sql<number>`count(*)` })
+      .from(salesProgression)
+      .where(and(
+        eq(salesProgression.status, 'active'),
+        eq(salesProgression.contractsExchanged, true),
+        eq(salesProgression.completed, false)
+      ));
+
+    // Get count of completions scheduled for current month
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    const targetCompletionsResult = await db.select({ count: sql<number>`count(*)` })
+      .from(salesProgression)
+      .where(and(
+        eq(salesProgression.status, 'active'),
+        sql`${salesProgression.completionScheduled} >= ${startOfMonth}`,
+        sql`${salesProgression.completionScheduled} <= ${endOfMonth}`
+      ));
+
+    res.json({
+      underOffer: Number(underOfferResult[0]?.count || 0),
+      exchanged: Number(exchangedResult[0]?.count || 0),
+      targetCompletionsThisMonth: Number(targetCompletionsResult[0]?.count || 0)
+    });
+  } catch (error) {
+    console.error('Error fetching sales progression stats:', error);
+    res.status(500).json({ error: 'Failed to fetch sales progression stats' });
+  }
+});
+
+// ==========================================
+// NEW PROPERTY MANAGEMENT (PM) API ENDPOINTS
+// ==========================================
+
+// --- PM LANDLORDS ---
+
+// Get all landlords
+crmRouter.get('/pm/landlords', requireAgent, async (req, res) => {
+  try {
+    const allLandlords = await db.select().from(pmLandlords).orderBy(desc(pmLandlords.createdAt));
+    res.json(allLandlords);
+  } catch (error) {
+    console.error('Error fetching landlords:', error);
+    res.status(500).json({ error: 'Failed to fetch landlords' });
+  }
+});
+
+// Get single landlord
+crmRouter.get('/pm/landlords/:id', requireAgent, async (req, res) => {
+  try {
+    const [landlord] = await db.select().from(pmLandlords).where(eq(pmLandlords.id, parseInt(req.params.id)));
+    if (!landlord) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+    res.json(landlord);
+  } catch (error) {
+    console.error('Error fetching landlord:', error);
+    res.status(500).json({ error: 'Failed to fetch landlord' });
+  }
+});
+
+// Create landlord
+crmRouter.post('/pm/landlords', requireAgent, async (req, res) => {
+  try {
+    const data = insertPmLandlordSchema.parse(req.body);
+    const [landlord] = await db.insert(pmLandlords).values(data).returning();
+    res.status(201).json(landlord);
+  } catch (error) {
+    console.error('Error creating landlord:', error);
+    res.status(400).json({ error: 'Failed to create landlord' });
+  }
+});
+
+// Update landlord
+crmRouter.patch('/pm/landlords/:id', requireAgent, async (req, res) => {
+  try {
+    const [landlord] = await db.update(pmLandlords)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(pmLandlords.id, parseInt(req.params.id)))
+      .returning();
+    if (!landlord) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+    res.json(landlord);
+  } catch (error) {
+    console.error('Error updating landlord:', error);
+    res.status(400).json({ error: 'Failed to update landlord' });
+  }
+});
+
+// Delete landlord
+crmRouter.delete('/pm/landlords/:id', requireAgent, async (req, res) => {
+  try {
+    const [landlord] = await db.delete(pmLandlords)
+      .where(eq(pmLandlords.id, parseInt(req.params.id)))
+      .returning();
+    if (!landlord) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+    res.json({ message: 'Landlord deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting landlord:', error);
+    res.status(500).json({ error: 'Failed to delete landlord' });
+  }
+});
+
+// --- PM TENANTS ---
+
+// Get all tenants
+crmRouter.get('/pm/tenants', requireAgent, async (req, res) => {
+  try {
+    const allTenants = await db.select().from(pmTenants).orderBy(desc(pmTenants.createdAt));
+    res.json(allTenants);
+  } catch (error) {
+    console.error('Error fetching tenants:', error);
+    res.status(500).json({ error: 'Failed to fetch tenants' });
+  }
+});
+
+// Get single tenant
+crmRouter.get('/pm/tenants/:id', requireAgent, async (req, res) => {
+  try {
+    const [tenant] = await db.select().from(pmTenants).where(eq(pmTenants.id, parseInt(req.params.id)));
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    res.json(tenant);
+  } catch (error) {
+    console.error('Error fetching tenant:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant' });
+  }
+});
+
+// Create tenant
+crmRouter.post('/pm/tenants', requireAgent, async (req, res) => {
+  try {
+    const data = insertPmTenantSchema.parse(req.body);
+    const [tenant] = await db.insert(pmTenants).values(data).returning();
+    res.status(201).json(tenant);
+  } catch (error) {
+    console.error('Error creating tenant:', error);
+    res.status(400).json({ error: 'Failed to create tenant' });
+  }
+});
+
+// Update tenant
+crmRouter.patch('/pm/tenants/:id', requireAgent, async (req, res) => {
+  try {
+    const [tenant] = await db.update(pmTenants)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(pmTenants.id, parseInt(req.params.id)))
+      .returning();
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    res.json(tenant);
+  } catch (error) {
+    console.error('Error updating tenant:', error);
+    res.status(400).json({ error: 'Failed to update tenant' });
+  }
+});
+
+// Delete tenant
+crmRouter.delete('/pm/tenants/:id', requireAgent, async (req, res) => {
+  try {
+    const [tenant] = await db.delete(pmTenants)
+      .where(eq(pmTenants.id, parseInt(req.params.id)))
+      .returning();
+    if (!tenant) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    res.json({ message: 'Tenant deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting tenant:', error);
+    res.status(500).json({ error: 'Failed to delete tenant' });
+  }
+});
+
+// --- PM PROPERTIES ---
+
+// Get all properties (with optional filters)
+crmRouter.get('/pm/properties', requireAgent, async (req, res) => {
+  try {
+    const { isManaged, isListedRental, isListedSale, propertyCategory } = req.query;
+
+    let query = db.select().from(pmProperties);
+    const conditions = [];
+
+    if (isManaged !== undefined) {
+      conditions.push(eq(pmProperties.isManaged, isManaged === 'true'));
+    }
+    if (isListedRental !== undefined) {
+      conditions.push(eq(pmProperties.isListedRental, isListedRental === 'true'));
+    }
+    if (isListedSale !== undefined) {
+      conditions.push(eq(pmProperties.isListedSale, isListedSale === 'true'));
+    }
+    if (propertyCategory) {
+      conditions.push(eq(pmProperties.propertyCategory, propertyCategory as string));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
+    }
+
+    const allProperties = await query.orderBy(desc(pmProperties.createdAt));
+    res.json(allProperties);
+  } catch (error) {
+    console.error('Error fetching properties:', error);
+    res.status(500).json({ error: 'Failed to fetch properties' });
+  }
+});
+
+// Get single property with related data
+crmRouter.get('/pm/properties/:id', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const [property] = await db.select().from(pmProperties).where(eq(pmProperties.id, propertyId));
+
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    // Get landlord if exists
+    let landlord = null;
+    if (property.landlordId) {
+      [landlord] = await db.select().from(pmLandlords).where(eq(pmLandlords.id, property.landlordId));
+    }
+
+    // Get active tenancy
+    const [activeTenancy] = await db.select().from(pmTenancies)
+      .where(and(
+        eq(pmTenancies.propertyId, propertyId),
+        eq(pmTenancies.status, 'active')
+      ));
+
+    // Get tenant if active tenancy exists
+    let tenant = null;
+    if (activeTenancy?.tenantId) {
+      [tenant] = await db.select().from(pmTenants).where(eq(pmTenants.id, activeTenancy.tenantId));
+    }
+
+    res.json({
+      ...property,
+      landlord,
+      activeTenancy,
+      tenant
+    });
+  } catch (error) {
+    console.error('Error fetching property:', error);
+    res.status(500).json({ error: 'Failed to fetch property' });
+  }
+});
+
+// Create property
+crmRouter.post('/pm/properties', requireAgent, async (req, res) => {
+  try {
+    const data = insertPmPropertySchema.parse(req.body);
+    const [property] = await db.insert(pmProperties).values(data).returning();
+    res.status(201).json(property);
+  } catch (error) {
+    console.error('Error creating property:', error);
+    res.status(400).json({ error: 'Failed to create property' });
+  }
+});
+
+// Update property
+crmRouter.patch('/pm/properties/:id', requireAgent, async (req, res) => {
+  try {
+    const [property] = await db.update(pmProperties)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(pmProperties.id, parseInt(req.params.id)))
+      .returning();
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    res.json(property);
+  } catch (error) {
+    console.error('Error updating property:', error);
+    res.status(400).json({ error: 'Failed to update property' });
+  }
+});
+
+// Delete property
+crmRouter.delete('/pm/properties/:id', requireAgent, async (req, res) => {
+  try {
+    const [property] = await db.delete(pmProperties)
+      .where(eq(pmProperties.id, parseInt(req.params.id)))
+      .returning();
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    res.json({ message: 'Property deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting property:', error);
+    res.status(500).json({ error: 'Failed to delete property' });
+  }
+});
+
+// --- PM TENANCIES ---
+
+// Get all tenancies
+crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
+  try {
+    const { propertyId, status } = req.query;
+
+    let query = db.select().from(pmTenancies);
+    const conditions = [];
+
+    if (propertyId) {
+      conditions.push(eq(pmTenancies.propertyId, parseInt(propertyId as string)));
+    }
+    if (status) {
+      conditions.push(eq(pmTenancies.status, status as string));
+    }
+
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as typeof query;
+    }
+
+    const allTenancies = await query.orderBy(desc(pmTenancies.createdAt));
+    res.json(allTenancies);
+  } catch (error) {
+    console.error('Error fetching tenancies:', error);
+    res.status(500).json({ error: 'Failed to fetch tenancies' });
+  }
+});
+
+// Get single tenancy with full details
+crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
+  try {
+    const tenancyId = parseInt(req.params.id);
+    const [tenancy] = await db.select().from(pmTenancies).where(eq(pmTenancies.id, tenancyId));
+
+    if (!tenancy) {
+      return res.status(404).json({ error: 'Tenancy not found' });
+    }
+
+    // Get property
+    const [property] = await db.select().from(pmProperties).where(eq(pmProperties.id, tenancy.propertyId));
+
+    // Get landlord
+    const [landlord] = await db.select().from(pmLandlords).where(eq(pmLandlords.id, tenancy.landlordId));
+
+    // Get tenant
+    let tenant = null;
+    if (tenancy.tenantId) {
+      [tenant] = await db.select().from(pmTenants).where(eq(pmTenants.id, tenancy.tenantId));
+    }
+
+    // Get checklist items
+    const checklistItems = await db.select().from(pmTenancyChecklist)
+      .where(eq(pmTenancyChecklist.tenancyId, tenancyId));
+
+    res.json({
+      ...tenancy,
+      property,
+      landlord,
+      tenant,
+      checklist: checklistItems
+    });
+  } catch (error) {
+    console.error('Error fetching tenancy:', error);
+    res.status(500).json({ error: 'Failed to fetch tenancy' });
+  }
+});
+
+// Create tenancy (with automatic checklist creation)
+crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
+  try {
+    const data = insertPmTenancySchema.parse(req.body);
+    const [tenancy] = await db.insert(pmTenancies).values(data).returning();
+
+    // Create checklist items for the tenancy
+    const checklistItems = tenancyChecklistItemTypes.map(itemType => ({
+      tenancyId: tenancy.id,
+      itemType,
+      isCompleted: false
+    }));
+
+    await db.insert(pmTenancyChecklist).values(checklistItems);
+
+    res.status(201).json(tenancy);
+  } catch (error) {
+    console.error('Error creating tenancy:', error);
+    res.status(400).json({ error: 'Failed to create tenancy' });
+  }
+});
+
+// Update tenancy
+crmRouter.patch('/pm/tenancies/:id', requireAgent, async (req, res) => {
+  try {
+    const [tenancy] = await db.update(pmTenancies)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(pmTenancies.id, parseInt(req.params.id)))
+      .returning();
+    if (!tenancy) {
+      return res.status(404).json({ error: 'Tenancy not found' });
+    }
+    res.json(tenancy);
+  } catch (error) {
+    console.error('Error updating tenancy:', error);
+    res.status(400).json({ error: 'Failed to update tenancy' });
+  }
+});
+
+// Delete tenancy
+crmRouter.delete('/pm/tenancies/:id', requireAgent, async (req, res) => {
+  try {
+    // Delete checklist items first
+    await db.delete(pmTenancyChecklist).where(eq(pmTenancyChecklist.tenancyId, parseInt(req.params.id)));
+
+    const [tenancy] = await db.delete(pmTenancies)
+      .where(eq(pmTenancies.id, parseInt(req.params.id)))
+      .returning();
+    if (!tenancy) {
+      return res.status(404).json({ error: 'Tenancy not found' });
+    }
+    res.json({ message: 'Tenancy deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting tenancy:', error);
+    res.status(500).json({ error: 'Failed to delete tenancy' });
+  }
+});
+
+// --- PM TENANCY CHECKLIST ---
+
+// Get checklist items for a tenancy
+crmRouter.get('/pm/tenancies/:tenancyId/checklist', requireAgent, async (req, res) => {
+  try {
+    const tenancyId = parseInt(req.params.tenancyId);
+    const items = await db.select().from(pmTenancyChecklist)
+      .where(eq(pmTenancyChecklist.tenancyId, tenancyId))
+      .orderBy(pmTenancyChecklist.id);
+
+    // Add labels to items
+    const itemsWithLabels = items.map(item => ({
+      ...item,
+      label: tenancyChecklistItemLabels[item.itemType as keyof typeof tenancyChecklistItemLabels] || item.itemType
+    }));
+
+    res.json(itemsWithLabels);
+  } catch (error) {
+    console.error('Error fetching checklist:', error);
+    res.status(500).json({ error: 'Failed to fetch checklist' });
+  }
+});
+
+// Get all checklist item types (for reference)
+crmRouter.get('/pm/checklist-types', requireAgent, async (req, res) => {
+  res.json({
+    types: tenancyChecklistItemTypes,
+    labels: tenancyChecklistItemLabels
+  });
+});
+
+// Update checklist item (toggle completion, add notes, upload document)
+crmRouter.patch('/pm/checklist/:id', requireAgent, async (req, res) => {
+  try {
+    const userId = (req as any).user?.id;
+    const updateData: any = { ...req.body, updatedAt: new Date() };
+
+    // If completing item, set completedAt and completedBy
+    if (req.body.isCompleted === true) {
+      updateData.completedAt = new Date();
+      updateData.completedBy = userId;
+    } else if (req.body.isCompleted === false) {
+      updateData.completedAt = null;
+      updateData.completedBy = null;
+    }
+
+    // If uploading document, set upload metadata
+    if (req.body.documentUrl) {
+      updateData.documentUploadedAt = new Date();
+      updateData.documentUploadedBy = userId;
+    }
+
+    const [item] = await db.update(pmTenancyChecklist)
+      .set(updateData)
+      .where(eq(pmTenancyChecklist.id, parseInt(req.params.id)))
+      .returning();
+
+    if (!item) {
+      return res.status(404).json({ error: 'Checklist item not found' });
+    }
+
+    res.json({
+      ...item,
+      label: tenancyChecklistItemLabels[item.itemType as keyof typeof tenancyChecklistItemLabels] || item.itemType
+    });
+  } catch (error) {
+    console.error('Error updating checklist item:', error);
+    res.status(400).json({ error: 'Failed to update checklist item' });
+  }
+});
+
+// --- PM INVENTORY ---
+
+// Get all inventories for a tenancy
+crmRouter.get('/pm/tenancies/:tenancyId/inventories', requireAgent, async (req, res) => {
+  try {
+    const tenancyId = parseInt(req.params.tenancyId);
+    const inventories = await db.select().from(pmInventory)
+      .where(eq(pmInventory.tenancyId, tenancyId))
+      .orderBy(desc(pmInventory.inventoryDate));
+    res.json(inventories);
+  } catch (error) {
+    console.error('Error fetching inventories:', error);
+    res.status(500).json({ error: 'Failed to fetch inventories' });
+  }
+});
+
+// Get single inventory with items
+crmRouter.get('/pm/inventories/:id', requireAgent, async (req, res) => {
+  try {
+    const inventoryId = parseInt(req.params.id);
+    const [inventory] = await db.select().from(pmInventory).where(eq(pmInventory.id, inventoryId));
+
+    if (!inventory) {
+      return res.status(404).json({ error: 'Inventory not found' });
+    }
+
+    const items = await db.select().from(pmInventoryItems)
+      .where(eq(pmInventoryItems.inventoryId, inventoryId))
+      .orderBy(pmInventoryItems.room);
+
+    res.json({ ...inventory, items });
+  } catch (error) {
+    console.error('Error fetching inventory:', error);
+    res.status(500).json({ error: 'Failed to fetch inventory' });
+  }
+});
+
+// Create inventory
+crmRouter.post('/pm/inventories', requireAgent, async (req, res) => {
+  try {
+    const data = insertPmInventorySchema.parse(req.body);
+    const [inventory] = await db.insert(pmInventory).values(data).returning();
+    res.status(201).json(inventory);
+  } catch (error) {
+    console.error('Error creating inventory:', error);
+    res.status(400).json({ error: 'Failed to create inventory' });
+  }
+});
+
+// Update inventory
+crmRouter.patch('/pm/inventories/:id', requireAgent, async (req, res) => {
+  try {
+    const [inventory] = await db.update(pmInventory)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(pmInventory.id, parseInt(req.params.id)))
+      .returning();
+    if (!inventory) {
+      return res.status(404).json({ error: 'Inventory not found' });
+    }
+    res.json(inventory);
+  } catch (error) {
+    console.error('Error updating inventory:', error);
+    res.status(400).json({ error: 'Failed to update inventory' });
+  }
+});
+
+// Delete inventory
+crmRouter.delete('/pm/inventories/:id', requireAgent, async (req, res) => {
+  try {
+    // Delete inventory items first
+    await db.delete(pmInventoryItems).where(eq(pmInventoryItems.inventoryId, parseInt(req.params.id)));
+
+    const [inventory] = await db.delete(pmInventory)
+      .where(eq(pmInventory.id, parseInt(req.params.id)))
+      .returning();
+    if (!inventory) {
+      return res.status(404).json({ error: 'Inventory not found' });
+    }
+    res.json({ message: 'Inventory deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting inventory:', error);
+    res.status(500).json({ error: 'Failed to delete inventory' });
+  }
+});
+
+// --- PM INVENTORY ITEMS ---
+
+// Add inventory item
+crmRouter.post('/pm/inventory-items', requireAgent, async (req, res) => {
+  try {
+    const data = insertPmInventoryItemSchema.parse(req.body);
+    const [item] = await db.insert(pmInventoryItems).values(data).returning();
+    res.status(201).json(item);
+  } catch (error) {
+    console.error('Error creating inventory item:', error);
+    res.status(400).json({ error: 'Failed to create inventory item' });
+  }
+});
+
+// Update inventory item
+crmRouter.patch('/pm/inventory-items/:id', requireAgent, async (req, res) => {
+  try {
+    const [item] = await db.update(pmInventoryItems)
+      .set({ ...req.body, updatedAt: new Date() })
+      .where(eq(pmInventoryItems.id, parseInt(req.params.id)))
+      .returning();
+    if (!item) {
+      return res.status(404).json({ error: 'Inventory item not found' });
+    }
+    res.json(item);
+  } catch (error) {
+    console.error('Error updating inventory item:', error);
+    res.status(400).json({ error: 'Failed to update inventory item' });
+  }
+});
+
+// Delete inventory item
+crmRouter.delete('/pm/inventory-items/:id', requireAgent, async (req, res) => {
+  try {
+    const [item] = await db.delete(pmInventoryItems)
+      .where(eq(pmInventoryItems.id, parseInt(req.params.id)))
+      .returning();
+    if (!item) {
+      return res.status(404).json({ error: 'Inventory item not found' });
+    }
+    res.json({ message: 'Inventory item deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting inventory item:', error);
+    res.status(500).json({ error: 'Failed to delete inventory item' });
+  }
+});
+
+// --- PM BULK IMPORT ---
+
+// Import properties from CSV (using the new pm tables)
+crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const csvData = fs.readFileSync(req.file.path, 'utf-8');
+    const lines = csvData.split('\n').filter(line => line.trim());
+
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'CSV file is empty or has no data rows' });
+    }
+
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+    const imported = { landlords: 0, tenants: 0, properties: 0, tenancies: 0 };
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].match(/("([^"]*)"|[^,]*)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
+      const row: Record<string, string> = {};
+      headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+
+      // Create or find landlord
+      let landlordId: number | null = null;
+      if (row.landlord_name) {
+        const existingLandlords = await db.select().from(pmLandlords)
+          .where(eq(pmLandlords.name, row.landlord_name))
+          .limit(1);
+
+        if (existingLandlords.length > 0) {
+          landlordId = existingLandlords[0].id;
+        } else {
+          const [newLandlord] = await db.insert(pmLandlords).values({
+            name: row.landlord_name,
+            email: row.landlord_email || null,
+            phone: row.landlord_phone || null,
+            mobile: row.landlord_mobile || null,
+            address: row.landlord_address || null,
+            bankName: row.landlord_bank_name || null,
+            bankAccountNumber: row.landlord_account_number || null,
+            bankSortCode: row.landlord_sort_code || null,
+            status: 'active'
+          }).returning();
+          landlordId = newLandlord.id;
+          imported.landlords++;
+        }
+      }
+
+      // Create or find tenant
+      let tenantId: number | null = null;
+      if (row.tenant_name) {
+        const existingTenants = await db.select().from(pmTenants)
+          .where(eq(pmTenants.name, row.tenant_name))
+          .limit(1);
+
+        if (existingTenants.length > 0) {
+          tenantId = existingTenants[0].id;
+        } else {
+          const [newTenant] = await db.insert(pmTenants).values({
+            name: row.tenant_name,
+            email: row.tenant_email || null,
+            mobile: row.tenant_mobile || null,
+            status: 'active'
+          }).returning();
+          tenantId = newTenant.id;
+          imported.tenants++;
+        }
+      }
+
+      // Create property
+      if (row.property_address && landlordId) {
+        const postcode = row.property_address.match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '';
+
+        const [newProperty] = await db.insert(pmProperties).values({
+          address: row.property_address,
+          postcode: postcode,
+          landlordId: landlordId,
+          isManaged: true,
+          isListedRental: false,
+          isListedSale: false,
+          propertyCategory: 'residential',
+          propertyType: 'flat',
+          managementType: 'full',
+          managementStartDate: new Date(),
+          status: 'active'
+        }).returning();
+        imported.properties++;
+
+        // Create tenancy if tenant exists
+        if (tenantId) {
+          const startDate = row.tenancy_start_date ? new Date(row.tenancy_start_date) : new Date();
+          const endDate = row.tenancy_end_date ? new Date(row.tenancy_end_date) : null;
+          const rentAmount = parseFloat(row.rent_amount) || 0;
+          const depositAmount = parseFloat(row.deposit_amount) || 0;
+
+          const [newTenancy] = await db.insert(pmTenancies).values({
+            propertyId: newProperty.id,
+            landlordId: landlordId,
+            tenantId: tenantId,
+            startDate: startDate,
+            endDate: endDate,
+            rentAmount: rentAmount.toString(),
+            rentFrequency: row.rent_frequency || 'monthly',
+            depositAmount: depositAmount.toString(),
+            status: 'active'
+          }).returning();
+
+          // Create checklist items
+          const checklistItems = tenancyChecklistItemTypes.map(itemType => ({
+            tenancyId: newTenancy.id,
+            itemType,
+            isCompleted: false
+          }));
+          await db.insert(pmTenancyChecklist).values(checklistItems);
+          imported.tenancies++;
+        }
+      }
+    }
+
+    // Clean up uploaded file
+    fs.unlinkSync(req.file.path);
+
+    res.json({
+      message: 'Import completed successfully',
+      imported
+    });
+  } catch (error) {
+    console.error('Error importing properties:', error);
+    res.status(500).json({ error: 'Failed to import properties' });
+  }
+});
+
+// Get import template
+crmRouter.get('/pm/properties/template', requireAgent, (req, res) => {
+  const templatePath = path.join(process.cwd(), 'public', 'templates', 'managed-properties-import-template.csv');
+  if (fs.existsSync(templatePath)) {
+    res.download(templatePath);
+  } else {
+    // Create a default template
+    const template = `property_address,landlord_name,landlord_email,landlord_phone,landlord_address,landlord_mobile,landlord_bank_name,landlord_account_number,landlord_sort_code,tenant_name,tenant_email,tenant_mobile,tenancy_start_date,tenancy_end_date,rent_amount,rent_frequency,deposit_amount,notes
+"123 Example Street, London W10 5AD","John Smith",john.smith@email.com,02012345678,"45 Park Lane, London W1K 1PN",07700123456,"Barclays",12345678,20-00-00,"Jane Tenant",jane.tenant@email.com,07700654321,2024-02-01,2025-01-31,1500,monthly,3000,"Example managed property"`;
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=managed-properties-import-template.csv');
+    res.send(template);
+  }
+});
+
+// ============================================================================
+// SECURITY MATRIX ENDPOINTS - Admin only (clearance level 10)
+// ============================================================================
+
+// Get all security settings/features
+crmRouter.get('/security/features', requireAdmin, async (req, res) => {
+  try {
+    const features = await db.select().from(securitySettings).orderBy(securitySettings.category, securitySettings.featureName);
+
+    // If no features exist, seed with defaults
+    if (features.length === 0) {
+      const seeded = await db.insert(securitySettings).values(
+        DEFAULT_FEATURE_SECURITY.map(f => ({
+          featureKey: f.featureKey,
+          featureName: f.featureName,
+          description: f.description,
+          requiredClearance: f.requiredClearance,
+          category: f.category,
+          isEnabled: true
+        }))
+      ).returning();
+      return res.json(seeded);
+    }
+
+    res.json(features);
+  } catch (error) {
+    console.error('Error fetching security features:', error);
+    res.status(500).json({ error: 'Failed to fetch security features' });
+  }
+});
+
+// Update a security feature's clearance level
+crmRouter.put('/security/features/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { requiredClearance, isEnabled } = req.body;
+
+    // Get current value for audit log
+    const [current] = await db.select().from(securitySettings).where(eq(securitySettings.id, parseInt(id)));
+    if (!current) {
+      return res.status(404).json({ error: 'Feature not found' });
+    }
+
+    // Update the feature
+    const [updated] = await db.update(securitySettings)
+      .set({
+        requiredClearance: requiredClearance ?? current.requiredClearance,
+        isEnabled: isEnabled ?? current.isEnabled,
+        updatedAt: new Date()
+      })
+      .where(eq(securitySettings.id, parseInt(id)))
+      .returning();
+
+    // Log the change
+    await db.insert(securityAuditLog).values({
+      userId: (req as any).user.id,
+      action: 'feature_access_change',
+      targetType: 'feature',
+      targetId: parseInt(id),
+      targetName: current.featureName,
+      oldValue: JSON.stringify({ requiredClearance: current.requiredClearance, isEnabled: current.isEnabled }),
+      newValue: JSON.stringify({ requiredClearance: updated.requiredClearance, isEnabled: updated.isEnabled }),
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating security feature:', error);
+    res.status(500).json({ error: 'Failed to update security feature' });
+  }
+});
+
+// Get all roles with their clearance levels
+crmRouter.get('/security/roles', requireAdmin, async (req, res) => {
+  try {
+    const roles = await db.select().from(estateAgencyRoles).orderBy(desc(estateAgencyRoles.requiredClearance));
+
+    // Also include simple role clearances
+    const simpleRoles = Object.entries(SECURITY_CLEARANCE_LEVELS).map(([role, clearance]) => ({
+      roleCode: role,
+      roleName: role.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      clearance,
+      type: 'simple'
+    }));
+
+    res.json({
+      estateRoles: roles,
+      simpleRoles,
+      clearanceLabels: SECURITY_CLEARANCE_LABELS
+    });
+  } catch (error) {
+    console.error('Error fetching security roles:', error);
+    res.status(500).json({ error: 'Failed to fetch security roles' });
+  }
+});
+
+// Update a user's security clearance
+crmRouter.put('/security/users/:id/clearance', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { securityClearance } = req.body;
+
+    if (securityClearance < 1 || securityClearance > 10) {
+      return res.status(400).json({ error: 'Security clearance must be between 1 and 10' });
+    }
+
+    // Get current user for audit log
+    const [currentUser] = await db.select().from(users).where(eq(users.id, parseInt(id)));
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Don't allow lowering your own clearance below admin level
+    if ((req as any).user.id === parseInt(id) && securityClearance < 10) {
+      return res.status(400).json({ error: 'Cannot lower your own clearance below admin level' });
+    }
+
+    // Update user clearance
+    const [updated] = await db.update(users)
+      .set({ securityClearance })
+      .where(eq(users.id, parseInt(id)))
+      .returning();
+
+    // Log the change
+    await db.insert(securityAuditLog).values({
+      userId: (req as any).user.id,
+      action: 'clearance_change',
+      targetType: 'user',
+      targetId: parseInt(id),
+      targetName: currentUser.fullName,
+      oldValue: JSON.stringify({ securityClearance: currentUser.securityClearance }),
+      newValue: JSON.stringify({ securityClearance }),
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    // Remove password from response
+    const { password, ...userResponse } = updated;
+    res.json(userResponse);
+  } catch (error) {
+    console.error('Error updating user clearance:', error);
+    res.status(500).json({ error: 'Failed to update user clearance' });
+  }
+});
+
+// Get all users with their clearance levels
+crmRouter.get('/security/users', requireAdmin, async (req, res) => {
+  try {
+    const allUsers = await db.select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      fullName: users.fullName,
+      role: users.role,
+      securityClearance: users.securityClearance,
+      isActive: users.isActive,
+      lastLogin: users.lastLogin,
+      createdAt: users.createdAt
+    }).from(users).orderBy(desc(users.securityClearance), users.fullName);
+
+    res.json(allUsers);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get the full security matrix (features vs roles)
+crmRouter.get('/security/matrix', requireAdmin, async (req, res) => {
+  try {
+    const features = await db.select().from(securitySettings).orderBy(securitySettings.category);
+    const roles = await db.select().from(estateAgencyRoles);
+
+    // Build matrix: for each feature, determine which roles can access it
+    const matrix = features.map(feature => {
+      const roleAccess = roles.map(role => ({
+        roleCode: role.roleCode,
+        roleName: role.roleName,
+        canAccess: (role.requiredClearance ?? 5) >= feature.requiredClearance
+      }));
+
+      return {
+        featureKey: feature.featureKey,
+        featureName: feature.featureName,
+        requiredClearance: feature.requiredClearance,
+        category: feature.category,
+        roleAccess
+      };
+    });
+
+    res.json({
+      matrix,
+      clearanceLabels: SECURITY_CLEARANCE_LABELS
+    });
+  } catch (error) {
+    console.error('Error fetching security matrix:', error);
+    res.status(500).json({ error: 'Failed to fetch security matrix' });
+  }
+});
+
+// Get security audit log
+crmRouter.get('/security/audit-log', requireAdmin, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const logs = await db.select({
+      id: securityAuditLog.id,
+      userId: securityAuditLog.userId,
+      action: securityAuditLog.action,
+      targetType: securityAuditLog.targetType,
+      targetId: securityAuditLog.targetId,
+      targetName: securityAuditLog.targetName,
+      oldValue: securityAuditLog.oldValue,
+      newValue: securityAuditLog.newValue,
+      ipAddress: securityAuditLog.ipAddress,
+      createdAt: securityAuditLog.createdAt,
+      userName: users.fullName
+    })
+    .from(securityAuditLog)
+    .leftJoin(users, eq(securityAuditLog.userId, users.id))
+    .orderBy(desc(securityAuditLog.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+    res.json(logs);
+  } catch (error) {
+    console.error('Error fetching audit log:', error);
+    res.status(500).json({ error: 'Failed to fetch audit log' });
+  }
+});
+
+// Get security stats for dashboard
+crmRouter.get('/security/stats', requireAdmin, async (req, res) => {
+  try {
+    // Count users by clearance level
+    const usersByLevel = await db.select({
+      clearance: users.securityClearance,
+      count: sql<number>`count(*)`
+    })
+    .from(users)
+    .groupBy(users.securityClearance)
+    .orderBy(users.securityClearance);
+
+    // Count features by category
+    const featuresByCategory = await db.select({
+      category: securitySettings.category,
+      count: sql<number>`count(*)`
+    })
+    .from(securitySettings)
+    .groupBy(securitySettings.category);
+
+    // Recent audit log count
+    const [recentActivity] = await db.select({
+      count: sql<number>`count(*)`
+    })
+    .from(securityAuditLog)
+    .where(sql`${securityAuditLog.createdAt} > NOW() - INTERVAL '7 days'`);
+
+    res.json({
+      usersByLevel: usersByLevel.map(u => ({
+        ...u,
+        label: SECURITY_CLEARANCE_LABELS[u.clearance as keyof typeof SECURITY_CLEARANCE_LABELS] || `Level ${u.clearance}`
+      })),
+      featuresByCategory,
+      recentActivityCount: recentActivity?.count || 0
+    });
+  } catch (error) {
+    console.error('Error fetching security stats:', error);
+    res.status(500).json({ error: 'Failed to fetch security stats' });
+  }
+});
+
+// ==========================================
+// WEBSITE IMPORT ROUTES
+// Import properties from johnbarclay.co.uk
+// ==========================================
+
+// Import sales listings from the website
+crmRouter.post('/website-import/sales', requireAgent, async (req, res) => {
+  try {
+    console.log('Starting website sales import...');
+    const result = await websiteImport.syncSalesListings();
+
+    // Cleanup browser after import
+    await websiteImport.cleanup();
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Website sales import error:', error);
+    await websiteImport.cleanup();
+    res.status(500).json({
+      success: false,
+      message: `Import failed: ${error.message}`,
+      errors: [error.message]
+    });
+  }
+});
+
+// Import rental listings from the website
+crmRouter.post('/website-import/rentals', requireAgent, async (req, res) => {
+  try {
+    console.log('Starting website rentals import...');
+    const result = await websiteImport.syncRentalListings();
+
+    await websiteImport.cleanup();
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Website rentals import error:', error);
+    await websiteImport.cleanup();
+    res.status(500).json({
+      success: false,
+      message: `Import failed: ${error.message}`,
+      errors: [error.message]
+    });
+  }
+});
+
+// Import all listings (both sales and rentals)
+crmRouter.post('/website-import/all', requireAgent, async (req, res) => {
+  try {
+    console.log('Starting full website import...');
+    const result = await websiteImport.syncAllListings();
+
+    await websiteImport.cleanup();
+
+    res.json({
+      success: result.sales.success && result.rentals.success,
+      message: `Sales: ${result.sales.message} | Rentals: ${result.rentals.message}`,
+      sales: result.sales,
+      rentals: result.rentals
+    });
+  } catch (error: any) {
+    console.error('Website full import error:', error);
+    await websiteImport.cleanup();
+    res.status(500).json({
+      success: false,
+      message: `Import failed: ${error.message}`,
+      errors: [error.message]
+    });
+  }
+});
+
+// ==========================================
+// SECURITY ACCESS CONTROL API
+// ==========================================
+
+// Middleware to require owner/admin clearance for security operations
+const requireSecurityAccess = async (req: any, res: any, next: any) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  // Only users with clearance 9+ (owner/admin) can manage security settings
+  if (req.user.securityClearance < 9 && req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Insufficient security clearance' });
+  }
+  next();
+};
+
+// Get current user's permissions (for frontend permission checking)
+crmRouter.get('/security/my-permissions', requireAgent, async (req: any, res) => {
+  try {
+    // Get user's custom permissions
+    const customPerms = await db.select()
+      .from(userCustomPermissions)
+      .where(eq(userCustomPermissions.userId, req.user.id));
+
+    // Determine access level code based on clearance
+    let accessLevelCode = null;
+    const [userAccessLevel] = await db.select()
+      .from(accessLevels)
+      .where(eq(accessLevels.clearanceLevel, req.user.securityClearance))
+      .limit(1);
+
+    if (userAccessLevel) {
+      accessLevelCode = userAccessLevel.levelCode;
+    }
+
+    res.json({
+      userId: req.user.id,
+      securityClearance: req.user.securityClearance,
+      role: req.user.role,
+      accessLevelCode,
+      customPermissions: customPerms.map(p => ({
+        featureKey: p.featureKey,
+        accessGranted: p.accessGranted
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching user permissions:', error);
+    res.status(500).json({ error: 'Failed to fetch permissions' });
+  }
+});
+
+// Get all access levels
+crmRouter.get('/security/access-levels', requireAgent, async (req, res) => {
+  try {
+    const levels = await db.select().from(accessLevels).orderBy(desc(accessLevels.clearanceLevel));
+    res.json(levels);
+  } catch (error) {
+    console.error('Error fetching access levels:', error);
+    res.status(500).json({ error: 'Failed to fetch access levels' });
+  }
+});
+
+// Get all level permissions (which levels have access to which features)
+crmRouter.get('/security/level-permissions', requireAgent, async (req, res) => {
+  try {
+    const permissions = await db.select().from(accessLevelPermissions);
+
+    // Group by level code
+    const result: Record<string, string[]> = {};
+
+    // First, populate from DEFAULT_ACCESS_LEVEL_PERMISSIONS
+    Object.entries(DEFAULT_ACCESS_LEVEL_PERMISSIONS).forEach(([levelCode, featureKeys]) => {
+      result[levelCode] = [...featureKeys];
+    });
+
+    // Then apply any database overrides
+    // Get access levels to map IDs to codes
+    const levels = await db.select().from(accessLevels);
+    const levelIdToCode: Record<number, string> = {};
+    levels.forEach(l => { levelIdToCode[l.id] = l.levelCode; });
+
+    // Note: The accessLevelPermissions table stores individual overrides
+    // For now, we return the defaults since the table uses a different structure
+    // TODO: Migrate to use this table for full override support
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching level permissions:', error);
+    res.status(500).json({ error: 'Failed to fetch level permissions' });
+  }
+});
+
+// Toggle level permission (grant or revoke access to a feature for a specific level)
+crmRouter.post('/security/level-permissions', requireSecurityAccess, async (req: any, res) => {
+  try {
+    const { levelCode, featureKey, hasAccess } = req.body;
+
+    if (!levelCode || !featureKey || hasAccess === undefined) {
+      return res.status(400).json({ error: 'levelCode, featureKey, and hasAccess are required' });
+    }
+
+    // Get the access level ID
+    const [level] = await db.select().from(accessLevels).where(eq(accessLevels.levelCode, levelCode));
+    if (!level) {
+      return res.status(404).json({ error: 'Access level not found' });
+    }
+
+    // Check if permission already exists
+    const [existing] = await db.select()
+      .from(accessLevelPermissions)
+      .where(and(
+        eq(accessLevelPermissions.accessLevelId, level.id),
+        eq(accessLevelPermissions.featureKey, featureKey)
+      ));
+
+    if (hasAccess) {
+      // Grant access
+      if (!existing) {
+        await db.insert(accessLevelPermissions).values({
+          accessLevelId: level.id,
+          featureKey,
+          canRead: true,
+          canWrite: true,
+          canDelete: false,
+          canAdmin: false
+        });
+      }
+    } else {
+      // Revoke access
+      if (existing) {
+        await db.delete(accessLevelPermissions)
+          .where(eq(accessLevelPermissions.id, existing.id));
+      }
+    }
+
+    // Log the change
+    await db.insert(securityAuditLog).values({
+      userId: req.user.id,
+      action: 'level_permission_change',
+      targetType: 'access_level',
+      targetId: level.id,
+      targetName: `${level.levelName} - ${featureKey}`,
+      oldValue: JSON.stringify({ hasAccess: !!existing }),
+      newValue: JSON.stringify({ hasAccess }),
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({ success: true, levelCode, featureKey, hasAccess });
+  } catch (error) {
+    console.error('Error toggling level permission:', error);
+    res.status(500).json({ error: 'Failed to update permission' });
+  }
+});
+
+// Get all feature modules
+crmRouter.get('/security/feature-modules', requireAgent, async (req, res) => {
+  try {
+    const modules = await db.select().from(featureModules).orderBy(featureModules.displayOrder);
+    res.json(modules);
+  } catch (error) {
+    console.error('Error fetching feature modules:', error);
+    res.status(500).json({ error: 'Failed to fetch feature modules' });
+  }
+});
+
+// Get all features (security settings)
+crmRouter.get('/security/features', requireAgent, async (req, res) => {
+  try {
+    const features = await db.select().from(securitySettings).orderBy(securitySettings.category);
+    res.json(features);
+  } catch (error) {
+    console.error('Error fetching features:', error);
+    res.status(500).json({ error: 'Failed to fetch features' });
+  }
+});
+
+// Get all users with their access levels
+crmRouter.get('/security/users', requireSecurityAccess, async (req, res) => {
+  try {
+    const allUsers = await db.select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      fullName: users.fullName,
+      phone: users.phone,
+      role: users.role,
+      securityClearance: users.securityClearance,
+      isActive: users.isActive,
+      lastLogin: users.lastLogin,
+      createdAt: users.createdAt
+    }).from(users).orderBy(desc(users.securityClearance), users.fullName);
+
+    // Get custom permissions for each user
+    const customPerms = await db.select().from(userCustomPermissions);
+
+    // Map custom permissions to users
+    const usersWithPerms = allUsers.map(user => ({
+      ...user,
+      customPermissions: customPerms.filter(p => p.userId === user.id)
+    }));
+
+    res.json(usersWithPerms);
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({ error: 'Failed to fetch users' });
+  }
+});
+
+// Get a single user's full security profile
+crmRouter.get('/security/users/:id', requireSecurityAccess, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    const [user] = await db.select({
+      id: users.id,
+      username: users.username,
+      email: users.email,
+      fullName: users.fullName,
+      phone: users.phone,
+      role: users.role,
+      securityClearance: users.securityClearance,
+      isActive: users.isActive,
+      lastLogin: users.lastLogin,
+      createdAt: users.createdAt
+    }).from(users).where(eq(users.id, userId));
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get user's access level
+    const userAccessLevel = await db.select()
+      .from(accessLevels)
+      .where(eq(accessLevels.clearanceLevel, user.securityClearance))
+      .limit(1);
+
+    // Get custom permissions
+    const customPerms = await db.select()
+      .from(userCustomPermissions)
+      .where(eq(userCustomPermissions.userId, userId));
+
+    // Calculate effective permissions based on access level + custom overrides
+    const allFeatures = await db.select().from(securitySettings);
+    const accessLevelPerms = DEFAULT_ACCESS_LEVEL_PERMISSIONS[userAccessLevel[0]?.levelCode as keyof typeof DEFAULT_ACCESS_LEVEL_PERMISSIONS] || [];
+
+    const effectivePermissions = allFeatures.map(feature => {
+      const customPerm = customPerms.find(p => p.featureKey === feature.featureKey);
+      const hasBaseAccess = accessLevelPerms.includes(feature.featureKey) || user.securityClearance >= feature.requiredClearance;
+
+      return {
+        featureKey: feature.featureKey,
+        featureName: feature.featureName,
+        category: feature.category,
+        hasAccess: customPerm ? customPerm.accessGranted : hasBaseAccess,
+        isCustom: !!customPerm,
+        customReason: customPerm?.reason
+      };
+    });
+
+    res.json({
+      user,
+      accessLevel: userAccessLevel[0] || null,
+      customPermissions: customPerms,
+      effectivePermissions
+    });
+  } catch (error) {
+    console.error('Error fetching user security profile:', error);
+    res.status(500).json({ error: 'Failed to fetch user security profile' });
+  }
+});
+
+// Update user's access level (clearance)
+crmRouter.patch('/security/users/:id/access-level', requireSecurityAccess, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const { accessLevelCode, clearanceLevel: providedClearanceLevel, reason } = req.body;
+
+    // Get current user info
+    const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Determine clearance level from accessLevelCode or use provided clearanceLevel
+    let clearanceLevel = providedClearanceLevel;
+    let levelName = '';
+
+    if (accessLevelCode) {
+      const level = DEFAULT_ACCESS_LEVELS.find(l => l.levelCode === accessLevelCode);
+      if (!level) {
+        return res.status(400).json({ error: 'Invalid access level code' });
+      }
+      clearanceLevel = level.clearanceLevel;
+      levelName = level.levelName;
+    }
+
+    if (!clearanceLevel) {
+      return res.status(400).json({ error: 'Either accessLevelCode or clearanceLevel is required' });
+    }
+
+    // Cannot elevate someone above your own level
+    if (clearanceLevel > req.user.securityClearance) {
+      return res.status(403).json({ error: 'Cannot assign clearance higher than your own' });
+    }
+
+    // Cannot demote someone at or above your own level (unless you're system admin)
+    if (targetUser.securityClearance >= req.user.securityClearance && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Cannot modify access for users at or above your clearance level' });
+    }
+
+    const oldValue = targetUser.securityClearance;
+
+    // Update user's clearance and optionally the access level code
+    const updateData: any = { securityClearance: clearanceLevel };
+    if (accessLevelCode) {
+      updateData.accessLevelCode = accessLevelCode;
+    }
+
+    await db.update(users)
+      .set(updateData)
+      .where(eq(users.id, userId));
+
+    // Log the change
+    await db.insert(securityAuditLog).values({
+      userId: req.user.id,
+      action: 'clearance_change',
+      targetType: 'user',
+      targetId: userId,
+      targetName: targetUser.fullName,
+      oldValue: JSON.stringify({ clearanceLevel: oldValue, accessLevelCode: targetUser.accessLevelCode }),
+      newValue: JSON.stringify({ clearanceLevel, accessLevelCode, levelName, reason }),
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({ success: true, message: 'Access level updated', accessLevelCode, clearanceLevel, levelName });
+  } catch (error) {
+    console.error('Error updating user access level:', error);
+    res.status(500).json({ error: 'Failed to update access level' });
+  }
+});
+
+// Add/update custom permission for a user
+crmRouter.post('/security/users/:id/permissions', requireSecurityAccess, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const { featureKey, accessGranted, reason, expiresAt } = req.body;
+
+    // Validate user exists
+    const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check if custom permission already exists
+    const [existing] = await db.select()
+      .from(userCustomPermissions)
+      .where(and(
+        eq(userCustomPermissions.userId, userId),
+        eq(userCustomPermissions.featureKey, featureKey)
+      ));
+
+    if (existing) {
+      // Update existing
+      await db.update(userCustomPermissions)
+        .set({
+          accessGranted,
+          reason,
+          expiresAt: expiresAt ? new Date(expiresAt) : null,
+          grantedBy: req.user.id,
+          updatedAt: new Date()
+        })
+        .where(eq(userCustomPermissions.id, existing.id));
+    } else {
+      // Insert new
+      await db.insert(userCustomPermissions).values({
+        userId,
+        featureKey,
+        accessGranted,
+        grantedBy: req.user.id,
+        reason,
+        expiresAt: expiresAt ? new Date(expiresAt) : null
+      });
+    }
+
+    // Log the change
+    await db.insert(securityAuditLog).values({
+      userId: req.user.id,
+      action: accessGranted ? 'permission_granted' : 'permission_revoked',
+      targetType: 'user',
+      targetId: userId,
+      targetName: targetUser.fullName,
+      oldValue: existing ? JSON.stringify({ featureKey, accessGranted: existing.accessGranted }) : null,
+      newValue: JSON.stringify({ featureKey, accessGranted, reason }),
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({ success: true, message: 'Permission updated' });
+  } catch (error) {
+    console.error('Error updating user permission:', error);
+    res.status(500).json({ error: 'Failed to update permission' });
+  }
+});
+
+// Remove custom permission (revert to default)
+crmRouter.delete('/security/users/:id/permissions/:featureKey', requireSecurityAccess, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+    const { featureKey } = req.params;
+
+    const [existing] = await db.select()
+      .from(userCustomPermissions)
+      .where(and(
+        eq(userCustomPermissions.userId, userId),
+        eq(userCustomPermissions.featureKey, featureKey)
+      ));
+
+    if (existing) {
+      await db.delete(userCustomPermissions).where(eq(userCustomPermissions.id, existing.id));
+
+      // Log the change
+      const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+      await db.insert(securityAuditLog).values({
+        userId: req.user.id,
+        action: 'permission_reset',
+        targetType: 'user',
+        targetId: userId,
+        targetName: targetUser?.fullName || 'Unknown',
+        oldValue: JSON.stringify({ featureKey, accessGranted: existing.accessGranted }),
+        newValue: JSON.stringify({ featureKey, reverted_to_default: true }),
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent')
+      });
+    }
+
+    res.json({ success: true, message: 'Permission reset to default' });
+  } catch (error) {
+    console.error('Error removing custom permission:', error);
+    res.status(500).json({ error: 'Failed to remove custom permission' });
+  }
+});
+
+// Delete user (admin only)
+crmRouter.delete('/security/users/:id', requireAdmin, async (req: any, res) => {
+  try {
+    const userId = parseInt(req.params.id);
+
+    // Prevent deleting yourself
+    if (userId === req.user.id) {
+      return res.status(400).json({ error: 'Cannot delete your own account' });
+    }
+
+    // Get user info before deleting for audit log
+    const [targetUser] = await db.select().from(users).where(eq(users.id, userId));
+    if (!targetUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Delete custom permissions first (foreign key constraint)
+    await db.delete(userCustomPermissions).where(eq(userCustomPermissions.userId, userId));
+
+    // Delete the user
+    await db.delete(users).where(eq(users.id, userId));
+
+    // Log the deletion
+    await db.insert(securityAuditLog).values({
+      userId: req.user.id,
+      action: 'user_deleted',
+      targetType: 'user',
+      targetId: userId,
+      targetName: targetUser.fullName || targetUser.username,
+      oldValue: JSON.stringify({
+        username: targetUser.username,
+        email: targetUser.email,
+        fullName: targetUser.fullName,
+        role: targetUser.role,
+        securityClearance: targetUser.securityClearance
+      }),
+      newValue: null,
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({ success: true, message: 'User deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting user:', error);
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// Get security audit log
+crmRouter.get('/security/audit-log', requireSecurityAccess, async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 100;
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const logs = await db.select({
+      id: securityAuditLog.id,
+      userId: securityAuditLog.userId,
+      action: securityAuditLog.action,
+      targetType: securityAuditLog.targetType,
+      targetId: securityAuditLog.targetId,
+      targetName: securityAuditLog.targetName,
+      oldValue: securityAuditLog.oldValue,
+      newValue: securityAuditLog.newValue,
+      ipAddress: securityAuditLog.ipAddress,
+      createdAt: securityAuditLog.createdAt,
+      actorName: users.fullName
+    })
+    .from(securityAuditLog)
+    .leftJoin(users, eq(securityAuditLog.userId, users.id))
+    .orderBy(desc(securityAuditLog.createdAt))
+    .limit(limit)
+    .offset(offset);
+
+    res.json(logs);
+  } catch (error) {
+    console.error('Error fetching audit log:', error);
+    res.status(500).json({ error: 'Failed to fetch audit log' });
+  }
+});
+
+// Initialize default access levels and features (admin only)
+crmRouter.post('/security/initialize', requireAdmin, async (req, res) => {
+  try {
+    // Insert default access levels if they don't exist
+    for (const level of DEFAULT_ACCESS_LEVELS) {
+      const [existing] = await db.select()
+        .from(accessLevels)
+        .where(eq(accessLevels.levelCode, level.levelCode));
+
+      if (!existing) {
+        await db.insert(accessLevels).values(level);
+      }
+    }
+
+    // Insert default feature modules if they don't exist
+    for (const module of DEFAULT_FEATURE_MODULES) {
+      const [existing] = await db.select()
+        .from(featureModules)
+        .where(eq(featureModules.moduleCode, module.moduleCode));
+
+      if (!existing) {
+        await db.insert(featureModules).values(module);
+      }
+    }
+
+    // Insert default feature security settings if they don't exist
+    for (const feature of DEFAULT_FEATURE_SECURITY) {
+      const [existing] = await db.select()
+        .from(securitySettings)
+        .where(eq(securitySettings.featureKey, feature.featureKey));
+
+      if (!existing) {
+        await db.insert(securitySettings).values({
+          featureKey: feature.featureKey,
+          featureName: feature.featureName,
+          description: feature.description,
+          requiredClearance: feature.requiredClearance,
+          category: feature.category
+        });
+      }
+    }
+
+    res.json({ success: true, message: 'Security settings initialized' });
+  } catch (error) {
+    console.error('Error initializing security settings:', error);
+    res.status(500).json({ error: 'Failed to initialize security settings' });
+  }
+});
+
+// Seed default John Barclay staff users
+crmRouter.post('/security/seed-staff', requireAdmin, async (req: any, res) => {
+  try {
+    const { scrypt, randomBytes } = await import('crypto');
+    const { promisify } = await import('util');
+    const scryptAsync = promisify(scrypt);
+
+    // Default password (should be changed on first login)
+    const defaultPassword = 'JohnBarclay2024!';
+    const salt = randomBytes(16).toString("hex");
+    const buf = (await scryptAsync(defaultPassword, salt, 64)) as Buffer;
+    const hashedPassword = `${buf.toString("hex")}.${salt}`;
+
+    // Staff members to create
+    const staffMembers = [
+      {
+        username: 'aslam.noor',
+        email: 'Aslam@JohnBarclay.co.uk',
+        fullName: 'Aslam Noor',
+        role: 'admin' as const,
+        securityClearance: 9, // Owner level
+        accessLevelCode: 'owner'
+      },
+      {
+        username: 'iury.campos',
+        email: 'Iury@JohnBarclay.co.uk',
+        fullName: 'Iury Campos',
+        role: 'agent' as const,
+        securityClearance: 8, // General Manager level
+        accessLevelCode: 'general_manager'
+      },
+      {
+        username: 'mayssaa.sabrah',
+        email: 'Mayssaa@JohnBarclay.co.uk',
+        fullName: 'Mayssaa Sabrah',
+        role: 'agent' as const,
+        securityClearance: 5, // Sales & Lettings Negotiator level
+        accessLevelCode: 'sales_lettings_negotiator'
+      }
+    ];
+
+    const results = [];
+
+    for (const staff of staffMembers) {
+      // Check if user already exists
+      const [existingUser] = await db.select()
+        .from(users)
+        .where(
+          or(
+            eq(users.username, staff.username),
+            eq(users.email, staff.email)
+          )
+        );
+
+      if (existingUser) {
+        // Update existing user's clearance if needed
+        await db.update(users)
+          .set({
+            securityClearance: staff.securityClearance,
+            role: staff.role
+          })
+          .where(eq(users.id, existingUser.id));
+
+        results.push({
+          user: staff.fullName,
+          action: 'updated',
+          accessLevel: staff.accessLevelCode,
+          clearance: staff.securityClearance
+        });
+      } else {
+        // Create new user
+        const [newUser] = await db.insert(users).values({
+          username: staff.username,
+          email: staff.email,
+          fullName: staff.fullName,
+          password: hashedPassword,
+          role: staff.role,
+          securityClearance: staff.securityClearance,
+          isActive: true,
+          tempPassword: true // Force password change on first login
+        }).returning();
+
+        results.push({
+          user: staff.fullName,
+          action: 'created',
+          accessLevel: staff.accessLevelCode,
+          clearance: staff.securityClearance,
+          id: newUser.id
+        });
+      }
+    }
+
+    // Log the action
+    await db.insert(securityAuditLog).values({
+      userId: req.user.id,
+      action: 'staff_seeded',
+      targetType: 'system',
+      targetId: 0,
+      targetName: 'Default Staff Setup',
+      oldValue: null,
+      newValue: JSON.stringify(results),
+      ipAddress: req.ip || 'unknown'
+    });
+
+    res.json({
+      success: true,
+      message: 'Staff users have been set up',
+      results,
+      note: 'Default password is "JohnBarclay2024!" - users should change on first login'
+    });
+  } catch (error) {
+    console.error('Error seeding staff users:', error);
+    res.status(500).json({ error: 'Failed to seed staff users' });
+  }
+});
+
+// Get the access matrix (which roles have access to which features)
+crmRouter.get('/security/access-matrix', requireAgent, async (req, res) => {
+  try {
+    const levels = await db.select().from(accessLevels).orderBy(desc(accessLevels.clearanceLevel));
+    const features = await db.select().from(securitySettings).orderBy(securitySettings.category);
+    const modules = await db.select().from(featureModules).orderBy(featureModules.displayOrder);
+
+    // Build the matrix
+    const matrix = levels.map(level => {
+      const levelPerms = DEFAULT_ACCESS_LEVEL_PERMISSIONS[level.levelCode as keyof typeof DEFAULT_ACCESS_LEVEL_PERMISSIONS] || [];
+
+      return {
+        level,
+        permissions: features.map(feature => ({
+          featureKey: feature.featureKey,
+          featureName: feature.featureName,
+          category: feature.category,
+          hasAccess: levelPerms.includes(feature.featureKey) || level.clearanceLevel >= feature.requiredClearance
+        }))
+      };
+    });
+
+    res.json({
+      accessLevels: levels,
+      features,
+      modules,
+      matrix,
+      clearanceLabels: SECURITY_CLEARANCE_LABELS
+    });
+  } catch (error) {
+    console.error('Error fetching access matrix:', error);
+    res.status(500).json({ error: 'Failed to fetch access matrix' });
+  }
+});
+
+// Check if current user has access to a specific feature
+crmRouter.get('/security/check/:featureKey', requireAgent, async (req: any, res) => {
+  try {
+    const { featureKey } = req.params;
+    const userId = req.user.id;
+
+    // Get feature requirements
+    const [feature] = await db.select()
+      .from(securitySettings)
+      .where(eq(securitySettings.featureKey, featureKey));
+
+    if (!feature) {
+      return res.json({ hasAccess: false, reason: 'Feature not found' });
+    }
+
+    // Check for custom permission override
+    const [customPerm] = await db.select()
+      .from(userCustomPermissions)
+      .where(and(
+        eq(userCustomPermissions.userId, userId),
+        eq(userCustomPermissions.featureKey, featureKey)
+      ));
+
+    if (customPerm) {
+      // Check if expired
+      if (customPerm.expiresAt && new Date(customPerm.expiresAt) < new Date()) {
+        // Permission expired, delete it
+        await db.delete(userCustomPermissions).where(eq(userCustomPermissions.id, customPerm.id));
+      } else {
+        return res.json({
+          hasAccess: customPerm.accessGranted,
+          reason: customPerm.accessGranted ? 'Custom permission granted' : 'Custom permission revoked',
+          isCustom: true
+        });
+      }
+    }
+
+    // Check based on clearance level
+    const hasAccess = req.user.securityClearance >= feature.requiredClearance;
+
+    res.json({
+      hasAccess,
+      reason: hasAccess
+        ? `Clearance level ${req.user.securityClearance} >= required ${feature.requiredClearance}`
+        : `Clearance level ${req.user.securityClearance} < required ${feature.requiredClearance}`,
+      isCustom: false
+    });
+  } catch (error) {
+    console.error('Error checking feature access:', error);
+    res.status(500).json({ error: 'Failed to check feature access' });
+  }
+});
+
+// Create a new user with specific access level (admin/owner only)
+crmRouter.post('/security/users', requireSecurityAccess, async (req: any, res) => {
+  try {
+    const { username, email, fullName, phone, accessLevelCode, password } = req.body;
+
+    // Get the access level from DB or use defaults
+    let level = null;
+    try {
+      const [dbLevel] = await db.select()
+        .from(accessLevels)
+        .where(eq(accessLevels.levelCode, accessLevelCode));
+      level = dbLevel;
+    } catch (e) {
+      // Table might not exist yet
+    }
+
+    // Fallback to defaults if not in DB
+    if (!level) {
+      const defaultLevel = DEFAULT_ACCESS_LEVELS.find(l => l.levelCode === accessLevelCode);
+      if (defaultLevel) {
+        level = defaultLevel;
+      }
+    }
+
+    if (!level) {
+      return res.status(400).json({ error: 'Invalid access level' });
+    }
+
+    // Cannot create user with higher clearance than yourself
+    if (level.clearanceLevel > req.user.securityClearance) {
+      return res.status(403).json({ error: 'Cannot create user with higher clearance than your own' });
+    }
+
+    // Check if username or email already exists
+    const [existingUsername] = await db.select().from(users).where(eq(users.username, username));
+    if (existingUsername) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    const [existingEmail] = await db.select().from(users).where(eq(users.email, email));
+    if (existingEmail) {
+      return res.status(400).json({ error: 'Email already exists' });
+    }
+
+    // Hash the password (using the same method as auth.ts)
+    const { scrypt, randomBytes } = await import('crypto');
+    const { promisify } = await import('util');
+    const scryptAsync = promisify(scrypt);
+
+    const salt = randomBytes(16).toString("hex");
+    const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+    const hashedPassword = `${buf.toString("hex")}.${salt}`;
+
+    // Create the user
+    const [newUser] = await db.insert(users).values({
+      username,
+      email,
+      fullName,
+      phone,
+      password: hashedPassword,
+      role: level.clearanceLevel >= 9 ? 'admin' : 'agent',
+      securityClearance: level.clearanceLevel,
+      isActive: true,
+      tempPassword: true // Force password change on first login
+    }).returning();
+
+    // Log the creation
+    await db.insert(securityAuditLog).values({
+      userId: req.user.id,
+      action: 'user_created',
+      targetType: 'user',
+      targetId: newUser.id,
+      targetName: newUser.fullName,
+      oldValue: null,
+      newValue: JSON.stringify({ accessLevelCode, clearanceLevel: level.clearanceLevel }),
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent')
+    });
+
+    res.json({
+      success: true,
+      user: {
+        id: newUser.id,
+        username: newUser.username,
+        email: newUser.email,
+        fullName: newUser.fullName,
+        securityClearance: newUser.securityClearance
+      }
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Failed to create user' });
   }
 });

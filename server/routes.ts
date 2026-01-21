@@ -13,6 +13,7 @@ import { setupAuth } from './auth';
 import { parseNaturalLanguageQuery } from './openai';
 import { parseWithOpenAI } from './aiPropertySearch';
 import { SearchFilters, ParsedIntent } from '@shared/schema';
+import { aiPhone } from './aiPhoneService';
 
 // Basic pattern matching for property queries (fallback)
 function parseBasicQuery(query: string): ParsedIntent {
@@ -168,6 +169,7 @@ function parsePrice(priceStr: string): number {
 
 
 import { crmRouter } from './crmRoutes';
+import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
 import path from 'path';
 import express from 'express';
 
@@ -179,6 +181,60 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register CRM router
   app.use('/api/crm', crmRouter);
+
+  // ==========================================
+  // TWILIO VOICE WEBHOOKS (at /api/voice/*)
+  // These are called by Twilio for inbound calls
+  // ==========================================
+
+  // Twilio webhook for inbound calls
+  app.post('/api/voice/inbound', async (req, res) => {
+    try {
+      const twiml = await aiPhone.handleInboundCall(req.body);
+      res.type('text/xml');
+      res.send(twiml);
+    } catch (error) {
+      console.error('Error handling inbound call:', error);
+      res.type('text/xml');
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>We're experiencing technical difficulties. Please call back later.</Say>
+  <Hangup/>
+</Response>`);
+    }
+  });
+
+  // Process speech input from Twilio
+  app.post('/api/voice/process-speech', async (req, res) => {
+    try {
+      const twiml = await aiPhone.handleSpeechInput(req.body);
+      res.type('text/xml');
+      res.send(twiml);
+    } catch (error) {
+      console.error('Error processing speech:', error);
+      res.type('text/xml');
+      res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say>I apologize, I couldn't process that. Please try again.</Say>
+  <Gather input="speech" action="/api/voice/process-speech" method="POST" speechTimeout="auto" language="en-GB">
+  </Gather>
+</Response>`);
+    }
+  });
+
+  // Call status webhook
+  app.post('/api/voice/status', async (req, res) => {
+    try {
+      await aiPhone.handleCallStatus(req.body);
+      res.sendStatus(200);
+    } catch (error) {
+      console.error('Error handling call status:', error);
+      res.sendStatus(500);
+    }
+  });
+
+  // Register Email Integration router (Microsoft 365)
+  app.use('/api/email-integration', emailIntegrationRoutes);
 
   // Serve uploaded property images statically
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
@@ -757,6 +813,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(properties);
     } catch (err) {
       res.status(500).json({ error: 'Failed to search properties' });
+    }
+  });
+
+  // Get all contacts (website leads)
+  app.get('/api/contacts', async (req: Request, res: Response) => {
+    try {
+      const contactsList = await storage.getAllContacts();
+      res.json(contactsList);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to retrieve contacts' });
+    }
+  });
+
+  // Update contact status
+  app.patch('/api/contacts/:id/status', async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid contact ID' });
+    }
+
+    if (!status || typeof status !== 'string') {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    try {
+      const contact = await storage.updateContactStatus(id, status);
+      if (!contact) {
+        return res.status(404).json({ error: 'Contact not found' });
+      }
+      res.json(contact);
+    } catch (err) {
+      res.status(500).json({ error: 'Failed to update contact status' });
     }
   });
 

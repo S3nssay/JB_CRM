@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Wrench, Shield, AlertCircle, CheckCircle, Clock, Calendar, Users, FileText, Plus, Eye, Send, AlertTriangle, Home, ArrowLeft, Building, User, Phone, Mail, CreditCard, ClipboardCheck, ExternalLink, UserCheck } from 'lucide-react';
+import { Loader2, Wrench, Shield, AlertCircle, CheckCircle, Clock, Calendar, Users, FileText, Plus, Eye, Send, AlertTriangle, Home, ArrowLeft, Building, User, Phone, Mail, CreditCard, ClipboardCheck, ExternalLink, UserCheck, Upload, Download, FileSpreadsheet } from 'lucide-react';
 import { Link } from 'wouter';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
@@ -148,6 +148,9 @@ export default function PropertyManagement() {
   const [showLandlordDialog, setShowLandlordDialog] = useState(false);
   const [showTenantDialog, setShowTenantDialog] = useState(false);
   const [showPropertyDetailsDialog, setShowPropertyDetailsDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importResults, setImportResults] = useState<any>(null);
   const [selectedLandlord, setSelectedLandlord] = useState<any>(null);
   const [selectedTenant, setSelectedTenant] = useState<any>(null);
   const [selectedManagedProperty, setSelectedManagedProperty] = useState<any>(null);
@@ -273,14 +276,14 @@ export default function PropertyManagement() {
     }
   });
 
-  // Update property status
+  // Update property marketing status (for PM properties)
   const updatePropertyStatus = useMutation({
-    mutationFn: async ({ id, status, listingType }: { id: number; status: string; listingType?: string }) => {
-      return apiRequest(`/api/crm/properties/${id}`, 'PATCH', { status, listingType });
+    mutationFn: async ({ id, isListedRental, isListedSale }: { id: number; isListedRental?: boolean; isListedSale?: boolean }) => {
+      return apiRequest(`/api/crm/pm/properties/${id}`, 'PATCH', { isListedRental, isListedSale });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/crm/managed-properties'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/crm/properties'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/pm/properties'] });
       toast({
         title: "Property updated",
         description: "Marketing status has been updated."
@@ -298,6 +301,51 @@ export default function PropertyManagement() {
   // Contractor selection dialog state
   const [showContractorDialog, setShowContractorDialog] = useState(false);
   const [selectedTicketForContractor, setSelectedTicketForContractor] = useState<any>(null);
+
+  // Import managed properties mutation
+  const importProperties = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/crm/managed-properties/import', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include'
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Import failed');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/managed-properties'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/properties'] });
+      setImportResults(data);
+      toast({
+        title: "Import complete",
+        description: `Successfully imported ${data.successCount} properties`
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Import failed",
+        description: error.message || "Please check your CSV file and try again",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Handle import file selection and upload
+  const handleImport = async () => {
+    if (!importFile) return;
+    importProperties.mutate(importFile);
+  };
+
+  // Download import template
+  const downloadTemplate = () => {
+    window.open('/api/crm/managed-properties/template', '_blank');
+  };
 
   // Calculate days until expiry
   const getDaysUntilExpiry = (expiryDate: string) => {
@@ -355,6 +403,16 @@ export default function PropertyManagement() {
           <h1 className="text-3xl font-bold">Property Management</h1>
         </div>
         <div className="flex gap-2">
+          <Link href="/crm/properties/import">
+            <Button variant="outline" className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100">
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Import from URL
+            </Button>
+          </Link>
+          <Button onClick={() => setShowImportDialog(true)} variant="outline">
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
           <Button onClick={() => setShowMaintenanceDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Report Maintenance
@@ -487,7 +545,7 @@ export default function PropertyManagement() {
                         <TableHead className="min-w-[100px]">Mgmt Period</TableHead>
                         <TableHead className="min-w-[100px]">Rent</TableHead>
                         <TableHead className="min-w-[100px]">Deposit</TableHead>
-                        <TableHead className="min-w-[120px]">Marketing</TableHead>
+                        <TableHead className="min-w-[120px]">Marketing Status</TableHead>
                         <TableHead className="min-w-[80px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -495,22 +553,43 @@ export default function PropertyManagement() {
                       {managedProperties?.map((property: any) => (
                         <TableRow key={property.id} data-testid={`row-managed-property-${property.id}`}>
                           <TableCell>
-                            <div className="flex flex-col gap-1">
+                            <div className="flex flex-col gap-0.5">
                               <Link href={`/crm/managed-property/${property.id}`} className="hover:underline cursor-pointer block">
-                                <span className="font-medium text-sm text-[#791E75]" data-testid={`text-address-${property.id}`}>{property.propertyAddress}</span>
+                                <span className="font-medium text-sm text-[#791E75]" data-testid={`text-address-${property.id}`}>
+                                  {(() => {
+                                    // Format: Unit/Flat, Street Number Street Name, Postcode
+                                    const addr = property.propertyAddress || property.address || '';
+                                    const line1 = property.addressLine1 || '';
+                                    const line2 = property.addressLine2 || '';
+                                    const postcode = property.postcode || '';
+
+                                    // Build formatted address
+                                    let formatted = '';
+                                    if (line1) {
+                                      formatted = line1;
+                                      if (line2) formatted += `, ${line2}`;
+                                    } else {
+                                      // Extract from full address - remove postcode and city
+                                      formatted = addr
+                                        .replace(new RegExp(postcode, 'i'), '')
+                                        .replace(/,?\s*(London|UK|United Kingdom)\s*,?/gi, '')
+                                        .trim()
+                                        .replace(/,\s*$/, '');
+                                    }
+
+                                    return formatted || addr;
+                                  })()}
+                                </span>
                               </Link>
 
-                              {/* Custom Property ID: Postcode + Door Number */}
-                              <span className="text-xs font-mono text-gray-500 bg-gray-100 px-1 rounded w-fit">
-                                {(() => {
-                                  const doorNo = property.propertyAddress?.match(/^(\d+)/)?.[1];
-                                  const postcodePart = property.postcode?.split(' ')[0];
-                                  return `${postcodePart || 'UNK'}${doorNo ? '-' + doorNo : ''}`;
-                                })()}
+                              {/* Postcode on separate line */}
+                              <span className="text-xs font-mono text-gray-600">
+                                {property.postcode}
                               </span>
 
+                              {/* Property type with bedrooms */}
                               <span className="text-xs text-muted-foreground" data-testid={`text-property-type-${property.id}`}>
-                                {property.bedrooms} bed {property.propertyType}
+                                {property.bedrooms ? `${property.bedrooms} bed` : ''} {property.propertyType}
                               </span>
                             </div>
                           </TableCell>
@@ -559,13 +638,15 @@ export default function PropertyManagement() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex flex-col gap-1" data-testid={`checklist-${property.id}`}>
-                              <div className="flex items-center gap-1">
-                                <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
-                                <span className="text-xs" data-testid={`text-checklist-count-${property.id}`}>{property.checklistComplete}/{property.checklistTotal}</span>
+                            <Link href={`/crm/managed-property/${property.id}?tab=checklist`}>
+                              <div className="flex flex-col gap-1 cursor-pointer hover:bg-gray-50 rounded p-1 -m-1" data-testid={`checklist-${property.id}`}>
+                                <div className="flex items-center gap-1">
+                                  <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-xs" data-testid={`text-checklist-count-${property.id}`}>{property.checklistComplete}/{property.checklistTotal}</span>
+                                </div>
+                                <Progress value={property.checklistTotal > 0 ? (property.checklistComplete / property.checklistTotal) * 100 : 0} className="h-1.5 w-16" />
                               </div>
-                              <Progress value={property.checklistTotal > 0 ? (property.checklistComplete / property.checklistTotal) * 100 : 0} className="h-1.5 w-16" />
-                            </div>
+                            </Link>
                           </TableCell>
                           <TableCell>
                             <span className="text-sm" data-testid={`text-mgmt-fee-${property.id}`}>
@@ -605,14 +686,14 @@ export default function PropertyManagement() {
                           </TableCell>
                           <TableCell>
                             <Select
-                              defaultValue={property.status === 'let' ? 'not_listed' : (property.listingType === 'sale' ? 'for_sale' : 'for_rent')}
+                              value={property.isListedSale ? 'for_sale' : property.isListedRental ? 'for_rent' : 'not_listed'}
                               onValueChange={(value) => {
                                 if (value === 'not_listed') {
-                                  updatePropertyStatus.mutate({ id: property.id, status: 'let' });
+                                  updatePropertyStatus.mutate({ id: property.id, isListedRental: false, isListedSale: false });
                                 } else if (value === 'for_sale') {
-                                  updatePropertyStatus.mutate({ id: property.id, status: 'available', listingType: 'sale' });
+                                  updatePropertyStatus.mutate({ id: property.id, isListedRental: false, isListedSale: true });
                                 } else if (value === 'for_rent') {
-                                  updatePropertyStatus.mutate({ id: property.id, status: 'available', listingType: 'rental' });
+                                  updatePropertyStatus.mutate({ id: property.id, isListedRental: true, isListedSale: false });
                                 }
                               }}
                             >
@@ -1883,6 +1964,120 @@ export default function PropertyManagement() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Managed Properties Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={(open) => {
+        setShowImportDialog(open);
+        if (!open) {
+          setImportFile(null);
+          setImportResults(null);
+        }
+      }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Import Managed Properties
+            </DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to bulk import managed properties with landlord and tenant information.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6">
+            {/* Template Download */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-900 mb-2">Download Template</h4>
+              <p className="text-sm text-blue-700 mb-3">
+                Download the CSV template to see the required format and columns.
+              </p>
+              <Button variant="outline" onClick={downloadTemplate} className="bg-white">
+                <Download className="h-4 w-4 mr-2" />
+                Download CSV Template
+              </Button>
+            </div>
+
+            {/* File Upload */}
+            <div className="space-y-3">
+              <label className="block text-sm font-medium">Select CSV File</label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      setImportFile(file);
+                      setImportResults(null);
+                    }
+                  }}
+                  className="hidden"
+                  id="csv-upload"
+                />
+                <label htmlFor="csv-upload" className="cursor-pointer">
+                  <Upload className="h-10 w-10 mx-auto text-gray-400 mb-2" />
+                  {importFile ? (
+                    <p className="text-sm font-medium text-green-600">{importFile.name}</p>
+                  ) : (
+                    <p className="text-sm text-gray-600">Click to upload or drag and drop</p>
+                  )}
+                  <p className="text-xs text-gray-500 mt-1">CSV files only</p>
+                </label>
+              </div>
+            </div>
+
+            {/* Import Results */}
+            {importResults && (
+              <div className={`rounded-lg p-4 ${importResults.errors?.length > 0 ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
+                <h4 className="font-medium mb-2">
+                  {importResults.errors?.length > 0 ? 'Import Completed with Warnings' : 'Import Successful'}
+                </h4>
+                <div className="text-sm space-y-1">
+                  <p className="text-green-700">
+                    <CheckCircle className="h-4 w-4 inline mr-1" />
+                    {importResults.successCount} properties imported successfully
+                  </p>
+                  {importResults.errors?.length > 0 && (
+                    <div className="mt-2">
+                      <p className="text-yellow-700 font-medium">Errors:</p>
+                      <ul className="text-xs text-yellow-800 mt-1 space-y-1 max-h-32 overflow-y-auto">
+                        {importResults.errors.map((err: any, i: number) => (
+                          <li key={i}>Row {err.row}: {err.error}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setShowImportDialog(false)}>
+                {importResults ? 'Close' : 'Cancel'}
+              </Button>
+              {!importResults && (
+                <Button
+                  onClick={handleImport}
+                  disabled={!importFile || importProperties.isPending}
+                >
+                  {importProperties.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Import Properties
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

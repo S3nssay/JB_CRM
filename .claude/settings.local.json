@@ -64,7 +64,10 @@
       "Bash(del \"C:\\Users\\ziaa\\Dropbox\\ZA\\DEV\\PROJECTS\\JohnBarclayCRM\\check-users.ts\")",
       "Bash(printenv:*)",
       "Bash(cmd //c 'taskkill /F /PID 7100')",
-      "Bash(cmd //c \"taskkill /F /IM node.exe\")"
+      "Bash(cmd //c \"taskkill /F /IM node.exe\")",
+      "Bash(tree:*)",
+      "Bash(cmd.exe /c \"taskkill /F /IM node.exe\")",
+      "Bash(cd:*)"
     ],
     "deny": [],
     "ask": []
