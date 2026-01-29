@@ -29,9 +29,8 @@ COPY --from=builder /app/dist ./dist
 
 # Copy necessary assets
 COPY --from=builder /app/attached_assets ./attached_assets
-COPY --from=builder /app/uploads ./uploads
 
-# Create uploads directory if it doesn't exist
+# Create uploads directory
 RUN mkdir -p uploads
 
 # Expose port
