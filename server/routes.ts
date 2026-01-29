@@ -1,7 +1,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyInquirySchema, insertContactSchema, insertValuationSchema } from '@shared/schema';
+import { insertPropertySchema, insertPropertyInquirySchema, insertContactSchema, insertValuationSchema, cmsPages, cmsContentBlocks, staffProfiles, users } from '@shared/schema';
+import { db } from './db';
+import { eq, and, desc } from 'drizzle-orm';
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { v4 as uuidv4 } from 'uuid';
@@ -39,12 +41,12 @@ function parseBasicQuery(query: string): ParsedIntent {
   if (hasPropertyKeywords) {
     intent = 'property_search';
 
-    // Parse listing type  
+    // Parse listing type
     if (/\b(buy|purchase|sale|for sale|buying)\b/i.test(lowerQuery)) {
-      filters.listingType = 'sale';
+      filters.isRental = false;
       explanation += 'Looking for properties to buy. ';
     } else if (/\b(rent|rental|let|letting|renting|to let)\b/i.test(lowerQuery)) {
-      filters.listingType = 'rental';
+      filters.isRental = true;
       explanation += 'Looking for properties to rent. ';
     }
 
@@ -485,12 +487,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all properties with filtering for estate agent website
   app.get('/api/properties', async (req: Request, res: Response) => {
     try {
-      const { listingType, areaId, minPrice, maxPrice, minBedrooms, maxBedrooms, bedrooms, propertyType, postcode, status, features, houseType, floorLevel } = req.query;
+      const { listingType, isRental, areaId, minPrice, maxPrice, minBedrooms, maxBedrooms, bedrooms, propertyType, postcode, status, features, houseType, floorLevel } = req.query;
 
       let properties;
 
-      if (listingType && (listingType === 'sale' || listingType === 'rental')) {
-        properties = await storage.getPropertiesByListingType(listingType as string);
+      // Support both old listingType and new isRental query params for backwards compatibility
+      if (isRental !== undefined) {
+        properties = await storage.getPropertiesByRentalStatus(isRental === 'true');
+      } else if (listingType && (listingType === 'sale' || listingType === 'rental')) {
+        // Legacy support: listingType=sale means isRental=false, listingType=rental means isRental=true
+        properties = await storage.getPropertiesByRentalStatus(listingType === 'rental');
       } else {
         properties = await storage.getAllProperties();
       }
@@ -602,6 +608,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Filter to only show properties that are:
+      // 1. Listed in CRM (isListed = true) - only proper listings should appear
+      // 2. Published on website (isPublishedWebsite = true) - explicitly marked for website
+      properties = properties.filter(p => p.isListed === true && p.isPublishedWebsite === true);
+
+      // Filter residential vs commercial for public pages
+      // Sales and rentals pages should only show residential properties (isResidential !== false)
+      // Commercial page should only show commercial properties (isResidential === false)
+      if (listingType === 'sale' || listingType === 'rental') {
+        // For sale/rental listings, only show residential properties (isResidential is true or undefined/null)
+        properties = properties.filter(p => p.isResidential !== false);
+      } else if (listingType === 'commercial') {
+        // For commercial listings, only show commercial properties
+        properties = properties.filter(p => p.isResidential === false);
+      }
+
       // Add mock area name for display
       const propertiesWithAreaName = properties.map(property => ({
         ...property,
@@ -629,6 +651,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const property = await storage.getProperty(id);
 
       if (!property) {
+        return res.status(404).json({ error: 'Property not found' });
+      }
+
+      // Only show property if it's published on website (for public website)
+      if (!property.isPublishedWebsite) {
         return res.status(404).json({ error: 'Property not found' });
       }
 
@@ -745,8 +772,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get all properties based on listing type first
       let properties = listingType === 'rental'
-        ? await storage.getPropertiesByListingType('rental')
-        : await storage.getPropertiesByListingType('sale');
+        ? await storage.getPropertiesByRentalStatus(true)
+        : await storage.getPropertiesByRentalStatus(false);
 
       // Apply filters based on parsed criteria
       if (searchCriteria.propertyType) {
@@ -976,7 +1003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         title: `Property at ${addressLine1.trim()}`,
         description: `${propertyType} property with ${parseInt(bedrooms) || 3} bedrooms`,
         postcode: postcode.trim().toUpperCase(),
-        listingType: 'sale',
+        isRental: false,
         price: 0,
         addressLine1: addressLine1.trim(),
         propertyType,
@@ -1083,7 +1110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: `${propertyType} property with ${parseInt(bedrooms)} bedrooms`,
         addressLine1,
         postcode,
-        listingType: 'sale',
+        isRental: false,
         price: marketValue || 0,
         propertyType,
         bedrooms: parseInt(bedrooms),
@@ -1205,7 +1232,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             description: 'Property valuation request',
             addressLine1: addressToStore,
             postcode: extractedPostcode || 'Unknown',
-            listingType: 'sale',
+            isRental: false,
             price: marketValue || 0,
             propertyType: 'house',
             bedrooms: 0,
@@ -1855,6 +1882,162 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'Failed to retrieve favourites',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  // ==========================================
+  // PUBLIC CMS ENDPOINTS (No Auth Required)
+  // ==========================================
+
+  // Get published page content by slug
+  app.get('/api/public/pages/:slug', async (req: Request, res: Response) => {
+    try {
+      const { slug } = req.params;
+      const [page] = await db.select()
+        .from(cmsPages)
+        .where(and(eq(cmsPages.slug, slug), eq(cmsPages.isPublished, true)));
+
+      if (!page) {
+        return res.status(404).json({ error: 'Page not found' });
+      }
+
+      const blocks = await db.select()
+        .from(cmsContentBlocks)
+        .where(and(eq(cmsContentBlocks.pageId, page.id), eq(cmsContentBlocks.isActive, true)))
+        .orderBy(cmsContentBlocks.displayOrder);
+
+      res.json({ ...page, blocks });
+    } catch (error) {
+      console.error('Error fetching public page:', error);
+      res.status(500).json({ error: 'Failed to fetch page' });
+    }
+  });
+
+  // Get team members for public team page
+  app.get('/api/public/team', async (_req: Request, res: Response) => {
+    try {
+      const team = await db
+        .select({
+          id: users.id,
+          name: staffProfiles.publicDisplayName,
+          fullName: users.fullName,
+          jobTitle: staffProfiles.publicJobTitle,
+          internalJobTitle: staffProfiles.jobTitle,
+          bio: staffProfiles.publicBio,
+          photo: staffProfiles.publicPhoto,
+          department: staffProfiles.department,
+          displayOrder: staffProfiles.publicDisplayOrder
+        })
+        .from(staffProfiles)
+        .innerJoin(users, eq(staffProfiles.userId, users.id))
+        .where(
+          and(
+            eq(staffProfiles.showOnTeamPage, true),
+            eq(users.isActive, true)
+          )
+        )
+        .orderBy(staffProfiles.publicDisplayOrder);
+
+      // Transform to use publicDisplayName if set, otherwise fullName
+      const formattedTeam = team.map(member => ({
+        id: member.id,
+        name: member.name || member.fullName,
+        jobTitle: member.jobTitle || member.internalJobTitle,
+        bio: member.bio || '',
+        photo: member.photo || '',
+        department: member.department,
+        displayOrder: member.displayOrder
+      }));
+
+      res.json(formattedTeam);
+    } catch (error) {
+      console.error('Error fetching public team:', error);
+      res.status(500).json({ error: 'Failed to fetch team' });
+    }
+  });
+
+  // Get testimonials from CMS
+  app.get('/api/public/testimonials', async (_req: Request, res: Response) => {
+    try {
+      // Get testimonials page
+      const [page] = await db.select()
+        .from(cmsPages)
+        .where(and(eq(cmsPages.slug, 'testimonials'), eq(cmsPages.isPublished, true)));
+
+      if (!page) {
+        return res.json([]); // Return empty array if no testimonials page
+      }
+
+      // Get testimonial blocks
+      const blocks = await db.select()
+        .from(cmsContentBlocks)
+        .where(
+          and(
+            eq(cmsContentBlocks.pageId, page.id),
+            eq(cmsContentBlocks.blockType, 'testimonial'),
+            eq(cmsContentBlocks.isActive, true)
+          )
+        )
+        .orderBy(cmsContentBlocks.displayOrder);
+
+      // Transform blocks to testimonial format
+      const testimonials = blocks.map((block, index) => {
+        const content = block.content as any;
+        return {
+          id: block.id,
+          content: content.content || '',
+          author: content.author || '',
+          location: content.location || '',
+          rating: content.rating || 5,
+          image: content.image || null
+        };
+      });
+
+      res.json(testimonials);
+    } catch (error) {
+      console.error('Error fetching testimonials:', error);
+      res.status(500).json({ error: 'Failed to fetch testimonials' });
+    }
+  });
+
+  // Get FAQ items from CMS
+  app.get('/api/public/faq', async (_req: Request, res: Response) => {
+    try {
+      // Get FAQ page
+      const [page] = await db.select()
+        .from(cmsPages)
+        .where(and(eq(cmsPages.slug, 'faq'), eq(cmsPages.isPublished, true)));
+
+      if (!page) {
+        return res.json([]); // Return empty array if no FAQ page
+      }
+
+      // Get FAQ blocks
+      const blocks = await db.select()
+        .from(cmsContentBlocks)
+        .where(
+          and(
+            eq(cmsContentBlocks.pageId, page.id),
+            eq(cmsContentBlocks.blockType, 'faq_item'),
+            eq(cmsContentBlocks.isActive, true)
+          )
+        )
+        .orderBy(cmsContentBlocks.displayOrder);
+
+      // Transform blocks to FAQ format
+      const faqItems = blocks.map((block) => {
+        const content = block.content as any;
+        return {
+          id: block.id,
+          question: content.question || '',
+          answer: content.answer || ''
+        };
+      });
+
+      res.json(faqItems);
+    } catch (error) {
+      console.error('Error fetching FAQ:', error);
+      res.status(500).json({ error: 'Failed to fetch FAQ' });
     }
   });
 

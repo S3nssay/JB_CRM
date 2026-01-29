@@ -8,10 +8,18 @@ const openai = openaiClient;
 const PropertyParseResultSchema = z.object({
   title: z.string().optional(),
   description: z.string().optional(),
-  listingType: z.enum(['sale', 'rental']).optional(),
+  isRental: z.boolean().optional(), // true = rental, false = sale
+  isResidential: z.boolean().optional(), // true = residential, false = commercial
   price: z.number().optional(),
   priceQualifier: z.enum(['guide_price', 'offers_over', 'fixed_price', 'poa']).optional(),
-  propertyType: z.enum(['flat', 'house', 'maisonette', 'penthouse', 'studio']).optional(),
+  propertyType: z.enum([
+    // Residential types
+    'flat', 'house', 'maisonette', 'penthouse', 'studio', 'bungalow', 'cottage',
+    'mansion', 'villa', 'townhouse', 'detached', 'semi_detached', 'terraced', 'end_terrace',
+    // Commercial types
+    'office', 'retail', 'warehouse', 'industrial', 'mixed_use', 'restaurant', 'shop',
+    'land', 'other'
+  ]).optional(),
   bedrooms: z.number().optional(),
   bathrooms: z.number().optional(),
   receptions: z.number().optional(),
@@ -27,7 +35,7 @@ const PropertyParseResultSchema = z.object({
   furnished: z.enum(['furnished', 'unfurnished', 'part_furnished']).optional(),
   availableFrom: z.string().optional(),
   deposit: z.number().optional(),
-  rentPeriod: z.enum(['per_month', 'per_week']).optional(),
+  rentPeriod: z.enum(['per_month', 'per_week', 'per_annum']).optional(),
   viewingArrangements: z.string().optional(),
   keyFeatures: z.array(z.string()).optional(),
   nearbyAmenities: z.array(z.string()).optional()
@@ -37,11 +45,27 @@ export type PropertyParseResult = z.infer<typeof PropertyParseResultSchema>;
 
 const systemPrompt = `You are an expert West London estate agent AI for John Barclay Estate & Management. Your job is to:
 1. Extract the street name and any address details from the user's input
-2. Use your knowledge of West London streets and areas to infer property characteristics
-3. Generate a complete, realistic property listing
+2. Determine if this is a RESIDENTIAL or COMMERCIAL property
+3. Use your knowledge of West London streets and areas to infer property characteristics
+4. Generate a complete, realistic property listing
+
+PROPERTY CATEGORY DETECTION:
+COMMERCIAL properties include:
+- Restaurants, cafes, takeaways (A3/A5 use class)
+- Shops, retail units (A1 use class)
+- Offices (B1 use class)
+- Warehouses, industrial units (B2/B8 use class)
+- Mixed use properties
+- Any property described as "premises", "unit", "shop", "office", "restaurant"
+- Properties mentioned with "trading as", "business", "fixtures and fittings"
+
+RESIDENTIAL properties include:
+- Flats, apartments, maisonettes
+- Houses (detached, semi-detached, terraced)
+- Studios, penthouses, bungalows
 
 WEST LONDON AREA KNOWLEDGE:
-- W2 (Paddington, Bayswater): Georgian terraces, mansion flats, average £800-1500/sqft, close to Hyde Park
+- W2 (Paddington, Bayswater): Georgian terraces, mansion flats, average £800-1500/sqft residential, busy commercial streets
 - W9 (Maida Vale, Little Venice): Victorian/Edwardian, tree-lined streets, canal views, £700-1200/sqft
 - W10 (North Kensington, Ladbroke Grove): Mixed period properties, up-and-coming, £600-1000/sqft
 - W11 (Notting Hill): Premium Georgian/Victorian, famous for Portobello Road, £1000-2000/sqft
@@ -49,26 +73,31 @@ WEST LONDON AREA KNOWLEDGE:
 - NW10 (Willesden, Harlesden): More affordable, regeneration areas, £400-700/sqft
 - W14 (Holland Park, West Kensington): Mix of mansion blocks and period houses, £700-1100/sqft
 
+COMMERCIAL PROPERTY DETAILS:
+For commercial properties:
+- isResidential: false
+- propertyType: "retail", "restaurant", "office", "warehouse", "industrial", "mixed_use", "shop", or "other"
+- Do NOT include bedrooms/bathrooms for commercial (set to 0 or omit)
+- Include squareFootage (sqft) - estimate from description
+- rentPeriod: typically "per_annum" for commercial leases
+- Features should include: Use class, frontage, storage, kitchen facilities, customer seating, extraction, etc.
+- Title example: "A3 Restaurant Premises on Busy High Street" or "Prime Retail Unit with Basement Storage"
+
+RESIDENTIAL PROPERTY DETAILS:
+For residential properties:
+- isResidential: true
+- propertyType: "flat", "house", "maisonette", "penthouse", "studio", etc.
+- Include bedrooms, bathrooms, receptions
+- rentPeriod: typically "per_month" for residential
+
 STREET RECOGNITION:
 When the user mentions a street name:
 - Extract the full street address (e.g., "123 Elgin Avenue" or "Elgin Avenue, W9")
-- Infer the postcode from the street if not provided (e.g., Elgin Avenue is W9)
-- Use typical property types for that street (e.g., Elgin Avenue has Victorian conversions)
-
-PROPERTY DETAILS TO GENERATE:
-- Title: Create a compelling title (e.g., "Stunning 2 Bed Victorian Flat in Maida Vale")
-- Description: Write a professional estate agent description (150-200 words) highlighting:
-  * Period features if applicable (high ceilings, original fireplaces, sash windows)
-  * Location benefits (transport links, local amenities, parks)
-  * Layout and accommodation
-  * Any special features
-- Price: Estimate based on area, size, and property type (in pence for accuracy)
-- Features: List 5-10 relevant features for the property type and area
-- All other fields: Fill in realistic values based on typical properties in that area
+- Infer the postcode from the street if not provided
+- Use typical property types for that street
 
 DEFAULTS:
-- If listing type not specified, assume "rental" for flats, "sale" for houses
-- If bedrooms not specified, estimate from property type (studio=0, flat=1-2, house=3-4)
+- If isRental not specified, assume false (sale) for commercial with "fixtures and fittings", otherwise true (rental)
 - Council tax bands: W11/W2 typically E-H, W9/W10 typically D-F, NW6/NW10 typically C-E
 - Energy ratings: Period properties typically D-E, modern typically B-C
 
@@ -83,12 +112,12 @@ export async function parsePropertyFromNaturalLanguage(
     }
     
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1',
+      model: 'gpt-4o',
       messages: [
         { role: 'system', content: systemPrompt },
-        { 
-          role: 'user', 
-          content: `Create a complete property listing from this input. Extract the street name/address and use your knowledge of West London to generate all property details:\n\n"${description}"\n\nReturn a complete JSON object with title, description, price, bedrooms, bathrooms, propertyType, addressLine1, postcode, features, and all other relevant fields.` 
+        {
+          role: 'user',
+          content: `Create a complete property listing from this input. First determine if this is a RESIDENTIAL or COMMERCIAL property, then extract the address and generate all property details:\n\n"${description}"\n\nReturn a complete JSON object with isResidential (true for residential, false for commercial), isRental (true for rental, false for sale), title, description, price, propertyType, addressLine1, postcode, squareFootage, features, and all other relevant fields. For commercial properties, omit bedrooms/bathrooms. For residential, include bedrooms, bathrooms, receptions.`
         }
       ],
       response_format: { type: 'json_object' },
@@ -102,13 +131,36 @@ export async function parsePropertyFromNaturalLanguage(
     }
 
     const parsed = JSON.parse(content);
-    
-    // Normalize enum fields to lowercase (AI sometimes returns capitalized values)
-    if (parsed.propertyType) {
-      parsed.propertyType = parsed.propertyType.toLowerCase();
+
+    // Convert propertyCategory to isResidential boolean (for backward compatibility with AI responses)
+    if (parsed.propertyCategory !== undefined && parsed.isResidential === undefined) {
+      const category = String(parsed.propertyCategory).toLowerCase();
+      parsed.isResidential = category !== 'commercial';
+      delete parsed.propertyCategory;
     }
-    if (parsed.listingType) {
-      parsed.listingType = parsed.listingType.toLowerCase();
+    // Ensure isResidential is a boolean
+    if (parsed.isResidential !== undefined && typeof parsed.isResidential !== 'boolean') {
+      parsed.isResidential = parsed.isResidential === true || parsed.isResidential === 'true';
+    }
+    if (parsed.propertyType) {
+      let pt = parsed.propertyType.toLowerCase().replace(/ /g, '_').replace(/-/g, '_');
+      // Map common variations to valid enum values
+      if (pt === 'a3_premises' || pt === 'a3' || pt === 'cafe' || pt === 'takeaway') pt = 'restaurant';
+      if (pt === 'a1' || pt === 'retail_unit' || pt === 'unit') pt = 'retail';
+      if (pt === 'b1' || pt === 'office_space') pt = 'office';
+      if (pt === 'b2' || pt === 'b8' || pt === 'storage') pt = 'warehouse';
+      if (pt === 'apartment') pt = 'flat';
+      parsed.propertyType = pt;
+    }
+    // Convert listingType to isRental boolean for backwards compatibility
+    if (parsed.listingType !== undefined && parsed.isRental === undefined) {
+      const lt = String(parsed.listingType).toLowerCase();
+      parsed.isRental = lt === 'rental' || lt === 'let' || lt === 'rent';
+      delete parsed.listingType;
+    }
+    // Ensure isRental is a boolean
+    if (parsed.isRental !== undefined && typeof parsed.isRental !== 'boolean') {
+      parsed.isRental = parsed.isRental === true || parsed.isRental === 'true';
     }
     if (parsed.furnished) {
       parsed.furnished = parsed.furnished.toLowerCase().replace(' ', '_');
@@ -130,11 +182,16 @@ export async function parsePropertyFromNaturalLanguage(
       parsed.priceQualifier = parsed.priceQualifier.toLowerCase().replace(/ /g, '_');
     }
     if (parsed.rentPeriod) {
-      parsed.rentPeriod = parsed.rentPeriod.toLowerCase().replace(/ /g, '_');
+      let rp = parsed.rentPeriod.toLowerCase().replace(/ /g, '_');
+      // Normalize rent period variations
+      if (rp === 'pa' || rp === 'annually' || rp === 'yearly' || rp === 'per_year') rp = 'per_annum';
+      if (rp === 'pm' || rp === 'monthly' || rp === 'pcm') rp = 'per_month';
+      if (rp === 'pw' || rp === 'weekly') rp = 'per_week';
+      parsed.rentPeriod = rp;
     }
-    
+
     // Coerce numeric fields from strings (AI sometimes returns numbers as strings)
-    const numericFields = ['yearBuilt', 'bedrooms', 'bathrooms', 'receptions', 'sqft', 'price', 'deposit', 'serviceCharge', 'groundRent'];
+    const numericFields = ['yearBuilt', 'bedrooms', 'bathrooms', 'receptions', 'sqft', 'squareFootage', 'price', 'deposit', 'serviceCharge', 'groundRent'];
     for (const field of numericFields) {
       if (parsed[field] !== undefined && typeof parsed[field] === 'string') {
         const num = parseInt(parsed[field], 10);
@@ -142,12 +199,22 @@ export async function parsePropertyFromNaturalLanguage(
       }
     }
     
-    const validated = PropertyParseResultSchema.parse(parsed);
-    
-    return validated;
-  } catch (error) {
+    // Try to validate, but if it fails due to strict enum, be more permissive
+    try {
+      const validated = PropertyParseResultSchema.parse(parsed);
+      return validated;
+    } catch (zodError: any) {
+      console.warn('Zod validation failed, returning raw parsed data:', zodError.message);
+      // Return raw parsed data without strict validation
+      return parsed as any;
+    }
+  } catch (error: any) {
     console.error('Error parsing property with AI:', error);
-    throw new Error('Failed to parse property description');
+    console.error('Error details:', error.message);
+    if (error.response) {
+      console.error('API Response:', error.response.data);
+    }
+    throw new Error('Failed to parse property description: ' + error.message);
   }
 }
 
@@ -155,7 +222,7 @@ export async function enhancePropertyDescription(
   property: Partial<InsertProperty>
 ): Promise<string> {
   try {
-    const prompt = `Create a compelling, SEO-optimized property description for this ${property.listingType} listing:
+    const prompt = `Create a compelling, SEO-optimized property description for this ${property.isRental ? 'rental' : 'sale'} listing:
     
 Property Type: ${property.propertyType}
 Bedrooms: ${property.bedrooms}
@@ -175,7 +242,7 @@ Create a description that:
 Keep it professional but engaging, around 150-200 words.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert estate agent copywriter specializing in London properties.' },
         { role: 'user', content: prompt }
@@ -200,7 +267,7 @@ export async function generatePropertyTitle(
 Property Type: ${property.propertyType}
 Bedrooms: ${property.bedrooms}
 Location: ${property.postcode}
-Listing Type: ${property.listingType}
+Listing Type: ${property.isRental ? 'rental' : 'sale'}
 
 Create a title that is:
 - Maximum 60 characters
@@ -211,7 +278,7 @@ Create a title that is:
 Example: "2 Bed Flat to Rent in Maida Vale W9"`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'user', content: prompt }
       ],
@@ -247,7 +314,7 @@ Focus on practical features like:
 Return only the JSON array, no explanation.`;
 
     const completion = await openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'user', content: prompt }
       ],

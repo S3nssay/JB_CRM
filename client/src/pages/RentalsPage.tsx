@@ -30,7 +30,7 @@ gsap.registerPlugin(ScrollTrigger);
 
 interface Property {
   id: number;
-  listingType: string;
+  isRental: boolean; // true = rental, false = sale
   title: string;
   description: string;
   price: number;
@@ -74,7 +74,7 @@ export default function RentalsPage() {
   const { data: featuredProperties = [], isLoading: featuredLoading } = useQuery<PropertyListing[]>({
     queryKey: ['/api/properties', 'featured', 'rental'],
     queryFn: async () => {
-      const response = await fetch('/api/properties?listingType=rental&featured=true&limit=6');
+      const response = await fetch('/api/properties?isRental=true&featured=true&limit=6');
       const data = await response.json();
       return data.map((prop: any) => propertyListingsService['convertToPropertyListing'](prop));
     }
@@ -85,7 +85,7 @@ export default function RentalsPage() {
     queryKey: ['/api/properties', 'rental', searchForm],
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set('listingType', 'rental');
+      params.set('isRental', 'true');
       if (searchForm.location) params.set('location', searchForm.location);
       if (searchForm.propertyType) params.set('propertyType', searchForm.propertyType);
       if (searchForm.minBeds) params.set('minBedrooms', searchForm.minBeds);
@@ -140,7 +140,7 @@ export default function RentalsPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query, listingType: 'rental' })
+        body: JSON.stringify({ query, isRental: true })
       });
 
       if (response.ok) {

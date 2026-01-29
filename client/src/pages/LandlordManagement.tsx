@@ -25,15 +25,23 @@ import { queryClient } from '@/lib/queryClient';
 
 interface Landlord {
   id: number;
-  fullName: string;
+  name: string;
   email: string | null;
   phone: string | null;
   mobile: string | null;
-  bankAccountNo: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  postcode: string | null;
+  bankName: string | null;
+  bankAccountNumber: string | null;
   bankSortCode: string | null;
   status: string;
-  landlordType: string | null;
+  landlordType: string | null; // 'individual' or 'corporate'
+  isCorporate: boolean | null; // true = corporate landlord with corporate owner entity
+  corporateOwnerId: number | null; // FK to corporate_owner table
   companyName: string | null;
+  companyRegNo: string | null;
   createdAt: string;
   propertyCount?: number;
 }
@@ -47,11 +55,12 @@ export default function LandlordManagement() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedLandlord, setSelectedLandlord] = useState<Landlord | null>(null);
   const [formData, setFormData] = useState({
-    fullName: '',
+    name: '',
     email: '',
     mobile: '',
-    bankAccountNo: '',
-    bankSortCode: ''
+    bankAccountNumber: '',
+    bankSortCode: '',
+    landlordType: 'individual' as 'individual' | 'corporate'
   });
 
   // Fetch landlords
@@ -126,17 +135,18 @@ export default function LandlordManagement() {
   });
 
   const resetForm = () => {
-    setFormData({ fullName: '', email: '', mobile: '', bankAccountNo: '', bankSortCode: '' });
+    setFormData({ name: '', email: '', mobile: '', bankAccountNumber: '', bankSortCode: '', landlordType: 'individual' });
   };
 
   const handleEdit = (landlord: Landlord) => {
     setSelectedLandlord(landlord);
     setFormData({
-      fullName: landlord.fullName || '',
+      name: landlord.name || '',
       email: landlord.email || '',
       mobile: landlord.mobile || '',
-      bankAccountNo: landlord.bankAccountNo || '',
-      bankSortCode: landlord.bankSortCode || ''
+      bankAccountNumber: landlord.bankAccountNumber || '',
+      bankSortCode: landlord.bankSortCode || '',
+      landlordType: (landlord.landlordType as 'individual' | 'corporate') || 'individual'
     });
     setShowEditDialog(true);
   };
@@ -149,7 +159,7 @@ export default function LandlordManagement() {
 
   // Filter landlords
   const filteredLandlords = landlords.filter((l: Landlord) =>
-    l.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     l.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     l.mobile?.includes(searchTerm)
   );
@@ -240,7 +250,7 @@ export default function LandlordManagement() {
                   <div>
                     <p className="text-sm font-medium text-gray-600">With Bank Details</p>
                     <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) => l.bankAccountNo).length}
+                      {landlords.filter((l: Landlord) => l.bankAccountNumber).length}
                     </p>
                   </div>
                   <div className="p-3 rounded-full bg-[#F8B324]">
@@ -254,9 +264,9 @@ export default function LandlordManagement() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Companies</p>
+                    <p className="text-sm font-medium text-gray-600">Corporate</p>
                     <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) => l.landlordType === 'company').length}
+                      {landlords.filter((l: Landlord) => l.landlordType === 'corporate').length}
                     </p>
                   </div>
                   <div className="p-3 rounded-full bg-purple-500">
@@ -320,12 +330,12 @@ export default function LandlordManagement() {
                         <TableCell>
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 rounded-full bg-[#791E75] flex items-center justify-center text-white font-semibold">
-                              {landlord.fullName?.charAt(0).toUpperCase()}
+                              {landlord.name?.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{landlord.fullName}</p>
-                              {landlord.landlordType === 'company' && (
-                                <Badge variant="outline" className="text-xs">Company</Badge>
+                              <p className="font-medium">{landlord.name}</p>
+                              {landlord.landlordType === 'corporate' && (
+                                <Badge variant="outline" className="text-xs">Corporate</Badge>
                               )}
                             </div>
                           </div>
@@ -347,11 +357,11 @@ export default function LandlordManagement() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {landlord.bankAccountNo ? (
+                          {landlord.bankAccountNumber ? (
                             <div className="space-y-1 text-sm">
                               <div className="flex items-center gap-2">
                                 <CreditCard className="h-3 w-3 text-gray-400" />
-                                <span>****{landlord.bankAccountNo?.slice(-4)}</span>
+                                <span>****{landlord.bankAccountNumber?.slice(-4)}</span>
                               </div>
                               {landlord.bankSortCode && (
                                 <span className="text-gray-500">{landlord.bankSortCode}</span>
@@ -400,12 +410,24 @@ export default function LandlordManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="fullName">Name / Company Name *</Label>
+              <Label htmlFor="landlordType">Landlord Type *</Label>
+              <select
+                id="landlordType"
+                className="w-full p-2 border rounded-md"
+                value={formData.landlordType}
+                onChange={(e) => setFormData({ ...formData, landlordType: e.target.value as 'individual' | 'corporate' })}
+              >
+                <option value="individual">Individual</option>
+                <option value="corporate">Corporate</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="name">{formData.landlordType === 'corporate' ? 'Company Name *' : 'Full Name *'}</Label>
               <Input
-                id="fullName"
-                value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                placeholder="Enter landlord or company name"
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder={formData.landlordType === 'corporate' ? 'Enter company name' : 'Enter full name'}
               />
             </div>
             <div>
@@ -431,11 +453,11 @@ export default function LandlordManagement() {
               <h4 className="font-medium mb-3">Bank Details</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="bankAccountNo">Account Number</Label>
+                  <Label htmlFor="bankAccountNumber">Account Number</Label>
                   <Input
-                    id="bankAccountNo"
-                    value={formData.bankAccountNo}
-                    onChange={(e) => setFormData({ ...formData, bankAccountNo: e.target.value })}
+                    id="bankAccountNumber"
+                    value={formData.bankAccountNumber}
+                    onChange={(e) => setFormData({ ...formData, bankAccountNumber: e.target.value })}
                     placeholder="12345678"
                   />
                 </div>
@@ -457,7 +479,7 @@ export default function LandlordManagement() {
             </Button>
             <Button
               onClick={() => createMutation.mutate(formData)}
-              disabled={!formData.fullName || createMutation.isPending}
+              disabled={!formData.name || createMutation.isPending}
             >
               {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Add Landlord
@@ -474,11 +496,23 @@ export default function LandlordManagement() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label htmlFor="edit-fullName">Name / Company Name *</Label>
+              <Label htmlFor="edit-landlordType">Landlord Type *</Label>
+              <select
+                id="edit-landlordType"
+                className="w-full p-2 border rounded-md"
+                value={formData.landlordType}
+                onChange={(e) => setFormData({ ...formData, landlordType: e.target.value as 'individual' | 'corporate' })}
+              >
+                <option value="individual">Individual</option>
+                <option value="corporate">Corporate</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="edit-name">{formData.landlordType === 'corporate' ? 'Company Name *' : 'Full Name *'}</Label>
               <Input
-                id="edit-fullName"
-                value={formData.fullName}
-                onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
+                id="edit-name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
             </div>
             <div>
@@ -502,11 +536,11 @@ export default function LandlordManagement() {
               <h4 className="font-medium mb-3">Bank Details</h4>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="edit-bankAccountNo">Account Number</Label>
+                  <Label htmlFor="edit-bankAccountNumber">Account Number</Label>
                   <Input
-                    id="edit-bankAccountNo"
-                    value={formData.bankAccountNo}
-                    onChange={(e) => setFormData({ ...formData, bankAccountNo: e.target.value })}
+                    id="edit-bankAccountNumber"
+                    value={formData.bankAccountNumber}
+                    onChange={(e) => setFormData({ ...formData, bankAccountNumber: e.target.value })}
                   />
                 </div>
                 <div>
@@ -526,7 +560,7 @@ export default function LandlordManagement() {
             </Button>
             <Button
               onClick={() => selectedLandlord && updateMutation.mutate({ id: selectedLandlord.id, data: formData })}
-              disabled={!formData.fullName || updateMutation.isPending}
+              disabled={!formData.name || updateMutation.isPending}
             >
               {updateMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Save Changes

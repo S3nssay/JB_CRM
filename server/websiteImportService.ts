@@ -10,7 +10,7 @@ import { eq } from 'drizzle-orm';
 
 export interface ScrapedProperty {
   websiteId: string; // The ID from the website URL (e.g., "1263")
-  listingType: 'sale' | 'rental';
+  isRental: boolean; // true = rental, false = sale
   title: string;
   description: string;
   price: number; // in pence
@@ -175,7 +175,7 @@ export class WebsiteImportService {
   private async scrapePropertyDetail(
     page: Page,
     propertyPath: string,
-    listingType: 'sale' | 'rental'
+    isRental: boolean
   ): Promise<ScrapedProperty | null> {
     const fullUrl = `${BASE_URL}${propertyPath}`;
     await page.goto(fullUrl, { waitUntil: 'networkidle', timeout: 30000 });
@@ -377,7 +377,7 @@ export class WebsiteImportService {
 
     return {
       websiteId,
-      listingType,
+      isRental,
       title: `${data.bedrooms} Bedroom ${data.propertyType} in ${data.postcode}`,
       description: data.description,
       price: data.price,
@@ -439,11 +439,11 @@ export class WebsiteImportService {
         } else {
           // Insert new property
           await db.insert(properties).values({
-            listingType: prop.listingType,
-            propertyCategory: 'residential',
+            isRental: prop.isRental,
+            isResidential: true,
             status: prop.status,
             title: prop.title,
-            description: prop.description || `${prop.bedrooms} bedroom ${prop.propertyType} for ${prop.listingType}`,
+            description: prop.description || `${prop.bedrooms} bedroom ${prop.propertyType} ${prop.isRental ? 'to rent' : 'for sale'}`,
             price: prop.price,
             propertyType: prop.propertyType,
             bedrooms: prop.bedrooms,

@@ -11,7 +11,8 @@ interface PropertyQRCodeProps {
   propertyId: number;
   propertyTitle: string;
   postcode?: string;
-  listingType?: 'sale' | 'rental' | 'commercial';
+  isRental?: boolean; // true = rental, false = sale
+  isResidential?: boolean; // true = residential, false = commercial
   size?: number;
   showActions?: boolean;
   variant?: 'inline' | 'card' | 'button';
@@ -38,12 +39,23 @@ export function PropertyQRCode({
   propertyId,
   propertyTitle,
   postcode,
-  listingType,
+  isRental,
+  isResidential = true,
   size = 128,
   showActions = true,
   variant = 'inline',
   baseUrl
 }: PropertyQRCodeProps) {
+  // Helper to get listing type label
+  const getListingTypeLabel = () => {
+    if (isResidential === false) return 'COMMERCIAL';
+    return isRental ? 'TO RENT' : 'FOR SALE';
+  };
+
+  const getListingTypeClass = () => {
+    if (isResidential === false) return 'commercial';
+    return isRental ? 'rental' : 'sale';
+  };
   const { toast } = useToast();
   const canvasRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
@@ -197,7 +209,7 @@ export function PropertyQRCode({
               <img src="${generateQRDataUrl()}" alt="QR Code" width="256" height="256" />
             </div>
             <div class="scan-text">SCAN TO VIEW PROPERTY</div>
-            ${listingType ? `<div class="type-badge ${listingType}">${listingType === 'sale' ? 'FOR SALE' : listingType === 'rental' ? 'TO RENT' : 'COMMERCIAL'}</div>` : ''}
+            ${isRental !== undefined ? `<div class="type-badge ${getListingTypeClass()}">${getListingTypeLabel()}</div>` : ''}
             <div class="url">${propertyUrl}</div>
           </div>
           <script>
@@ -277,15 +289,15 @@ export function PropertyQRCode({
             {postcode && (
               <Badge variant="outline" className="mt-2">{postcode}</Badge>
             )}
-            {listingType && (
+            {isRental !== undefined && (
               <Badge
                 className={`mt-2 ${
-                  listingType === 'sale' ? 'bg-[#791E75]' :
-                  listingType === 'rental' ? 'bg-[#F8B324] text-black' :
-                  'bg-purple-600'
+                  isResidential === false ? 'bg-purple-600' :
+                  isRental ? 'bg-[#F8B324] text-black' :
+                  'bg-[#791E75]'
                 }`}
               >
-                {listingType === 'sale' ? 'For Sale' : listingType === 'rental' ? 'To Rent' : 'Commercial'}
+                {getListingTypeLabel()}
               </Badge>
             )}
           </div>
@@ -343,15 +355,15 @@ export function PropertyQRCode({
             {postcode && (
               <p className="text-sm text-gray-500">{postcode}</p>
             )}
-            {listingType && (
+            {isRental !== undefined && (
               <Badge
                 className={`mt-2 ${
-                  listingType === 'sale' ? 'bg-[#791E75]' :
-                  listingType === 'rental' ? 'bg-[#F8B324] text-black' :
-                  'bg-purple-600'
+                  isResidential === false ? 'bg-purple-600' :
+                  isRental ? 'bg-[#F8B324] text-black' :
+                  'bg-[#791E75]'
                 }`}
               >
-                {listingType === 'sale' ? 'For Sale' : listingType === 'rental' ? 'To Rent' : 'Commercial'}
+                {getListingTypeLabel()}
               </Badge>
             )}
           </div>

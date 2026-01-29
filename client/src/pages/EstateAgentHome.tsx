@@ -285,7 +285,7 @@ const EstateAgentHome = () => {
           <div className="relative" ref={searchDropdownRef}>
             <button
               onClick={() => setIsSearchDropdownOpen(!isSearchDropdownOpen)}
-              className="group relative px-4 py-2 md:px-5 md:py-2.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/30 flex items-center justify-center gap-2 hover:bg-white/20 hover:border-white/40 transition-all duration-300 shadow-lg"
+              className="group relative px-4 py-2 md:px-5 md:py-2.5 rounded-full backdrop-blur-sm flex items-center justify-center gap-2 transition-all duration-300 shadow-lg bg-[#791E75] border border-[#791E75] hover:bg-[#5d1759]"
             >
               <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 px-2 py-1 rounded text-xs font-semibold bg-black/80 text-white opacity-0 group-hover:opacity-100 transition-all duration-300 whitespace-nowrap">
                 Search Properties
@@ -1796,19 +1796,19 @@ const EstateAgentHome = () => {
               {teamMembers.map((member) => (
                 <div
                   key={member.id}
-                  className="team-card group relative w-72 sm:w-80 md:w-80 h-auto md:h-[768px] min-h-[500px] md:min-h-[600px] flex-shrink-0 snap-center md:snap-none transform transition-all duration-500 hover:scale-105"
+                  className="team-card group relative w-72 sm:w-80 md:w-80 h-[480px] flex-shrink-0 snap-center md:snap-none transform transition-all duration-500 hover:scale-105"
                 >
                   {/* Sophisticated Background with Gradient */}
-                  <div className="relative bg-gradient-to-br from-white/10 via-white/5 to-transparent backdrop-blur-xl rounded-3xl border border-white/20 group-hover:border-[#D4A04F]/50 transition-all duration-500 overflow-hidden h-full">
-                    
+                  <div className="relative h-full bg-gradient-to-br from-white/10 via-white/5 to-transparent backdrop-blur-xl rounded-3xl border border-white/20 group-hover:border-[#D4A04F]/50 transition-all duration-500 overflow-hidden">
+
                     {/* Animated background glow on hover */}
                     <div className="absolute inset-0 bg-gradient-to-br from-[#D4A04F]/10 via-[#D4A04F]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                    
+
                     {/* Profile Section */}
-                    <div className="relative z-10 p-8 h-full flex flex-col">
-                      <div className="relative mb-8">
+                    <div className="relative z-10 p-6 h-full flex flex-col">
+                      <div className="relative mb-4">
                         {/* Profile Image with Elegant Frame */}
-                        <div className="relative w-48 h-48 mx-auto">
+                        <div className="relative w-32 h-32 mx-auto">
                           {/* Outer decorative ring */}
                           <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#D4A04F] via-[#E6B366] to-[#D4A04F] p-1 group-hover:scale-110 transition-transform duration-500">
                             <div className="w-full h-full rounded-full bg-gray-900 p-1">
@@ -1825,30 +1825,27 @@ const EstateAgentHome = () => {
                         </div>
                       </div>
 
-                      {/* Content Section - flexible */}
-                      <div className="text-center flex-grow flex flex-col justify-between">
-                        {/* Top content group */}
-                        <div className="space-y-4">
-                          {/* Name with enhanced typography */}
-                          <div>
-                            <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-[#D4A04F] transition-colors duration-300">{member.name}</h3>
-                            <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-[#D4A04F] to-transparent mx-auto opacity-50 group-hover:opacity-100 transition-opacity duration-300"></div>
-                          </div>
-
-                          {/* Role with sophisticated styling */}
-                          <p className="text-[#D4A04F] text-base font-semibold tracking-wide uppercase">
-                            {member.role}
-                          </p>
-
-                          {/* Description with better spacing */}
-                          <p className="text-white/80 text-sm leading-relaxed px-2">
-                            {member.description}
-                          </p>
+                      {/* Content Section */}
+                      <div className="text-center flex flex-col flex-grow">
+                        {/* Name with enhanced typography */}
+                        <div className="mb-2">
+                          <h3 className="text-lg font-bold text-white mb-1 group-hover:text-[#D4A04F] transition-colors duration-300">{member.name}</h3>
+                          <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-[#D4A04F] to-transparent mx-auto opacity-50 group-hover:opacity-100 transition-opacity duration-300"></div>
                         </div>
 
-                        {/* Enhanced Contact Button - at bottom */}
-                        <div className="pt-6">
-                          <a 
+                        {/* Role with sophisticated styling */}
+                        <p className="text-[#D4A04F] text-xs font-semibold tracking-wide uppercase mb-2">
+                          {member.role}
+                        </p>
+
+                        {/* Description with better spacing */}
+                        <p className="text-white/80 text-sm leading-relaxed px-2 flex-grow">
+                          {member.description}
+                        </p>
+
+                        {/* Enhanced Contact Button - always at bottom */}
+                        <div className="pt-4 mt-auto">
+                          <a
                             href={`https://wa.me/${member.whatsapp.replace('+', '')}?text=Hi%20${member.name.replace(' ', '%20')}%2C%20I%20have%20a%20property%20enquiry.`}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -1865,58 +1862,57 @@ const EstateAgentHome = () => {
               ))}
               
               {/* Group Team Photo Card - Enhanced Design */}
-              <div className="team-card group relative w-72 sm:w-80 md:w-80 h-auto md:h-[768px] min-h-[500px] md:min-h-[600px] flex-shrink-0 snap-center md:snap-none transform transition-all duration-500 hover:scale-105">
+              <div className="team-card group relative w-72 sm:w-80 md:w-80 h-[480px] flex-shrink-0 snap-center md:snap-none transform transition-all duration-500 hover:scale-105">
                 {/* Sophisticated Background */}
-                <div className="relative bg-gradient-to-br from-white/10 via-white/5 to-transparent backdrop-blur-xl rounded-3xl border border-white/20 group-hover:border-[#D4A04F]/50 transition-all duration-500 overflow-hidden h-full">
-                  
+                <div className="relative h-full bg-gradient-to-br from-white/10 via-white/5 to-transparent backdrop-blur-xl rounded-3xl border border-white/20 group-hover:border-[#D4A04F]/50 transition-all duration-500 overflow-hidden">
+
                   {/* Animated background glow on hover */}
                   <div className="absolute inset-0 bg-gradient-to-br from-[#D4A04F]/10 via-[#D4A04F]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                  
+
                   {/* Team Photo Section */}
-                  <div className="relative z-10 p-8 h-full flex flex-col">
-                    <div className="relative mb-8">
+                  <div className="relative z-10 p-6 h-full flex flex-col">
+                    <div className="relative mb-4">
                       {/* Team Photo with Elegant Frame */}
-                      <div className="relative w-full h-48 mx-auto">
+                      <div className="relative w-32 h-32 mx-auto">
                         {/* Outer decorative border */}
                         <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-[#D4A04F] via-[#E6B366] to-[#D4A04F] p-1 group-hover:scale-105 transition-transform duration-500">
                           <div className="w-full h-full rounded-xl bg-gray-900 p-1">
-                            <img 
-                              src={lettingsTeam} 
+                            <img
+                              src={lettingsTeam}
                               alt="John Barclay Lettings Team"
                               className="w-full h-full object-cover rounded-lg"
                             />
                           </div>
                         </div>
-                        
+
                         {/* Floating accent elements */}
                         <div className="absolute -top-2 -right-2 w-4 h-4 bg-gradient-to-br from-[#D4A04F] to-[#E6B366] rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                        <div className="absolute -bottom-2 -left-2 w-3 h-3 bg-gradient-to-br from-[#D4A04F] to-[#B8903E] rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
                       </div>
                     </div>
-                    
+
                     {/* Content Section */}
-                    <div className="text-center space-y-4 flex-grow flex flex-col justify-between">
+                    <div className="text-center flex flex-col flex-grow">
                       {/* Team Name with enhanced typography */}
-                      <div>
-                        <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-[#D4A04F] transition-colors duration-300">Our Lettings Team</h3>
-                        <div className="w-16 h-0.5 bg-gradient-to-r from-transparent via-[#D4A04F] to-transparent mx-auto opacity-50 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="mb-2">
+                        <h3 className="text-lg font-bold text-white mb-1 group-hover:text-[#D4A04F] transition-colors duration-300">Our Lettings Team</h3>
+                        <div className="w-12 h-0.5 bg-gradient-to-r from-transparent via-[#D4A04F] to-transparent mx-auto opacity-50 group-hover:opacity-100 transition-opacity duration-300"></div>
                       </div>
-                      
+
                       {/* Tagline with sophisticated styling */}
-                      <p className="text-[#D4A04F] text-base font-semibold tracking-wide uppercase">
+                      <p className="text-[#D4A04F] text-xs font-semibold tracking-wide uppercase mb-2">
                         Complete Property Solutions
                       </p>
-                      
+
                       {/* Description with better spacing */}
-                      <p className="text-white/80 text-sm leading-relaxed px-2">
-                        Working together to provide comprehensive lettings, sales, and property management 
+                      <p className="text-white/80 text-sm leading-relaxed px-2 flex-grow">
+                        Working together to provide comprehensive lettings, sales, and property management
                         services across Central, North West and West London.
                       </p>
-                      
-                      {/* Enhanced Contact Button */}
-                      <div className="pt-4">
-                        <a 
-                          href="https://wa.me/442077240000?text=Hi%20John%20Barclay%2C%20I%20have%20a%20property%20enquiry."
+
+                      {/* Enhanced Contact Button - always at bottom */}
+                      <div className="pt-4 mt-auto">
+                        <a
+                          href="https://wa.me/447367087752?text=Hi%20John%20Barclay%2C%20I%20have%20a%20property%20enquiry."
                           target="_blank"
                           rel="noopener noreferrer"
                           className="group/btn inline-flex items-center justify-center bg-gradient-to-r from-[#25D366] to-[#20b954] hover:from-[#20b954] hover:to-[#1da851] text-white px-6 py-3 rounded-full transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105"

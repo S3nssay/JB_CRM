@@ -27,7 +27,7 @@ interface ScrapedProperty {
   sqft: number;
   images: string[];
   propertyType?: string;
-  listingType?: 'sale' | 'rental';
+  isRental?: boolean; // true = rental, false = sale
   epcRating?: string;
   tenure?: string;
   councilTaxBand?: string;
@@ -53,7 +53,9 @@ export default function PropertyImport() {
   const { data: portals = [] } = useQuery<Portal[]>({
     queryKey: ['/api/crm/properties/import/portals'],
     queryFn: async () => {
-      const res = await fetch('/api/crm/properties/import/portals');
+      const res = await fetch('/api/crm/properties/import/portals', {
+        credentials: 'include'
+      });
       if (!res.ok) throw new Error('Failed to fetch portals');
       return res.json();
     }
@@ -65,6 +67,7 @@ export default function PropertyImport() {
       const res = await fetch('/api/crm/properties/import/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ url: propertyUrl })
       });
       return res.json();
@@ -100,6 +103,7 @@ export default function PropertyImport() {
       const res = await fetch('/api/crm/properties/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ url: propertyUrl })
       });
       return res.json();
@@ -148,14 +152,14 @@ export default function PropertyImport() {
     importMutation.mutate(url.trim());
   };
 
-  const formatPrice = (price: number, qualifier?: string, listingType?: string) => {
+  const formatPrice = (price: number, qualifier?: string, isRental?: boolean) => {
     const formatted = new Intl.NumberFormat('en-GB', {
       style: 'currency',
       currency: 'GBP',
       maximumFractionDigits: 0
     }).format(price);
 
-    if (listingType === 'rental') {
+    if (isRental) {
       return `${formatted} ${qualifier === 'pw' ? 'pw' : 'pcm'}`;
     }
     return formatted;
@@ -341,10 +345,10 @@ export default function PropertyImport() {
 
                   <div className="flex items-center gap-4">
                     <span className="text-2xl font-bold text-green-600">
-                      {formatPrice(previewData.price, previewData.priceQualifier, previewData.listingType)}
+                      {formatPrice(previewData.price, previewData.priceQualifier, previewData.isRental)}
                     </span>
-                    <Badge className={previewData.listingType === 'rental' ? 'bg-blue-500' : 'bg-purple-500'}>
-                      {previewData.listingType === 'rental' ? 'To Let' : 'For Sale'}
+                    <Badge className={previewData.isRental ? 'bg-blue-500' : 'bg-purple-500'}>
+                      {previewData.isRental ? 'To Let' : 'For Sale'}
                     </Badge>
                     {previewData.propertyType && (
                       <Badge variant="outline" className="capitalize">

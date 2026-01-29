@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Building2, Users, Home, Plus, Eye, Edit, Trash2, Bell,
   Search, Phone, Mail, LogOut, ArrowLeft, ArrowRight, Check,
@@ -48,6 +49,16 @@ interface Tenant {
   idVerificationDate: string | null;
   createdAt: string;
   updatedAt: string;
+  // Tenancy/Property data
+  rentalAgreementId: number | null;
+  rentAmount: number | null;
+  rentFrequency: string | null;
+  tenancyStatus: string | null;
+  tenancyStart: string | null;
+  tenancyEnd: string | null;
+  propertyId: number | null;
+  propertyAddress: string | null;
+  propertyPostcode: string | null;
 }
 
 type WizardStep = 'details' | 'emergency' | 'verification';
@@ -63,6 +74,7 @@ export default function TenantManagement() {
   const { toast } = useToast();
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -234,12 +246,26 @@ export default function TenantManagement() {
     }
   };
 
-  // Filter tenants
-  const filteredTenants = tenants.filter((t: Tenant) =>
-    t.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    t.phone?.includes(searchTerm)
-  );
+  // Filter tenants by search and status
+  const filteredTenants = tenants.filter((t: Tenant) => {
+    const matchesSearch = !searchTerm ||
+      t.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.phone?.includes(searchTerm) ||
+      t.propertyAddress?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      t.propertyPostcode?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Format currency helper
+  const formatCurrency = (amount: number | string | null) => {
+    if (!amount) return '-';
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(numAmount);
+  };
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -358,16 +384,28 @@ export default function TenantManagement() {
             </Card>
           </div>
 
-          {/* Search and Add */}
+          {/* Search and Filter */}
           <div className="flex justify-between items-center flex-wrap gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search tenants by name, email, or phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+            <div className="flex items-center gap-4 flex-1">
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Search by name, email, phone, property..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={(value: 'all' | 'active' | 'inactive') => setStatusFilter(value)}>
+                <SelectTrigger className="w-[140px]">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Status</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <Button onClick={() => setShowAddDialog(true)}>
               <Plus className="mr-2 h-4 w-4" />
@@ -400,9 +438,10 @@ export default function TenantManagement() {
                     <TableRow>
                       <TableHead>Tenant</TableHead>
                       <TableHead>Contact</TableHead>
+                      <TableHead>Property</TableHead>
+                      <TableHead>Monthly Rent</TableHead>
                       <TableHead>ID Verification</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Created</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -410,15 +449,15 @@ export default function TenantManagement() {
                     {filteredTenants.map((tenant: Tenant) => (
                       <TableRow key={tenant.id}>
                         <TableCell>
-                          <div className="flex items-center gap-3">
+                          <div
+                            className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
+                            onClick={() => setLocation(`/crm/tenant/${tenant.id}`)}
+                          >
                             <div className="w-10 h-10 rounded-full bg-[#791E75] flex items-center justify-center text-white font-semibold">
                               {tenant.fullName?.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{tenant.fullName}</p>
-                              {tenant.address && (
-                                <p className="text-sm text-gray-500">{tenant.address}</p>
-                              )}
+                              <p className="font-medium text-[#791E75] hover:underline">{tenant.fullName}</p>
                             </div>
                           </div>
                         </TableCell>
@@ -437,6 +476,33 @@ export default function TenantManagement() {
                               </div>
                             )}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          {tenant.propertyId ? (
+                            <div
+                              className="cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors"
+                              onClick={() => setLocation(`/crm/managed-property/${tenant.propertyId}`)}
+                            >
+                              <p className="font-medium text-[#791E75] hover:underline text-sm">
+                                {tenant.propertyAddress}
+                              </p>
+                              {tenant.propertyPostcode && (
+                                <p className="text-xs text-gray-500">{tenant.propertyPostcode}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-sm">No property assigned</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {tenant.rentAmount ? (
+                            <div>
+                              <p className="font-medium">{formatCurrency(tenant.rentAmount)}</p>
+                              <p className="text-xs text-gray-500">{tenant.rentFrequency || 'Monthly'}</p>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-sm">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -491,9 +557,6 @@ export default function TenantManagement() {
                           <Badge className={tenant.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
                             {tenant.status === 'active' ? 'Active' : 'Inactive'}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {new Date(tenant.createdAt).toLocaleDateString('en-GB')}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">

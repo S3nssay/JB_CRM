@@ -132,7 +132,7 @@ export default function ValuationPage() {
     return (
       <div className="min-h-screen bg-white text-gray-900 flex items-center justify-center">
         <div className="max-w-2xl mx-auto text-center px-6">
-          <div className="bg-[#791E75] text-white 600 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-8">
+          <div className="bg-[#791E75] rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-8">
             <CheckCircle className="h-12 w-12 text-white" />
           </div>
           <h1 className="text-4xl md:text-5xl font-black mb-6">
@@ -145,25 +145,34 @@ export default function ValuationPage() {
             <h3 className="text-xl font-bold mb-4">What happens next?</h3>
             <div className="space-y-3 text-left">
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">1</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">1</div>
                 <span>We'll call you to discuss your property details</span>
               </div>
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">2</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">2</div>
                 <span>Schedule a convenient time for a property visit</span>
               </div>
               <div className="flex items-center">
-                <div className="w-8 h-8 bg-[#791E75] text-white 600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">3</div>
+                <div className="w-8 h-8 bg-[#791E75] text-white rounded-full flex items-center justify-center text-sm font-bold mr-4">3</div>
                 <span>Receive your detailed valuation report</span>
               </div>
             </div>
           </div>
-          <Button 
-            onClick={() => setIsSubmitted(false)}
-            className="bg-[#791E75] text-white 600 hover:bg-[#791E75] text-white 700 text-white font-bold py-3 px-8 rounded-xl"
-          >
-            Request Another Valuation
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/">
+              <Button className="bg-[#791E75] hover:bg-[#5d1759] text-white font-bold py-3 px-8 rounded-xl">
+                <Home className="mr-2 h-5 w-5" />
+                Back to Home
+              </Button>
+            </Link>
+            <Button
+              onClick={() => setIsSubmitted(false)}
+              variant="outline"
+              className="border-[#791E75] text-[#791E75] hover:bg-[#791E75] hover:text-white font-bold py-3 px-8 rounded-xl"
+            >
+              Request Another Valuation
+            </Button>
+          </div>
         </div>
       </div>
     );
@@ -191,7 +200,7 @@ export default function ValuationPage() {
               Back
             </Button>
             <Link href="/">
-              <Button className="bg-[#791E75] text-white 600 hover:bg-[#791E75] text-white 700 text-white px-4 py-2 rounded-xl flex items-center">
+              <Button className="bg-[#791E75] hover:bg-[#5d1759] text-white px-4 py-2 rounded-xl flex items-center">
                 <Home className="mr-2 h-4 w-4" />
                 Home
               </Button>
@@ -222,11 +231,11 @@ export default function ValuationPage() {
       {/* Main Content */}
       <section className="py-20 px-6 bg-slate-50">
         <div className="max-w-7xl mx-auto">
-          <div className="grid lg:grid-cols-2 gap-16">
-            
+          <div className="grid lg:grid-cols-2 gap-16 items-stretch">
+
             {/* Valuation Form */}
-            <div ref={formRef}>
-              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm">
+            <div ref={formRef} className="flex flex-col">
+              <div className="bg-white rounded-2xl p-8 border border-slate-200 shadow-sm flex-1">
                 <h2 className="text-3xl font-black mb-8 flex items-center text-[#5d1759]">
                   <Calculator className="h-8 w-8 text-[#791E75]600 mr-3" />
                   Get Your Free Valuation
@@ -380,7 +389,7 @@ export default function ValuationPage() {
                   <Button 
                     type="submit"
                     disabled={submitValuation.isPending}
-                    className="w-full bg-[#791E75] text-white 600 hover:bg-[#791E75] text-white 700 text-white font-bold py-4 text-lg rounded-xl transition-all duration-300 hover:scale-105"
+                    className="w-full bg-[#791E75] hover:bg-[#5d1759] text-white font-bold py-4 text-lg rounded-xl transition-all duration-300 hover:scale-105"
                   >
                     {submitValuation.isPending ? 'Submitting...' : 'Get My Free Valuation'}
                   </Button>
@@ -389,13 +398,13 @@ export default function ValuationPage() {
             </div>
 
             {/* Benefits Section */}
-            <div ref={benefitsRef}>
+            <div ref={benefitsRef} className="flex flex-col">
               <h2 className="text-3xl font-black mb-8 text-[#5d1759]">Why Choose Our Valuation Service?</h2>
-              
-              <div className="space-y-6">
+
+              <div className="space-y-6 flex-1 flex flex-col">
                 <div className="benefit-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                   <div className="flex items-start">
-                    <div className="bg-[#791E75] text-white 600 rounded-full p-3 mr-4">
+                    <div className="bg-[#791E75] rounded-full p-3 mr-4">
                       <TrendingUp className="h-6 w-6 text-white" />
                     </div>
                     <div>
@@ -409,7 +418,7 @@ export default function ValuationPage() {
 
                 <div className="benefit-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                   <div className="flex items-start">
-                    <div className="bg-[#791E75] text-white 600 rounded-full p-3 mr-4">
+                    <div className="bg-[#791E75] rounded-full p-3 mr-4">
                       <Clock className="h-6 w-6 text-white" />
                     </div>
                     <div>
@@ -423,7 +432,7 @@ export default function ValuationPage() {
 
                 <div className="benefit-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                   <div className="flex items-start">
-                    <div className="bg-[#791E75] text-white 600 rounded-full p-3 mr-4">
+                    <div className="bg-[#791E75] rounded-full p-3 mr-4">
                       <Star className="h-6 w-6 text-white" />
                     </div>
                     <div>
@@ -437,7 +446,7 @@ export default function ValuationPage() {
 
                 <div className="benefit-card bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
                   <div className="flex items-start">
-                    <div className="bg-[#791E75] text-white 600 rounded-full p-3 mr-4">
+                    <div className="bg-[#791E75] rounded-full p-3 mr-4">
                       <Home className="h-6 w-6 text-white" />
                     </div>
                     <div>
@@ -451,7 +460,7 @@ export default function ValuationPage() {
               </div>
 
               {/* Contact Info */}
-              <div className="mt-12 bg-[#791E75] rounded-2xl p-8">
+              <div className="mt-auto pt-6 bg-[#791E75] rounded-2xl p-8">
                 <h3 className="text-xl font-bold mb-6 text-white">Prefer to speak directly?</h3>
                 <div className="space-y-4">
                   <div className="flex items-center">

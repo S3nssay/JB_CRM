@@ -8,6 +8,8 @@ export interface PropertyListing {
   bedrooms: number;
   bathrooms: number;
   propertyType: 'house' | 'flat' | 'studio' | 'maisonette' | 'penthouse';
+  isRental: boolean; // true = rental, false = sale
+  // Keep listingType for backwards compatibility with display code
   listingType: 'sale' | 'rent';
   description: string;
   features: string[];
@@ -38,7 +40,8 @@ export interface PropertyListing {
 }
 
 export interface PropertySearchFilters {
-  listingType?: 'sale' | 'rent';
+  isRental?: boolean; // true = rental, false = sale
+  listingType?: 'sale' | 'rent'; // Backwards compatible
   minPrice?: number;
   maxPrice?: number;
   bedrooms?: number;
@@ -78,9 +81,12 @@ class PropertyListingsService {
     try {
       // Build query parameters
       const params = new URLSearchParams();
-      
-      if (filters.listingType) {
-        params.append('listingType', filters.listingType);
+
+      // Prefer isRental, fall back to listingType for backwards compatibility
+      if (filters.isRental !== undefined) {
+        params.append('isRental', String(filters.isRental));
+      } else if (filters.listingType) {
+        params.append('isRental', String(filters.listingType === 'rent'));
       }
       if (filters.minPrice !== undefined) {
         params.append('minPrice', filters.minPrice.toString());
@@ -155,6 +161,11 @@ class PropertyListingsService {
 
   // Convert API property data to PropertyListing format
   private convertToPropertyListing(apiProperty: any): PropertyListing {
+    // Derive isRental from either isRental field or listingType for backwards compatibility
+    const isRental = apiProperty.isRental !== undefined
+      ? apiProperty.isRental
+      : (apiProperty.listingType === 'rental' || apiProperty.listingType === 'rent');
+
     return {
       id: apiProperty.id?.toString() || Math.random().toString(),
       address: apiProperty.addressLine1 ? `${apiProperty.addressLine1}${apiProperty.addressLine2 ? ', ' + apiProperty.addressLine2 : ''}` : (apiProperty.address || ''),
@@ -163,7 +174,8 @@ class PropertyListingsService {
       bedrooms: apiProperty.bedrooms || 0,
       bathrooms: apiProperty.bathrooms || 0,
       propertyType: apiProperty.propertyType || 'flat',
-      listingType: apiProperty.listingType || 'sale',
+      isRental: isRental,
+      listingType: isRental ? 'rent' : 'sale', // Backwards compatible
       description: apiProperty.description || '',
       features: apiProperty.features || [],
       keyFeatures: apiProperty.keyFeatures || [],

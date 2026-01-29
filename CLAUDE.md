@@ -40,14 +40,56 @@ For any task involving multiple similar changes:
 
 - This project uses PostgreSQL with Drizzle ORM
 - Use Drizzle ORM for queries - it provides type safety when used correctly
-- PM (Property Management) tables use the `pm_` prefix: `pm_landlords`, `pm_tenants`, `pm_properties`, `pm_tenancies`, `pm_tenancy_checklist`
+- **IMPORTANT: Use the `properties` table for ALL property operations**
+  - Use `isManaged`, `isListedRental`, `isListedSale` flags to filter properties
+- Property Management tables: `landlords`, `tenant` (singular), `tenancies`, `tenancyChecklistItems`
+- Document storage: `document` table (singular, unified storage for all entity documents)
+- Ownership tables: `beneficialOwner` (singular), `corporateOwner` (singular)
+
+### DEPRECATED TABLES - NEVER USE:
+- **`pm_properties`** - DEPRECATED, use `properties` table with `isManaged = true`
+- **`pm_landlords`** - DEPRECATED, use `landlords` table
+- **`pm_tenants`** - DEPRECATED, use `tenant` table (singular)
+- **`pm_tenancies`** - DEPRECATED, use `tenancies` table
+- **Any table with `pm_` prefix** - These are all deprecated and should NEVER be referenced in new code
+- **`contracts`** - DEPRECATED, use `documents` table with appropriate `documentType`
+- **`tenancyContracts`** - DEPRECATED, use `tenancies` table instead
+
+### Properties Table - Key Flags:
+- `is_managed` - Property is under John Barclay management
+- `is_listed_rental` - Property is listed for rental
+- `is_listed_sale` - Property is listed for sale
 
 ### KNOWN WRONG COLUMN NAMES - NEVER USE THESE:
 - `bank_account_no` - WRONG, use `bank_account_number`
 - `fullName` or `full_name` - WRONG, use `name`
 - `deposit_reference` - WRONG, use `deposit_certificate_number`
+- `is_published_on_the_market` - WRONG, use `is_published_onthemarket`
 
-## BEFORE ANY DATABASE OPERATION (MANDATORY - NO EXCEPTIONS)
+### Properties Table - Publishing Columns (EXACT NAMES):
+- `is_published_website`
+- `is_published_zoopla`
+- `is_published_rightmove`
+- `is_published_onthemarket` (NOTE: no underscores in "onthemarket")
+- `is_published_social`
+
+## BEFORE ANY CODE THAT USES DATABASE FIELDS (MANDATORY - NO EXCEPTIONS)
+
+**STOP. Before writing ANY code that references database fields, you MUST:**
+1. Run a grep/search on schema.ts to get the EXACT column names
+2. Copy-paste the column names - DO NOT type them from memory
+3. If you cannot find the column, STOP and ask the user
+
+**This applies to ALL code, including:**
+- Backend: Raw SQL queries, Drizzle ORM queries
+- Backend: API response objects that return database fields
+- Frontend: Code that reads fields from API responses
+- Frontend: Form fields that map to database columns
+- Frontend: Any variable names derived from database column names
+
+**The database schema is the source of truth for ALL field names across the entire stack.**
+
+**If you skip this step, you WILL break the application.**
 
 ### For ANY database query:
 1. Run: `grep "pgTable.*table_name" shared/schema.ts` to find the table definition
@@ -116,36 +158,81 @@ Before committing any database-related code, verify no wrong column names exist:
 grep -r "bank_account_no\|\.fullName\|full_name" server/
 ```
 
-## PM Tables Schema Reference
+## Tables Schema Reference
 
-### pm_landlords
+### landlords
 - id, name, email, phone, mobile, address, address_line1, address_line2, city, postcode
 - landlord_type, company_name, company_registration_no, company_vat_no, company_address
 - bank_name, bank_account_number, bank_sort_code, bank_account_holder_name
 - status, notes, created_at, updated_at
 
-### pm_tenants
+### tenant (NOTE: table name is singular "tenant", not "tenants")
 - id, name, email, phone, mobile
+- user_id, property_id, landlord_id, tenancy_contract_id, contract_id, rental_agreement_id (FK relationships)
 - address, address_line1, address_line2, city, postcode
 - emergency_contact_name, emergency_contact_phone, emergency_contact_relationship
 - status, notes, created_at, updated_at
 
-### pm_properties
-- id, address, address_line1, address_line2, city, postcode
-- property_type, property_category, bedrooms, bathrooms
-- landlord_id, is_managed, is_listed_rental, is_listed_sale
-- management_fee_type, management_fee_value, management_start_date
-- status, created_at, updated_at
+### document (NOTE: singular name in Drizzle, DB table is "document")
+- id, name, original_name, document_type, description
+- mime_type, size, storage_url, storage_provider
+- entity_type, entity_id (polymorphic reference)
+- property_id, landlord_id, tenant_id, tenancy_id, beneficial_owner_id, corporate_owner_id (direct FK references)
+- document_date, expiry_date, status, is_required, is_verified, verified_at, verified_by
+- category, version, previous_version_id, uploaded_by
+- created_at, updated_at
 
-### pm_tenancies
+### beneficialOwner (NOTE: singular name in Drizzle, DB table is "beneficial_owners")
+- id, landlord_id, name, date_of_birth, nationality
+- address, address_line1, address_line2, city, postcode, country
+- ownership_percentage, verification_status, verification_date
+- id_document_type, id_document_number, id_document_expiry
+- pep_status, sanctions_check_status, notes
+- created_at, updated_at
+
+### corporateOwner (NOTE: singular name in Drizzle, DB table is "corporate_owners")
+- id, landlord_id, company_name, company_registration_number, company_type
+- registered_address, country_of_incorporation, date_of_incorporation
+- vat_number, tax_reference, verification_status
+- created_at, updated_at
+
+### properties (Main properties table)
+- id, address, address_line1, address_line2, city, postcode
+- property_type, is_residential, bedrooms, bathrooms, receptions, square_footage
+- is_managed, is_listed_rental, is_listed_sale (key flags for filtering)
+- landlord_id, vendor_id, property_manager_id, agent_id
+- management_type, management_fee_type, management_fee_value, management_start_date
+- rent_amount, rent_period, deposit, price, price_qualifier
+- is_published_website, is_published_zoopla, is_published_rightmove, is_published_onthemarket, is_published_social
+- images, floor_plan, features, amenities, description, title
+- status, notes, created_at, updated_at
+
+### tenancy_contracts (Drizzle: tenancyContracts)
 - id, property_id, landlord_id, tenant_id
 - start_date, end_date, period_months
 - rent_amount, rent_frequency
 - deposit_amount, deposit_scheme, deposit_certificate_number
 - status, created_at, updated_at
 
-### pm_tenancy_checklist
+### tenancy_checklist_items (Drizzle: tenancyChecklistItems)
 - id, tenancy_id, item_type, is_completed, completed_at, document_url, notes
+
+### leads
+- id, name, email, phone, mobile
+- status (new, contacted, qualified, negotiating, converted, lost)
+- source (website, portal, referral, walk_in, phone, social, voice_agent)
+- lead_type (buyer, seller, tenant, landlord)
+- assigned_agent_id, property_interest_ids
+- notes, budget_min, budget_max
+- created_at, updated_at, last_contact_at
+
+### Related Lead Tables
+- `lead_property_views` - Properties a lead has viewed
+- `lead_communications` - Email/SMS/call history
+- `lead_viewings` - Scheduled/completed viewings
+- `lead_activities` - Activity tracking
+- `proactive_leads` - AI-identified potential leads
+- `voice_lead_property_interests` - Voice call property discussions
 
 ## Key Files
 

@@ -38,13 +38,17 @@ export default function CRMLogin() {
       // Store user info
       localStorage.setItem('user', JSON.stringify(response.user));
 
+      // Show toast message
       toast({
         title: "Welcome back!",
         description: `Logged in as ${response.user.fullName}`,
       });
 
-      // Redirect to CRM dashboard
-      setLocation('/crm/dashboard');
+      // Small delay before redirect to ensure state is properly set
+      // This helps prevent rendering issues during page transition
+      setTimeout(() => {
+        setLocation('/crm/dashboard');
+      }, 100);
     } catch (error) {
       toast({
         title: "Login failed",
@@ -57,9 +61,9 @@ export default function CRMLogin() {
   };
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="min-h-screen relative overflow-hidden bg-[#791E75]">
       {/* ASCII Effect Background with Mouse Distortion */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-[#791E75] via-[#5d1759] to-[#791E75]">
+      <div className="absolute inset-0 bg-gradient-to-br from-[#791E75] via-[#5d1759] to-[#791E75]">
         {/*
         <Suspense fallback={<div className="w-full h-full bg-[#0a0a0a]" />}>
           <AsciiScene

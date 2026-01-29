@@ -1,6 +1,15 @@
 import { Star } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
-const testimonials = [
+interface CMSTestimonial {
+  id: number;
+  content: string;
+  author: string;
+  location: string;
+  rating: number;
+}
+
+const hardcodedTestimonials = [
   {
     id: 1,
     content: "I needed to sell my house quickly due to a job relocation. QuickSell Properties made me a fair offer and completed in just 10 days. The whole process was seamless and stress-free.",
@@ -25,6 +34,20 @@ const testimonials = [
 ];
 
 const Testimonials = () => {
+  // Fetch testimonials from CMS, fallback to hardcoded
+  const { data: cmsTestimonials } = useQuery<CMSTestimonial[]>({
+    queryKey: ['/api/public/testimonials'],
+    queryFn: async () => {
+      const res = await fetch('/api/public/testimonials');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.length > 0 ? data : null;
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  const testimonials = cmsTestimonials || hardcodedTestimonials;
+
   return (
     <section id="testimonials" className="py-16 md:py-24 bg-primary">
       <div className="container mx-auto px-4">

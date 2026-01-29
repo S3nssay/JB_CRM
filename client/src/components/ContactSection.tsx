@@ -18,9 +18,6 @@ import { Button } from '@/components/ui/button';
 import { Phone, Mail, MapPin, MessageCircle, ArrowRight, FileText, Shield } from 'lucide-react';
 import { Link } from 'wouter';
 import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/ScrollTrigger';
-
-gsap.registerPlugin(ScrollTrigger);
 
 const ContactSection = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -34,7 +31,6 @@ const ContactSection = () => {
   const locationRef = useRef<HTMLDivElement>(null);
   const whatsappRef = useRef<HTMLDivElement>(null);
   const hoursRef = useRef<HTMLDivElement>(null);
-  const contactRefs = useRef<HTMLDivElement[]>([]);
 
   const form = useForm<ContactFormData>({
     resolver: zodResolver(contactFormSchema),
@@ -47,91 +43,20 @@ const ContactSection = () => {
   });
 
   useEffect(() => {
-    // Initial state - hide all elements
-    gsap.set([titleRef.current, subtitleRef.current, phoneRef.current, emailRef.current, locationRef.current, whatsappRef.current, hoursRef.current], {
-      opacity: 0,
-      y: 100,
-      scale: 0.8
-    });
+    // Simple fade-in animation on mount (no ScrollTrigger needed for fixed section)
+    const elements = [titleRef.current, subtitleRef.current, phoneRef.current, emailRef.current, locationRef.current, whatsappRef.current, hoursRef.current].filter(Boolean);
 
-    // Title animation
-    gsap.to(titleRef.current, {
+    // Set initial state
+    gsap.set(elements, { opacity: 0, y: 30 });
+
+    // Animate to visible
+    gsap.to(elements, {
       opacity: 1,
       y: 0,
-      scale: 1,
-      duration: 1.5,
-      ease: "power3.out",
-      scrollTrigger: {
-        trigger: titleRef.current,
-        start: "top 80%",
-        toggleActions: "play none none reverse"
-      }
+      duration: 0.8,
+      ease: "power2.out",
+      stagger: 0.1
     });
-
-    // Subtitle animation
-    gsap.to(subtitleRef.current, {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      duration: 1.2,
-      ease: "power3.out",
-      delay: 0.3,
-      scrollTrigger: {
-        trigger: subtitleRef.current,
-        start: "top 80%",
-        toggleActions: "play none none reverse"
-      }
-    });
-
-    // Contact items staggered animation
-    const contactItems = [phoneRef.current, emailRef.current, locationRef.current];
-    gsap.to(contactItems, {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      duration: 1,
-      ease: "power3.out",
-      stagger: 0.2,
-      delay: 0.6,
-      scrollTrigger: {
-        trigger: phoneRef.current,
-        start: "top 80%",
-        toggleActions: "play none none reverse"
-      }
-    });
-
-    // WhatsApp button animation
-    gsap.to(whatsappRef.current, {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      duration: 1.5,
-      ease: "elastic.out(1, 0.3)",
-      delay: 1.2,
-      scrollTrigger: {
-        trigger: whatsappRef.current,
-        start: "top 80%",
-        toggleActions: "play none none reverse"
-      }
-    });
-
-    // Working hours animation
-    gsap.to(hoursRef.current, {
-      opacity: 1,
-      y: 0,
-      scale: 1,
-      duration: 1.2,
-      ease: "power3.out",
-      delay: 1.5,
-      scrollTrigger: {
-        trigger: hoursRef.current,
-        start: "top 80%",
-        toggleActions: "play none none reverse"
-      }
-    });
-
-    // Removed floating and pulsing animations for a cleaner look
-
   }, []);
 
   const onSubmit = async (data: ContactFormData) => {
@@ -158,72 +83,53 @@ const ContactSection = () => {
   };
 
   return (
-    <section id="contact" className="relative min-h-screen py-16 sm:py-24 md:py-32 bg-gradient-to-b from-white to-gray-50 overflow-hidden">
-
-      {/* Animated background elements */}
-      <div className="absolute inset-0 pointer-events-none">
-        {/* Floating circles */}
-        {[...Array(8)].map((_, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full bg-[#8B4A9C]/5 animate-pulse"
-            style={{
-              width: `${50 + Math.random() * 100}px`,
-              height: `${50 + Math.random() * 100}px`,
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-              animationDelay: `${Math.random() * 3}s`,
-              animationDuration: `${3 + Math.random() * 4}s`
-            }}
-          />
-        ))}
-      </div>
+    <section id="contact" className="relative min-h-screen py-8 sm:py-12 md:py-16 bg-gradient-to-b from-white to-gray-50 overflow-hidden">
 
       <div className="container mx-auto px-4 sm:px-6 relative z-10">
 
         {/* Animated Title */}
-        <div className="text-center mb-12 sm:mb-20 md:mb-32">
-          <div ref={titleRef} className="mb-4 sm:mb-6 md:mb-8">
-            <h2 className="text-3xl sm:text-5xl md:text-7xl lg:text-8xl font-bold text-[#8B4A9C]">
+        <div className="text-center mb-6 sm:mb-8 md:mb-12">
+          <div ref={titleRef} className="mb-2 sm:mb-3 md:mb-4">
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-[#8B4A9C]">
               Connect With Us
             </h2>
           </div>
           <div ref={subtitleRef}>
-            <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-slate-600 max-w-4xl mx-auto px-4 md:px-0">
+            <p className="text-sm sm:text-base md:text-lg text-slate-600 max-w-3xl mx-auto px-4 md:px-0">
               Experience exceptional service with London's premier estate agents
             </p>
           </div>
         </div>
 
         {/* Animated Contact Information */}
-        <div className="max-w-6xl mx-auto mb-12 sm:mb-16 md:mb-20">
-          <div className="grid md:grid-cols-3 gap-8 sm:gap-12 md:gap-16">
+        <div className="max-w-5xl mx-auto mb-6 sm:mb-8 md:mb-10">
+          <div className="grid md:grid-cols-3 gap-4 sm:gap-6 md:gap-8">
 
             {/* Phone */}
             <div ref={phoneRef} className="text-center">
-              <div className="bg-[#8B4A9C] w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 md:mb-8 shadow-2xl">
-                <Phone className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 text-white" />
+              <div className="bg-[#8B4A9C] w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4 shadow-xl">
+                <Phone className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-white" />
               </div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-2 sm:mb-3 md:mb-4">Call</h3>
-              <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-[#8B4A9C]">+44 7367 087752</p>
+              <h3 className="text-base sm:text-lg md:text-xl font-bold text-slate-800 mb-1 sm:mb-2">Call</h3>
+              <p className="text-base sm:text-lg md:text-xl font-bold text-[#8B4A9C]">+44 7367 087752</p>
             </div>
 
             {/* Email */}
             <div ref={emailRef} className="text-center">
-              <div className="bg-[#8B4A9C] w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 md:mb-8 shadow-2xl">
-                <Mail className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 text-white" />
+              <div className="bg-[#8B4A9C] w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4 shadow-xl">
+                <Mail className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-white" />
               </div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-2 sm:mb-3 md:mb-4">Email</h3>
-              <p className="text-sm sm:text-base md:text-lg lg:text-xl font-semibold text-[#8B4A9C] break-words">lettings@johnbarclay.co.uk</p>
+              <h3 className="text-base sm:text-lg md:text-xl font-bold text-slate-800 mb-1 sm:mb-2">Email</h3>
+              <p className="text-sm sm:text-base md:text-lg font-semibold text-[#8B4A9C] break-words">enquiries@johnbarclay.co.uk</p>
             </div>
 
             {/* Location */}
             <div ref={locationRef} className="text-center">
-              <div className="bg-[#8B4A9C] w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 md:mb-8 shadow-2xl">
-                <MapPin className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 text-white" />
+              <div className="bg-[#8B4A9C] w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center mx-auto mb-2 sm:mb-3 md:mb-4 shadow-xl">
+                <MapPin className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 text-white" />
               </div>
-              <h3 className="text-lg sm:text-xl md:text-2xl font-bold text-slate-800 mb-2 sm:mb-3 md:mb-4">Visit</h3>
-              <p className="text-sm sm:text-base md:text-lg lg:text-xl font-semibold text-[#8B4A9C]">
+              <h3 className="text-base sm:text-lg md:text-xl font-bold text-slate-800 mb-1 sm:mb-2">Visit</h3>
+              <p className="text-sm sm:text-base md:text-lg font-semibold text-[#8B4A9C]">
                 332 Ladbroke Grove<br />London W10 5AD
               </p>
             </div>
@@ -232,26 +138,26 @@ const ContactSection = () => {
         </div>
 
         {/* Animated WhatsApp Button */}
-        <div className="text-center mb-12 sm:mb-16 md:mb-20 px-4">
+        <div className="text-center mb-6 sm:mb-8 md:mb-10 px-4">
           <div ref={whatsappRef}>
             <a
-              href="https://wa.me/442089693322?text=Hi%2C%20I%27d%20like%20to%20inquire%20about%20your%20property%20services."
+              href="https://wa.me/447367087752?text=Hi%2C%20I%27d%20like%20to%20inquire%20about%20your%20property%20services."
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center bg-[#25D366] hover:bg-[#20b954] text-white font-bold py-3 sm:py-4 md:py-6 px-4 sm:px-6 md:px-10 text-sm sm:text-base md:text-xl rounded-full shadow-2xl hover:shadow-3xl transition-all duration-500 transform hover:scale-105 md:hover:scale-110 max-w-full"
+              className="inline-flex items-center justify-center bg-[#25D366] hover:bg-[#20b954] text-white font-bold py-2 sm:py-3 md:py-4 px-4 sm:px-6 md:px-8 text-sm sm:text-base md:text-lg rounded-full shadow-xl hover:shadow-2xl transition-all duration-500 transform hover:scale-105 max-w-full"
             >
-              <MessageCircle className="mr-2 sm:mr-3 md:mr-4 h-4 w-4 sm:h-5 sm:w-5 md:h-8 md:w-8 flex-shrink-0" />
+              <MessageCircle className="mr-2 sm:mr-3 h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 flex-shrink-0" />
               <span className="whitespace-nowrap">Start WhatsApp Chat</span>
-              <ArrowRight className="ml-2 sm:ml-3 md:ml-4 h-4 w-4 sm:h-5 sm:w-5 md:h-8 md:w-8 flex-shrink-0" />
+              <ArrowRight className="ml-2 sm:ml-3 h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 flex-shrink-0" />
             </a>
           </div>
         </div>
 
         {/* Working Hours - Plain Text */}
-        <div className="text-center pb-8 sm:pb-12 md:pb-16">
+        <div className="text-center pb-6 sm:pb-8 md:pb-10">
           <div ref={hoursRef}>
-            <h3 className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold mb-4 sm:mb-6 md:mb-8 text-slate-600">Working Hours</h3>
-            <div className="space-y-2 sm:space-y-3 text-sm sm:text-base md:text-lg lg:text-xl text-slate-600">
+            <h3 className="text-base sm:text-lg md:text-xl font-bold mb-2 sm:mb-3 md:mb-4 text-slate-600">Working Hours</h3>
+            <div className="space-y-1 sm:space-y-2 text-sm sm:text-base md:text-lg text-slate-600">
               <div>Monday - Friday: 9:00 AM - 6:00 PM</div>
               <div>Saturday: 10:00 AM - 4:00 PM</div>
               <div>Sunday: Closed</div>
@@ -260,28 +166,28 @@ const ContactSection = () => {
         </div>
 
         {/* Footer with Legal Links */}
-        <div className="border-t border-slate-200 pt-8 sm:pt-12">
+        <div className="border-t border-slate-200 pt-6 sm:pt-8">
           <div className="max-w-4xl mx-auto">
             {/* Legal Links */}
-            <div className="flex flex-wrap justify-center gap-4 sm:gap-8 mb-6 sm:mb-8">
+            <div className="flex flex-wrap justify-center gap-4 sm:gap-6 mb-4 sm:mb-6">
               <Link href="/terms-and-conditions">
-                <span className="inline-flex items-center text-sm sm:text-base text-[#8B4A9C] hover:text-[#6d3a7a] transition-colors cursor-pointer">
-                  <FileText className="h-4 w-4 mr-2" />
+                <span className="inline-flex items-center text-xs sm:text-sm text-[#8B4A9C] hover:text-[#6d3a7a] transition-colors cursor-pointer">
+                  <FileText className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   Terms & Conditions
                 </span>
               </Link>
               <Link href="/privacy-policy">
-                <span className="inline-flex items-center text-sm sm:text-base text-[#8B4A9C] hover:text-[#6d3a7a] transition-colors cursor-pointer">
-                  <Shield className="h-4 w-4 mr-2" />
+                <span className="inline-flex items-center text-xs sm:text-sm text-[#8B4A9C] hover:text-[#6d3a7a] transition-colors cursor-pointer">
+                  <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                   Privacy Policy
                 </span>
               </Link>
             </div>
 
             {/* Copyright */}
-            <div className="text-center text-xs sm:text-sm text-slate-500">
+            <div className="text-center text-xs text-slate-500">
               <p>&copy; {new Date().getFullYear()} John Barclay Estate & Management. All rights reserved.</p>
-              <p className="mt-2">Unit 2.03 Grand Union, 332 Ladbroke Grove, London, W10 5AD</p>
+              <p className="mt-1">Unit 2.03 Grand Union, 332 Ladbroke Grove, London, W10 5AD</p>
             </div>
           </div>
         </div>

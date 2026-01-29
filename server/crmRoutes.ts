@@ -17,7 +17,7 @@ import {
   insertManagementFeeSchema,
   tenancyContracts,
   landlords,
-  tenants,
+  tenant,
   properties,
   complianceRequirements,
   complianceStatus,
@@ -27,23 +27,17 @@ import {
   managedProperties,
   unifiedContacts,
   salesProgression,
-  // New Property Management (PM) tables
-  pmProperties,
-  pmLandlords,
-  pmTenants,
-  pmTenancies,
-  pmTenancyChecklist,
-  pmInventory,
-  pmInventoryItems,
-  insertPmPropertySchema,
-  insertPmLandlordSchema,
-  insertPmTenantSchema,
-  insertPmTenancySchema,
-  insertPmTenancyChecklistSchema,
-  insertPmInventorySchema,
-  insertPmInventoryItemSchema,
+  // Main tables for property management
+  tenancies,
+  tenancyContracts,
+  tenancyChecklistItems as tenancyChecklist,
+  insertLandlordSchema,
+  insertTenantSchema,
+  insertTenancyContractSchema as insertTenancySchema,
+  insertTenancyChecklistItemSchema as insertTenancyChecklistSchema,
   tenancyChecklistItemTypes,
   tenancyChecklistItemLabels,
+  tenancyChecklistItemMeta,
   // Security tables
   securitySettings,
   securityAuditLog,
@@ -60,7 +54,15 @@ import {
   featureModules,
   accessLevelPermissions,
   estateAgencyRoles,
-  users
+  users,
+  // CMS tables
+  cmsPages,
+  cmsContentBlocks,
+  cmsMedia,
+  insertCmsPageSchema,
+  insertCmsContentBlockSchema,
+  insertCmsMediaSchema,
+  staffProfiles
 } from '@shared/schema';
 
 import { eq, desc, and, sql, or } from 'drizzle-orm';
@@ -163,6 +165,43 @@ const uploadCsv = multer({
   }
 });
 
+// Configure multer for tenancy document uploads (PDFs, images, etc.)
+const documentsUploadDir = path.join(process.cwd(), 'uploads', 'documents');
+if (!fs.existsSync(documentsUploadDir)) {
+  fs.mkdirSync(documentsUploadDir, { recursive: true });
+}
+
+const documentStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, documentsUploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueId = randomUUID();
+    const ext = path.extname(file.originalname);
+    cb(null, `doc-${uniqueId}${ext}`);
+  }
+});
+
+const uploadDocument = multer({
+  storage: documentStorage,
+  limits: {
+    fileSize: 20 * 1024 * 1024, // 20MB max for documents
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'image/jpeg', 'image/png', 'image/webp', 'image/gif',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, images (JPEG, PNG, WEBP, GIF), and Word documents are allowed.'));
+    }
+  }
+});
+
 // Middleware to check if user is authenticated and is admin/agent
 const requireAgent = (req: any, res: any, next: any) => {
   if (!req.user) {
@@ -183,6 +222,27 @@ const requireAdmin = (req: any, res: any, next: any) => {
     return res.status(403).json({ error: 'Admin privileges required' });
   }
   next();
+};
+
+// Middleware to check security clearance level
+const requireClearance = (minLevel: number) => {
+  return (req: any, res: any, next: any) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    // Admins always have full access
+    if (req.user.role === 'admin') {
+      return next();
+    }
+    const userClearance = req.user.securityClearance || 1;
+    if (userClearance < minLevel) {
+      return res.status(403).json({
+        error: `Requires clearance level ${minLevel}`,
+        currentLevel: userClearance
+      });
+    }
+    next();
+  };
 };
 
 // Role-based permission middleware factory
@@ -315,43 +375,89 @@ crmRouter.delete('/upload/property-image/:filename', requireAgent, async (req, r
   }
 });
 
+// Upload a tenancy document (for checklist items, references, etc.)
+crmRouter.post('/upload/document', requireAgent, uploadDocument.single('document'), async (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No document file provided' });
+    }
+
+    const documentUrl = `/uploads/documents/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      url: documentUrl,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      mimeType: req.file.mimetype
+    });
+  } catch (error) {
+    console.error('Error uploading document:', error);
+    res.status(500).json({ error: 'Failed to upload document' });
+  }
+});
+
+// Delete a tenancy document
+crmRouter.delete('/upload/document/:filename', requireAgent, async (req, res) => {
+  try {
+    const filename = req.params.filename;
+    const filePath = path.join(documentsUploadDir, filename);
+
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+      res.json({ success: true, message: 'Document deleted successfully' });
+    } else {
+      res.status(404).json({ error: 'Document not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
 // ==========================================
 // Property CRUD operations
 
 crmRouter.get('/properties', requireAgent, async (req, res) => {
   try {
-    // Now using PM tables - pm_properties
-    const properties = await db.select({
-      id: pmProperties.id,
-      title: pmProperties.address,
-      addressLine1: pmProperties.addressLine1,
-      addressLine2: pmProperties.addressLine2,
-      city: pmProperties.city,
-      postcode: pmProperties.postcode,
-      propertyType: pmProperties.propertyType,
-      propertyCategory: pmProperties.propertyCategory,
-      bedrooms: pmProperties.bedrooms,
-      bathrooms: pmProperties.bathrooms,
-      isManaged: pmProperties.isManaged,
-      isListed: sql<boolean>`(COALESCE(${pmProperties.isListedRental}, false) OR COALESCE(${pmProperties.isListedSale}, false))::boolean`,
-      isListedRental: pmProperties.isListedRental,
-      isListedSale: pmProperties.isListedSale,
-      listingType: sql<string>`CASE WHEN ${pmProperties.isListedSale} = true THEN 'sale' WHEN ${pmProperties.isListedRental} = true THEN 'rental' ELSE 'managed' END`,
-      landlordId: pmProperties.landlordId,
-      status: pmProperties.status,
-      createdAt: pmProperties.createdAt
+    // Using main properties table - single source of truth for all properties
+    // Flags: isManaged, isListed, isRental, isResidential, isPublished*
+    const allProperties = await db.select({
+      id: properties.id,
+      title: properties.title,
+      addressLine1: properties.addressLine1,
+      addressLine2: properties.addressLine2,
+      postcode: properties.postcode,
+      propertyType: properties.propertyType,
+      isResidential: properties.isResidential,
+      bedrooms: properties.bedrooms,
+      bathrooms: properties.bathrooms,
+      price: properties.price,
+      isManaged: properties.isManaged,
+      isListed: properties.isListed,
+      isRental: properties.isRental,
+      landlordId: properties.landlordId,
+      status: properties.status,
+      createdAt: properties.createdAt,
+      // Publishing flags
+      isPublishedWebsite: properties.isPublishedWebsite,
+      isPublishedZoopla: properties.isPublishedZoopla,
+      isPublishedRightmove: properties.isPublishedRightmove,
+      isPublishedOnTheMarket: properties.isPublishedOnTheMarket,
+      isPublishedSocial: properties.isPublishedSocial
     })
-    .from(pmProperties)
-    .orderBy(desc(pmProperties.createdAt));
+    .from(properties)
+    .orderBy(desc(properties.createdAt));
 
-    res.json(properties);
+    res.json(allProperties);
   } catch (error) {
     console.error('Error fetching properties:', error);
     res.status(500).json({ error: 'Failed to fetch properties' });
   }
 });
 
-// Rental agreements - NOW USING RAW SQL with PM TABLES (pm_tenancies)
+// Rental agreements - using main tenancies table
 crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
   try {
     const result = await pool.query(`
@@ -364,9 +470,9 @@ crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
         p.address_line1 as "propertyAddress", p.postcode, p.property_type as "propertyType", p.bedrooms,
         p.management_fee_type as "managementFeeType", p.management_fee_value as "managementFeeValue",
         l.name as "landlordName", l.email as "landlordEmail", l.phone as "landlordPhone"
-      FROM pm_tenancies t
-      LEFT JOIN pm_properties p ON t.property_id = p.id
-      LEFT JOIN pm_landlords l ON t.landlord_id = l.id
+      FROM tenancy t
+      LEFT JOIN property p ON t.property_id = p.id
+      LEFT JOIN landlord l ON t.landlord_id = l.id
       ORDER BY t.created_at DESC
     `);
 
@@ -389,61 +495,61 @@ crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
 // Managed properties - DRIZZLE ORM (using correct field names: name not fullName)
 crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
   try {
-    // Get all managed properties from the new PM system
-    const properties = await db.select({
-      id: pmProperties.id,
-      address: pmProperties.address,
-      addressLine1: pmProperties.addressLine1,
-      addressLine2: pmProperties.addressLine2,
-      city: pmProperties.city,
-      postcode: pmProperties.postcode,
-      propertyType: pmProperties.propertyType,
-      propertyCategory: pmProperties.propertyCategory,
-      bedrooms: pmProperties.bedrooms,
-      bathrooms: pmProperties.bathrooms,
-      isManaged: pmProperties.isManaged,
-      isListedRental: pmProperties.isListedRental,
-      isListedSale: pmProperties.isListedSale,
-      landlordId: pmProperties.landlordId,
-      managementFeeType: pmProperties.managementFeeType,
-      managementFeeValue: pmProperties.managementFeeValue,
-      managementPeriodMonths: pmProperties.managementPeriodMonths,
-      managementStartDate: pmProperties.managementStartDate,
-      status: pmProperties.status,
+    // Get all managed properties from the main properties table
+    const managedPropertyList = await db.select({
+      id: properties.id,
+      address: properties.address,
+      addressLine1: properties.addressLine1,
+      addressLine2: properties.addressLine2,
+      city: properties.city,
+      postcode: properties.postcode,
+      propertyType: properties.propertyType,
+      isResidential: properties.isResidential,
+      bedrooms: properties.bedrooms,
+      bathrooms: properties.bathrooms,
+      isManaged: properties.isManaged,
+      isListed: properties.isListed,
+      isRental: properties.isRental,
+      landlordId: properties.landlordId,
+      managementFeeType: properties.managementFeeType,
+      managementFeeValue: properties.managementFeeValue,
+      managementPeriodMonths: properties.managementPeriodMonths,
+      managementStartDate: properties.managementStartDate,
+      status: properties.status,
       // Landlord info - using 'name' not 'fullName'
-      landlordName: pmLandlords.name,
-      landlordEmail: pmLandlords.email,
-      landlordPhone: pmLandlords.phone,
-      landlordMobile: pmLandlords.mobile,
-      landlordAddress: pmLandlords.address,
-      landlordCompanyName: pmLandlords.companyName
+      landlordName: landlords.name,
+      landlordEmail: landlords.email,
+      landlordPhone: landlords.phone,
+      landlordMobile: landlords.mobile,
+      landlordAddress: landlords.addressLine1,
+      landlordCompanyName: landlords.companyName
     })
-    .from(pmProperties)
-    .leftJoin(pmLandlords, eq(pmProperties.landlordId, pmLandlords.id))
-    .where(eq(pmProperties.isManaged, true))
-    .orderBy(desc(pmProperties.createdAt));
+    .from(properties)
+    .leftJoin(landlords, eq(properties.landlordId, landlords.id))
+    .where(eq(properties.isManaged, true))
+    .orderBy(desc(properties.createdAt));
 
     // For each property, get any active tenancy info
-    const enriched = await Promise.all(properties.map(async (p) => {
+    const enriched = await Promise.all(managedPropertyList.map(async (p) => {
       // Get active tenancy for this property - using 'name' not 'fullName'
       const [activeTenancy] = await db.select({
-        id: pmTenancies.id,
-        tenantId: pmTenancies.tenantId,
-        rentAmount: pmTenancies.rentAmount,
-        rentFrequency: pmTenancies.rentFrequency,
-        depositAmount: pmTenancies.depositAmount,
-        depositScheme: pmTenancies.depositScheme,
-        depositHolderType: pmTenancies.depositHolderType,
-        periodMonths: pmTenancies.periodMonths,
-        startDate: pmTenancies.startDate,
-        endDate: pmTenancies.endDate,
-        tenantName: pmTenants.name
+        id: tenancies.id,
+        tenantId: tenancies.tenantId,
+        rentAmount: tenancies.rentAmount,
+        rentFrequency: tenancies.rentFrequency,
+        depositAmount: tenancies.depositAmount,
+        depositScheme: tenancies.depositScheme,
+        depositHolderType: tenancies.depositHolderType,
+        periodMonths: tenancies.periodMonths,
+        startDate: tenancies.startDate,
+        endDate: tenancies.endDate,
+        tenantName: tenant.name
       })
-      .from(pmTenancies)
-      .leftJoin(pmTenants, eq(pmTenancies.tenantId, pmTenants.id))
+      .from(tenancies)
+      .leftJoin(tenant, eq(tenancies.tenantId, tenant.id))
       .where(and(
-        eq(pmTenancies.propertyId, p.id),
-        eq(pmTenancies.status, 'active')
+        eq(tenancies.propertyId, p.id),
+        eq(tenancies.status, 'active')
       ))
       .limit(1);
 
@@ -451,15 +557,12 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
       let checklistComplete = 0;
       let checklistTotal = 19; // 19 checklist items
       if (activeTenancy) {
-        const [checklistCount] = await db.select({
-          completed: sql<number>`count(*) filter (where ${pmTenancyChecklist.isCompleted} = true)`,
-          total: sql<number>`count(*)`
-        })
-        .from(pmTenancyChecklist)
-        .where(eq(pmTenancyChecklist.tenancyId, activeTenancy.id));
+        const allItems = await db.select()
+          .from(tenancyChecklist)
+          .where(eq(tenancyChecklist.tenancyId, activeTenancy.id));
 
-        checklistComplete = Number(checklistCount?.completed) || 0;
-        checklistTotal = Number(checklistCount?.total) || 19;
+        checklistTotal = allItems.length || 19;
+        checklistComplete = allItems.filter(item => item.isCompleted === true).length;
       }
 
       // Format deposit holder for display
@@ -486,12 +589,12 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
         propertyAddress: p.addressLine1 || p.address,
         postcode: p.postcode,
         propertyType: p.propertyType,
-        propertyCategory: p.propertyCategory,
+        isResidential: p.isResidential,
         bedrooms: p.bedrooms,
         bathrooms: p.bathrooms,
         isManaged: p.isManaged,
-        isListedRental: p.isListedRental,
-        isListedSale: p.isListedSale,
+        isListed: p.isListed,
+        isRental: p.isRental,
         status: p.status,
         landlordId: p.landlordId,
         landlordName: p.landlordName || 'Not assigned',
@@ -520,9 +623,10 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
     }));
 
     res.json(enriched);
-  } catch (error) {
-    console.error('Error fetching managed properties:', error);
-    res.status(500).json({ error: 'Failed to fetch managed properties' });
+  } catch (error: any) {
+    console.error('Error fetching managed properties:', error?.message || error);
+    console.error('Stack:', error?.stack);
+    res.status(500).json({ error: 'Failed to fetch managed properties', details: error?.message });
   }
 });
 
@@ -635,7 +739,7 @@ crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('fil
           bedrooms: 1,
           bathrooms: 1,
           price: rentAmount,
-          listingType: 'rental',
+          isRental: true,
           status: row.tenant_name ? 'let' : 'active',
           tenure: 'leasehold',
           rentPeriod: row.rent_frequency || 'monthly',
@@ -728,29 +832,61 @@ crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('fil
 crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    // Using PM tables - pm_properties
+    // Using PM tables - properties
     const [property] = await db.select({
-      id: pmProperties.id,
-      title: pmProperties.address,
-      addressLine1: pmProperties.addressLine1,
-      addressLine2: pmProperties.addressLine2,
-      city: pmProperties.city,
-      postcode: pmProperties.postcode,
-      propertyType: pmProperties.propertyType,
-      propertyCategory: pmProperties.propertyCategory,
-      bedrooms: pmProperties.bedrooms,
-      bathrooms: pmProperties.bathrooms,
-      isManaged: pmProperties.isManaged,
-      isListedRental: pmProperties.isListedRental,
-      isListedSale: pmProperties.isListedSale,
-      landlordId: pmProperties.landlordId,
-      managementFeeType: pmProperties.managementFeeType,
-      managementFeeValue: pmProperties.managementFeeValue,
-      status: pmProperties.status,
-      createdAt: pmProperties.createdAt
+      id: properties.id,
+      title: properties.title,
+      propertyName: properties.propertyName,
+      address: properties.address,
+      addressLine1: properties.addressLine1,
+      addressLine2: properties.addressLine2,
+      city: properties.city,
+      postcode: properties.postcode,
+      propertyType: properties.propertyType,
+      isResidential: properties.isResidential,
+      bedrooms: properties.bedrooms,
+      bathrooms: properties.bathrooms,
+      receptions: properties.receptions,
+      squareFootage: properties.squareFootage,
+      description: properties.description,
+      images: properties.images,
+      floorPlan: properties.floorPlan,
+      features: properties.features,
+      amenities: properties.amenities,
+      tenure: properties.tenure,
+      leaseLength: properties.leaseLength,
+      groundRent: properties.groundRent,
+      serviceCharge: properties.serviceCharge,
+      councilTaxBand: properties.councilTaxBand,
+      energyRating: properties.energyRating,
+      isManaged: properties.isManaged,
+      isListed: properties.isListed,
+      isRental: properties.isRental,
+      landlordId: properties.landlordId,
+      vendorId: properties.vendorId,
+      managementType: properties.managementType,
+      managementFeeType: properties.managementFeeType,
+      managementFeeValue: properties.managementFeeValue,
+      rentAmount: properties.rentAmount,
+      rentPeriod: properties.rentPeriod,
+      deposit: properties.deposit,
+      furnished: properties.furnished,
+      availableFrom: properties.availableFrom,
+      minimumTenancy: properties.minimumTenancy,
+      price: properties.price,
+      priceQualifier: properties.priceQualifier,
+      isPublishedWebsite: properties.isPublishedWebsite,
+      isPublishedZoopla: properties.isPublishedZoopla,
+      isPublishedRightmove: properties.isPublishedRightmove,
+      isPublishedOnTheMarket: properties.isPublishedOnTheMarket,
+      isPublishedSocial: properties.isPublishedSocial,
+      status: properties.status,
+      notes: properties.notes,
+      createdAt: properties.createdAt,
+      updatedAt: properties.updatedAt
     })
-    .from(pmProperties)
-    .where(eq(pmProperties.id, id));
+    .from(properties)
+    .where(eq(properties.id, id));
 
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
@@ -907,33 +1043,30 @@ crmRouter.post('/properties', requireAgent, async (req, res) => {
 crmRouter.put('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { address, postcode, city, propertyType, bedrooms, bathrooms, managementFeeValue, status, landlordId } = req.body;
+    const updates = req.body;
 
-    const result = await pool.query(`
-      UPDATE pm_properties SET
-        address = COALESCE($2, address),
-        postcode = COALESCE($3, postcode),
-        city = COALESCE($4, city),
-        property_type = COALESCE($5, property_type),
-        bedrooms = COALESCE($6, bedrooms),
-        bathrooms = COALESCE($7, bathrooms),
-        management_fee_value = COALESCE($8, management_fee_value),
-        status = COALESCE($9, status),
-        landlord_id = COALESCE($10, landlord_id),
-        updated_at = NOW()
-      WHERE id = $1
-      RETURNING id, address, address_line1 as "addressLine1", postcode, city,
-                property_type as "propertyType", bedrooms, bathrooms,
-                management_fee_type as "managementFeeType", management_fee_value as "managementFeeValue",
-                landlord_id as "landlordId", status, is_managed as "isManaged",
-                created_at as "createdAt", updated_at as "updatedAt"
-    `, [id, address, postcode, city, propertyType, bedrooms, bathrooms, managementFeeValue, status, landlordId]);
+    // Convert price to pence if provided in pounds (values under 1,000,000 are assumed to be pounds)
+    if (updates.price && typeof updates.price === 'number' && updates.price < 1000000) {
+      updates.price = updates.price * 100;
+    }
+    if (updates.deposit && typeof updates.deposit === 'number' && updates.deposit < 100000) {
+      updates.deposit = updates.deposit * 100;
+    }
+    if (updates.rentAmount && typeof updates.rentAmount === 'number' && updates.rentAmount < 100000) {
+      updates.rentAmount = updates.rentAmount * 100;
+    }
 
-    if (result.rows.length === 0) {
+    // Use Drizzle ORM for the update
+    const [property] = await db.update(properties)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(properties.id, id))
+      .returning();
+
+    if (!property) {
       return res.status(404).json({ error: 'Property not found' });
     }
 
-    res.json(result.rows[0]);
+    res.json(property);
   } catch (error) {
     console.error('Error updating property:', error);
     res.status(500).json({ error: 'Failed to update property' });
@@ -946,14 +1079,19 @@ crmRouter.patch('/properties/:id', requireAgent, async (req, res) => {
     const updates = req.body;
 
     // Convert price to pence if provided
-    if (updates.price) {
+    if (updates.price && typeof updates.price === 'number' && updates.price < 1000000) {
       updates.price = updates.price * 100;
     }
-    if (updates.deposit) {
+    if (updates.deposit && typeof updates.deposit === 'number' && updates.deposit < 100000) {
       updates.deposit = updates.deposit * 100;
     }
 
-    const property = await storage.updateProperty(id, updates);
+    // UPDATE property table (CRM now uses this table)
+    const [property] = await db.update(properties)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(properties.id, id))
+      .returning();
+
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
     }
@@ -1024,7 +1162,7 @@ crmRouter.get('/tenants/:id', requireAgent, async (req, res) => {
              job_title as "jobTitle", annual_income as "annualIncome",
              emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone",
              notes, status, created_at as "createdAt", updated_at as "updatedAt"
-      FROM pm_tenants WHERE id = $1
+      FROM tenant WHERE id = $1
     `, [id]);
 
     if (result.rows.length === 0) {
@@ -1038,20 +1176,41 @@ crmRouter.get('/tenants/:id', requireAgent, async (req, res) => {
   }
 });
 
-// Get all tenants - RAW SQL
+// Get all tenants - RAW SQL with tenancy/property data
 crmRouter.get('/tenants', requireAgent, async (req, res) => {
   try {
+    // Query from 'tenant' table with LEFT JOINs to get property and rent details
+    // Try multiple linking methods: tenant.rental_agreement_id, rental_agreement.tenant_id, or tenant.property_id
     const result = await pool.query(`
-      SELECT id, name as "fullName", email, phone, mobile, address,
-             employer, employer_address as "employerAddress", employer_phone as "employerPhone",
-             job_title as "jobTitle", annual_income as "annualIncome",
-             emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone",
-             notes, status,
-             id_verified as "idVerified", id_verification_status as "idVerificationStatus",
-             id_verification_date as "idVerificationDate",
-             created_at as "createdAt", updated_at as "updatedAt"
-      FROM pm_tenants
-      ORDER BY created_at DESC
+      SELECT t.id, t.name as "fullName", t.email, t.phone, t.mobile, t.address,
+             t.employer, t.employer_address as "employerAddress", t.employer_phone as "employerPhone",
+             t.job_title as "jobTitle", t.annual_income as "annualIncome",
+             t.emergency_contact_name as "emergencyContactName", t.emergency_contact_phone as "emergencyContactPhone",
+             t.notes, t.status,
+             t.id_verified as "idVerified", t.id_verification_status as "idVerificationStatus",
+             t.id_verification_date as "idVerificationDate",
+             t.created_at as "createdAt", t.updated_at as "updatedAt",
+             -- Property details from rental agreement (try multiple join methods)
+             COALESCE(ra1.id, ra2.id) as "rentalAgreementId",
+             COALESCE(ra1.rent_amount, ra2.rent_amount) as "rentAmount",
+             COALESCE(ra1.rent_frequency, ra2.rent_frequency) as "rentFrequency",
+             COALESCE(ra1.status, ra2.status) as "tenancyStatus",
+             COALESCE(ra1.tenancy_start, ra2.tenancy_start) as "tenancyStart",
+             COALESCE(ra1.tenancy_end, ra2.tenancy_end) as "tenancyEnd",
+             -- Property address (from rental agreement or direct link via tenant.property_id)
+             COALESCE(p1.id, p2.id, p3.id) as "propertyId",
+             COALESCE(p1.title, p1.address, p2.title, p2.address, p3.title, p3.address) as "propertyAddress",
+             COALESCE(p1.postcode, p2.postcode, p3.postcode) as "propertyPostcode"
+      FROM tenant t
+      -- Method 1: tenant has rental_agreement_id
+      LEFT JOIN rental_agreement ra1 ON t.rental_agreement_id = ra1.id
+      LEFT JOIN property p1 ON ra1.property_id = p1.id
+      -- Method 2: rental_agreement has tenant_id
+      LEFT JOIN rental_agreement ra2 ON ra2.tenant_id = t.id AND ra2.status = 'active'
+      LEFT JOIN property p2 ON ra2.property_id = p2.id
+      -- Method 3: tenant has direct property_id link
+      LEFT JOIN property p3 ON t.property_id = p3.id
+      ORDER BY t.created_at DESC
     `);
     res.json(result.rows);
   } catch (error) {
@@ -1081,7 +1240,7 @@ crmRouter.post('/tenants', requireAgent, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO pm_tenants (name, email, phone, mobile, address, employer, employer_address, employer_phone, job_title, annual_income, emergency_contact_name, emergency_contact_phone, notes, status, id_verified, id_verification_status, id_verification_token, id_verification_token_expiry)
+      INSERT INTO tenant (name, email, phone, mobile, address, employer, employer_address, employer_phone, job_title, annual_income, emergency_contact_name, emergency_contact_phone, notes, status, id_verified, id_verification_status, id_verification_token, id_verification_token_expiry)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active', false, $14, $15, $16)
       RETURNING id, name as "fullName", email, phone, mobile, address, employer, employer_address as "employerAddress", employer_phone as "employerPhone", job_title as "jobTitle", annual_income as "annualIncome", emergency_contact_name as "emergencyContactName", emergency_contact_phone as "emergencyContactPhone", notes, status, id_verified as "idVerified", id_verification_status as "idVerificationStatus", created_at as "createdAt"
     `, [fullName, email || null, phone || mobile || null, mobile || null, address || null, employer || null, employerAddress || null, employerPhone || null, jobTitle || null, annualIncome || null, emergencyContactName || null, emergencyContactPhone || null, notes || null, idVerificationStatus, verificationToken, verificationTokenExpiry]);
@@ -1142,7 +1301,7 @@ crmRouter.put('/tenants/:id', requireAgent, async (req, res) => {
     const { fullName, email, phone, mobile, address, employer, employerAddress, employerPhone, jobTitle, annualIncome, emergencyContactName, emergencyContactPhone, notes, status } = req.body;
 
     const result = await pool.query(`
-      UPDATE pm_tenants SET
+      UPDATE tenant SET
         name = COALESCE($2, name),
         email = COALESCE($3, email),
         phone = COALESCE($4, phone),
@@ -1173,7 +1332,7 @@ crmRouter.put('/tenants/:id', requireAgent, async (req, res) => {
 crmRouter.delete('/tenants/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await pool.query('DELETE FROM pm_tenants WHERE id = $1', [id]);
+    await pool.query('DELETE FROM tenant WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting tenant:', error);
@@ -1188,7 +1347,7 @@ crmRouter.post('/tenants/:id/resend-verification', requireAgent, async (req, res
 
     // Get tenant details
     const tenantResult = await pool.query(`
-      SELECT id, name, mobile, id_verification_status FROM pm_tenants WHERE id = $1
+      SELECT id, name, mobile, id_verification_status FROM tenant WHERE id = $1
     `, [id]);
 
     if (tenantResult.rows.length === 0) {
@@ -1207,7 +1366,7 @@ crmRouter.post('/tenants/:id/resend-verification', requireAgent, async (req, res
 
     // Update tenant with new token
     await pool.query(`
-      UPDATE pm_tenants SET
+      UPDATE tenant SET
         id_verification_token = $2,
         id_verification_token_expiry = $3,
         id_verification_status = 'pending',
@@ -1263,7 +1422,7 @@ crmRouter.post('/tenants/:id/mark-verified', requireAgent, async (req, res) => {
     const id = parseInt(req.params.id);
 
     const result = await pool.query(`
-      UPDATE pm_tenants SET
+      UPDATE tenant SET
         id_verified = true,
         id_verification_status = 'verified',
         id_verification_date = NOW(),
@@ -1294,6 +1453,349 @@ crmRouter.get('/inbox', requireAgent, async (req, res) => {
 });
 
 // ==========================================
+// LANDLORD LEAD WORKFLOW API ENDPOINTS
+// ==========================================
+
+// Workflow stages for landlord leads
+const LANDLORD_LEAD_STAGES = [
+  'new',
+  'contacted',
+  'valuation_scheduled',
+  'valuation_completed',
+  'instruction_signed',
+  'listing_preparation',
+  'listed'
+] as const;
+
+// Get all landlord leads (contacts with valuation/selling/letting inquiry types)
+crmRouter.get('/landlord-leads', requireAgent, async (req, res) => {
+  try {
+    const { workflowStage, assignedAgentId, inquiryType } = req.query;
+
+    let query = `
+      SELECT c.*,
+             u.full_name as "assignedAgentName",
+             p.title as "linkedPropertyTitle"
+      FROM contact c
+      LEFT JOIN "user" u ON c.assigned_agent_id = u.id
+      LEFT JOIN property p ON c.linked_property_id = p.id
+      WHERE c.inquiry_type IN ('valuation', 'selling', 'letting')
+    `;
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (workflowStage) {
+      query += ` AND c.workflow_stage = $${paramIndex++}`;
+      params.push(workflowStage);
+    }
+
+    if (assignedAgentId) {
+      query += ` AND c.assigned_agent_id = $${paramIndex++}`;
+      params.push(parseInt(assignedAgentId as string));
+    }
+
+    if (inquiryType) {
+      query += ` AND c.inquiry_type = $${paramIndex++}`;
+      params.push(inquiryType);
+    }
+
+    query += ` ORDER BY c.created_at DESC`;
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching landlord leads:', error);
+    res.status(500).json({ error: 'Failed to fetch landlord leads' });
+  }
+});
+
+// Get pipeline view with counts by stage
+crmRouter.get('/landlord-leads/pipeline', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        COALESCE(workflow_stage, 'new') as stage,
+        COUNT(*) as count
+      FROM contact
+      WHERE inquiry_type IN ('valuation', 'selling', 'letting')
+      GROUP BY COALESCE(workflow_stage, 'new')
+    `);
+
+    // Create a map with all stages initialized to 0
+    const pipeline: Record<string, number> = {};
+    for (const stage of LANDLORD_LEAD_STAGES) {
+      pipeline[stage] = 0;
+    }
+
+    // Fill in actual counts
+    for (const row of result.rows) {
+      if (pipeline.hasOwnProperty(row.stage)) {
+        pipeline[row.stage] = parseInt(row.count);
+      }
+    }
+
+    res.json(pipeline);
+  } catch (error) {
+    console.error('Error fetching landlord leads pipeline:', error);
+    res.status(500).json({ error: 'Failed to fetch pipeline' });
+  }
+});
+
+// Get single landlord lead
+crmRouter.get('/landlord-leads/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      SELECT c.*,
+             u.full_name as "assignedAgentName",
+             p.title as "linkedPropertyTitle",
+             p.id as "linkedPropertyId"
+      FROM contact c
+      LEFT JOIN "user" u ON c.assigned_agent_id = u.id
+      LEFT JOIN property p ON c.linked_property_id = p.id
+      WHERE c.id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching landlord lead:', error);
+    res.status(500).json({ error: 'Failed to fetch landlord lead' });
+  }
+});
+
+// Update workflow stage
+crmRouter.patch('/landlord-leads/:id/stage', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { stage } = req.body;
+
+    if (!LANDLORD_LEAD_STAGES.includes(stage)) {
+      return res.status(400).json({ error: 'Invalid workflow stage' });
+    }
+
+    const result = await pool.query(`
+      UPDATE contact
+      SET workflow_stage = $1,
+          workflow_updated_at = NOW(),
+          status = CASE
+            WHEN $1 = 'listed' THEN 'converted'
+            WHEN $1 = 'contacted' THEN 'contacted'
+            ELSE status
+          END
+      WHERE id = $2
+      RETURNING *
+    `, [stage, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating workflow stage:', error);
+    res.status(500).json({ error: 'Failed to update workflow stage' });
+  }
+});
+
+// Schedule valuation
+crmRouter.post('/landlord-leads/:id/schedule-valuation', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { scheduledDate, assignedAgentId } = req.body;
+
+    if (!scheduledDate) {
+      return res.status(400).json({ error: 'Scheduled date is required' });
+    }
+
+    const result = await pool.query(`
+      UPDATE contact
+      SET workflow_stage = 'valuation_scheduled',
+          workflow_updated_at = NOW(),
+          valuation_scheduled_date = $1,
+          assigned_agent_id = COALESCE($2, assigned_agent_id)
+      WHERE id = $3
+      RETURNING *
+    `, [scheduledDate, assignedAgentId || null, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error scheduling valuation:', error);
+    res.status(500).json({ error: 'Failed to schedule valuation' });
+  }
+});
+
+// Complete valuation
+crmRouter.post('/landlord-leads/:id/complete-valuation', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { valuationAmount, notes } = req.body;
+
+    const result = await pool.query(`
+      UPDATE contact
+      SET workflow_stage = 'valuation_completed',
+          workflow_updated_at = NOW(),
+          valuation_completed_date = NOW(),
+          valuation_amount = $1,
+          notes = CASE WHEN $2 IS NOT NULL THEN COALESCE(notes || E'\\n', '') || $2 ELSE notes END
+      WHERE id = $3
+      RETURNING *
+    `, [valuationAmount || null, notes || null, id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error completing valuation:', error);
+    res.status(500).json({ error: 'Failed to complete valuation' });
+  }
+});
+
+// Sign instruction
+crmRouter.post('/landlord-leads/:id/sign-instruction', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const result = await pool.query(`
+      UPDATE contact
+      SET workflow_stage = 'instruction_signed',
+          workflow_updated_at = NOW(),
+          instruction_signed_date = NOW()
+      WHERE id = $1
+      RETURNING *
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error signing instruction:', error);
+    res.status(500).json({ error: 'Failed to sign instruction' });
+  }
+});
+
+// Convert to listing (create property and link)
+crmRouter.post('/landlord-leads/:id/convert-to-listing', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { propertyData } = req.body;
+
+    // Get the contact details
+    const contactResult = await pool.query(`
+      SELECT * FROM contact WHERE id = $1
+    `, [id]);
+
+    if (contactResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    const contact = contactResult.rows[0];
+
+    // Create the property
+    const propertyResult = await pool.query(`
+      INSERT INTO property (
+        title, address_line1, postcode, property_type, bedrooms,
+        listing_type, price, status, is_listed, is_published_website,
+        created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, 'Available', true, false, NOW(), NOW()
+      )
+      RETURNING id
+    `, [
+      propertyData?.title || `${contact.property_type || 'Property'} in ${contact.postcode}`,
+      contact.property_address || propertyData?.addressLine1,
+      contact.postcode || propertyData?.postcode,
+      contact.property_type || propertyData?.propertyType || 'house',
+      contact.bedrooms || propertyData?.bedrooms || 3,
+      contact.inquiry_type === 'letting' ? 'rental' : 'sale',
+      contact.valuation_amount || propertyData?.price || 0
+    ]);
+
+    const propertyId = propertyResult.rows[0].id;
+
+    // Update the contact with the linked property
+    const updateResult = await pool.query(`
+      UPDATE contact
+      SET workflow_stage = 'listed',
+          workflow_updated_at = NOW(),
+          linked_property_id = $1,
+          status = 'converted'
+      WHERE id = $2
+      RETURNING *
+    `, [propertyId, id]);
+
+    res.json({
+      contact: updateResult.rows[0],
+      propertyId
+    });
+  } catch (error) {
+    console.error('Error converting to listing:', error);
+    res.status(500).json({ error: 'Failed to convert to listing' });
+  }
+});
+
+// Update landlord lead details
+crmRouter.patch('/landlord-leads/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { assignedAgentId, notes, valuationAmount } = req.body;
+
+    const updates: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (assignedAgentId !== undefined) {
+      updates.push(`assigned_agent_id = $${paramIndex++}`);
+      params.push(assignedAgentId);
+    }
+
+    if (notes !== undefined) {
+      updates.push(`notes = $${paramIndex++}`);
+      params.push(notes);
+    }
+
+    if (valuationAmount !== undefined) {
+      updates.push(`valuation_amount = $${paramIndex++}`);
+      params.push(valuationAmount);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    params.push(id);
+
+    const result = await pool.query(`
+      UPDATE contact
+      SET ${updates.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING *
+    `, params);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating landlord lead:', error);
+    res.status(500).json({ error: 'Failed to update landlord lead' });
+  }
+});
+
+// ==========================================
 // LEADS API ENDPOINTS
 // ==========================================
 
@@ -1305,8 +1807,8 @@ crmRouter.get('/leads', requireAgent, async (req, res) => {
     let query = `
       SELECT l.*,
              u.full_name as "assignedAgentName"
-      FROM leads l
-      LEFT JOIN users u ON l.assigned_to = u.id
+      FROM lead l
+      LEFT JOIN "user" u ON l.assigned_to = u.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -1352,8 +1854,8 @@ crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
     const leadResult = await pool.query(`
       SELECT l.*,
              u.full_name as "assignedAgentName"
-      FROM leads l
-      LEFT JOIN users u ON l.assigned_to = u.id
+      FROM lead l
+      LEFT JOIN "user" u ON l.assigned_to = u.id
       WHERE l.id = $1
     `, [id]);
 
@@ -1370,8 +1872,8 @@ crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
              COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress",
              COALESCE(p.price, pp.price, pp.rent_amount) as "propertyPrice"
       FROM lead_property_views lpv
-      LEFT JOIN properties p ON lpv.property_id = p.id
-      LEFT JOIN pm_properties pp ON lpv.property_id = pp.id
+      LEFT JOIN property p ON lpv.property_id = p.id
+      LEFT JOIN property pp ON lpv.property_id = pp.id
       WHERE lpv.lead_id = $1
       ORDER BY lpv.viewed_at DESC
     `, [id]);
@@ -1380,8 +1882,8 @@ crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
     const commsResult = await pool.query(`
       SELECT lc.*,
              u.full_name as "handlerName"
-      FROM lead_communications lc
-      LEFT JOIN users u ON lc.handled_by = u.id
+      FROM lead_communication lc
+      LEFT JOIN "user" u ON lc.handled_by = u.id
       WHERE lc.lead_id = $1
       ORDER BY lc.created_at DESC
     `, [id]);
@@ -1391,10 +1893,10 @@ crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
       SELECT lv.*,
              u.full_name as "conductorName",
              COALESCE(p.title, pp.title, pp.address) as "propertyTitle"
-      FROM lead_viewings lv
-      LEFT JOIN users u ON lv.conducted_by = u.id
-      LEFT JOIN properties p ON lv.property_id = p.id
-      LEFT JOIN pm_properties pp ON lv.property_id = pp.id
+      FROM lead_viewing lv
+      LEFT JOIN "user" u ON lv.conducted_by = u.id
+      LEFT JOIN property p ON lv.property_id = p.id
+      LEFT JOIN property pp ON lv.property_id = pp.id
       WHERE lv.lead_id = $1
       ORDER BY lv.scheduled_at DESC
     `, [id]);
@@ -1403,8 +1905,8 @@ crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
     const activitiesResult = await pool.query(`
       SELECT la.*,
              u.full_name as "performerName"
-      FROM lead_activities la
-      LEFT JOIN users u ON la.performed_by = u.id
+      FROM lead_activity la
+      LEFT JOIN "user" u ON la.performed_by = u.id
       WHERE la.lead_id = $1
       ORDER BY la.created_at DESC
       LIMIT 50
@@ -1441,7 +1943,7 @@ crmRouter.post('/leads', requireAgent, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO leads (
+      INSERT INTO lead (
         full_name, email, phone, mobile,
         instagram_handle, facebook_id, tiktok_handle, twitter_handle, linkedin_url,
         source, source_detail, referred_by,
@@ -1475,7 +1977,7 @@ crmRouter.post('/leads', requireAgent, async (req, res) => {
 
     // Create activity for lead creation
     await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, performed_by)
       VALUES ($1, 'created', $2, $3)
     `, [lead.id, `Lead created from ${source || 'website'}`, req.user?.id || null]);
 
@@ -1501,12 +2003,12 @@ crmRouter.put('/leads/:id', requireAgent, async (req, res) => {
     } = req.body;
 
     // Get current lead to check for status change
-    const currentLead = await pool.query('SELECT status, assigned_to FROM leads WHERE id = $1', [id]);
+    const currentLead = await pool.query('SELECT status, assigned_to FROM lead WHERE id = $1', [id]);
     const oldStatus = currentLead.rows[0]?.status;
     const oldAssignedTo = currentLead.rows[0]?.assigned_to;
 
     const result = await pool.query(`
-      UPDATE leads SET
+      UPDATE lead SET
         full_name = COALESCE($2, full_name),
         email = COALESCE($3, email),
         phone = COALESCE($4, phone),
@@ -1557,7 +2059,7 @@ crmRouter.put('/leads/:id', requireAgent, async (req, res) => {
     // Log status change activity
     if (status && status !== oldStatus) {
       await pool.query(`
-        INSERT INTO lead_activities (lead_id, activity_type, description, performed_by, metadata)
+        INSERT INTO lead_activity (lead_id, activity_type, description, performed_by, metadata)
         VALUES ($1, 'status_change', $2, $3, $4)
       `, [id, `Status changed from ${oldStatus} to ${status}`, req.user?.id || null, JSON.stringify({ oldStatus, newStatus: status })]);
     }
@@ -1565,7 +2067,7 @@ crmRouter.put('/leads/:id', requireAgent, async (req, res) => {
     // Log assignment change activity
     if (assignedTo && assignedTo !== oldAssignedTo) {
       await pool.query(`
-        INSERT INTO lead_activities (lead_id, activity_type, description, performed_by)
+        INSERT INTO lead_activity (lead_id, activity_type, description, performed_by)
         VALUES ($1, 'assigned', $2, $3)
       `, [id, `Lead assigned to new agent`, req.user?.id || null]);
     }
@@ -1583,11 +2085,11 @@ crmRouter.delete('/leads/:id', requireAgent, async (req, res) => {
     const id = parseInt(req.params.id);
 
     // Delete related records first
-    await pool.query('DELETE FROM lead_activities WHERE lead_id = $1', [id]);
-    await pool.query('DELETE FROM lead_viewings WHERE lead_id = $1', [id]);
-    await pool.query('DELETE FROM lead_communications WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_activity WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_viewing WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_communication WHERE lead_id = $1', [id]);
     await pool.query('DELETE FROM lead_property_views WHERE lead_id = $1', [id]);
-    await pool.query('DELETE FROM leads WHERE id = $1', [id]);
+    await pool.query('DELETE FROM lead WHERE id = $1', [id]);
 
     res.json({ success: true });
   } catch (error) {
@@ -1609,11 +2111,11 @@ crmRouter.post('/leads/:id/property-views', requireAgent, async (req, res) => {
     `, [leadId, propertyId, viewSource || 'website', viewDuration || null, savedToFavorites || false, requestedViewing || false, requestedMoreInfo || false]);
 
     // Update lead activity timestamp
-    await pool.query('UPDATE leads SET last_activity_at = NOW() WHERE id = $1', [leadId]);
+    await pool.query('UPDATE lead SET last_activity_at = NOW() WHERE id = $1', [leadId]);
 
     // Create activity
     await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
       VALUES ($1, 'property_viewed', 'Viewed property', $2, $3)
     `, [leadId, propertyId, req.user?.id || null]);
 
@@ -1636,8 +2138,8 @@ crmRouter.get('/leads/:id/property-views', requireAgent, async (req, res) => {
              COALESCE(p.price, pp.price, pp.rent_amount) as "propertyPrice",
              COALESCE(p.images, pp.images) as "propertyImages"
       FROM lead_property_views lpv
-      LEFT JOIN properties p ON lpv.property_id = p.id
-      LEFT JOIN pm_properties pp ON lpv.property_id = pp.id
+      LEFT JOIN property p ON lpv.property_id = p.id
+      LEFT JOIN property pp ON lpv.property_id = pp.id
       WHERE lpv.lead_id = $1
       ORDER BY lpv.viewed_at DESC
     `, [leadId]);
@@ -1663,7 +2165,7 @@ crmRouter.post('/leads/:id/communications', requireAgent, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO lead_communications (
+      INSERT INTO lead_communication (
         lead_id, channel, direction, type, subject, content, summary,
         property_id, handled_by, outcome, follow_up_required, follow_up_date, external_message_id
       )
@@ -1676,7 +2178,7 @@ crmRouter.post('/leads/:id/communications', requireAgent, async (req, res) => {
 
     // Update lead timestamps
     await pool.query(`
-      UPDATE leads SET
+      UPDATE lead SET
         last_contacted_at = NOW(),
         last_activity_at = NOW()
       WHERE id = $1
@@ -1684,7 +2186,7 @@ crmRouter.post('/leads/:id/communications', requireAgent, async (req, res) => {
 
     // Create activity
     await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, related_communication_id, related_property_id, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, related_communication_id, related_property_id, performed_by)
       VALUES ($1, 'communication', $2, $3, $4, $5)
     `, [leadId, `${direction === 'inbound' ? 'Received' : 'Sent'} ${channel} message`, result.rows[0].id, propertyId || null, req.user?.id || null]);
 
@@ -1704,10 +2206,10 @@ crmRouter.get('/leads/:id/communications', requireAgent, async (req, res) => {
       SELECT lc.*,
              u.full_name as "handlerName",
              COALESCE(p.title, pp.title) as "propertyTitle"
-      FROM lead_communications lc
-      LEFT JOIN users u ON lc.handled_by = u.id
-      LEFT JOIN properties p ON lc.property_id = p.id
-      LEFT JOIN pm_properties pp ON lc.property_id = pp.id
+      FROM lead_communication lc
+      LEFT JOIN "user" u ON lc.handled_by = u.id
+      LEFT JOIN property p ON lc.property_id = p.id
+      LEFT JOIN property pp ON lc.property_id = pp.id
       WHERE lc.lead_id = $1
       ORDER BY lc.created_at DESC
     `, [leadId]);
@@ -1732,14 +2234,14 @@ crmRouter.post('/leads/:id/viewings', requireAgent, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO lead_viewings (lead_id, property_id, scheduled_at, duration, viewing_type, conducted_by, status)
+      INSERT INTO lead_viewing (lead_id, property_id, scheduled_at, duration, viewing_type, conducted_by, status)
       VALUES ($1, $2, $3, $4, $5, $6, 'scheduled')
       RETURNING *
     `, [leadId, propertyId, scheduledAt, duration || 30, viewingType || 'in_person', conductedBy || req.user?.id || null]);
 
     // Update lead status to viewing_booked
     await pool.query(`
-      UPDATE leads SET
+      UPDATE lead SET
         status = CASE WHEN status IN ('new', 'contacted', 'qualified') THEN 'viewing_booked' ELSE status END,
         last_activity_at = NOW()
       WHERE id = $1
@@ -1747,7 +2249,7 @@ crmRouter.post('/leads/:id/viewings', requireAgent, async (req, res) => {
 
     // Create activity
     await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, related_viewing_id, related_property_id, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, related_viewing_id, related_property_id, performed_by)
       VALUES ($1, 'viewing_booked', 'Property viewing scheduled', $2, $3, $4)
     `, [leadId, result.rows[0].id, propertyId, req.user?.id || null]);
 
@@ -1768,10 +2270,10 @@ crmRouter.get('/leads/:id/viewings', requireAgent, async (req, res) => {
              u.full_name as "conductorName",
              COALESCE(p.title, pp.title, pp.address) as "propertyTitle",
              COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress"
-      FROM lead_viewings lv
-      LEFT JOIN users u ON lv.conducted_by = u.id
-      LEFT JOIN properties p ON lv.property_id = p.id
-      LEFT JOIN pm_properties pp ON lv.property_id = pp.id
+      FROM lead_viewing lv
+      LEFT JOIN "user" u ON lv.conducted_by = u.id
+      LEFT JOIN property p ON lv.property_id = p.id
+      LEFT JOIN property pp ON lv.property_id = pp.id
       WHERE lv.lead_id = $1
       ORDER BY lv.scheduled_at DESC
     `, [leadId]);
@@ -1790,7 +2292,7 @@ crmRouter.patch('/leads/viewings/:viewingId', requireAgent, async (req, res) => 
     const { status, feedback, agentNotes, interested, cancelledReason } = req.body;
 
     const result = await pool.query(`
-      UPDATE lead_viewings SET
+      UPDATE lead_viewing SET
         status = COALESCE($2, status),
         feedback = COALESCE($3, feedback),
         agent_notes = COALESCE($4, agent_notes),
@@ -1821,8 +2323,8 @@ crmRouter.get('/leads/:id/activities', requireAgent, async (req, res) => {
     const result = await pool.query(`
       SELECT la.*,
              u.full_name as "performerName"
-      FROM lead_activities la
-      LEFT JOIN users u ON la.performed_by = u.id
+      FROM lead_activity la
+      LEFT JOIN "user" u ON la.performed_by = u.id
       WHERE la.lead_id = $1
       ORDER BY la.created_at DESC
       LIMIT $2
@@ -1847,13 +2349,13 @@ crmRouter.post('/leads/:id/notes', requireAgent, async (req, res) => {
 
     // Create activity for note
     const result = await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, performed_by)
       VALUES ($1, 'note_added', $2, $3)
       RETURNING *
     `, [leadId, note, req.user?.id || null]);
 
     // Update last activity
-    await pool.query('UPDATE leads SET last_activity_at = NOW() WHERE id = $1', [leadId]);
+    await pool.query('UPDATE lead SET last_activity_at = NOW() WHERE id = $1', [leadId]);
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -1869,7 +2371,7 @@ crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
     const { propertyId } = req.body;
 
     // Get lead details
-    const leadResult = await pool.query('SELECT * FROM leads WHERE id = $1', [leadId]);
+    const leadResult = await pool.query('SELECT * FROM lead WHERE id = $1', [leadId]);
     if (leadResult.rows.length === 0) {
       return res.status(404).json({ error: 'Lead not found' });
     }
@@ -1878,7 +2380,7 @@ crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
 
     // Create tenant from lead
     const tenantResult = await pool.query(`
-      INSERT INTO pm_tenants (name, email, phone, mobile, status, id_verification_status)
+      INSERT INTO tenant (name, email, phone, mobile, status, id_verification_status)
       VALUES ($1, $2, $3, $4, 'active', 'unverified')
       RETURNING *
     `, [lead.full_name, lead.email, lead.phone, lead.mobile]);
@@ -1887,7 +2389,7 @@ crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
 
     // Update lead as converted
     await pool.query(`
-      UPDATE leads SET
+      UPDATE lead SET
         status = 'converted',
         converted_at = NOW(),
         converted_to_tenant_id = $2,
@@ -1898,7 +2400,7 @@ crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
 
     // Create activity
     await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
       VALUES ($1, 'converted', 'Lead converted to tenant', $2, $3)
     `, [leadId, propertyId || null, req.user?.id || null]);
 
@@ -1927,12 +2429,12 @@ crmRouter.get('/leads/stats/dashboard', requireAgent, async (req, res) => {
         COUNT(*) FILTER (WHERE lead_type = 'purchase') as purchase_leads,
         COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days') as new_this_week,
         COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as new_this_month
-      FROM leads
+      FROM lead
     `);
 
     const sourceResult = await pool.query(`
       SELECT source, COUNT(*) as count
-      FROM leads
+      FROM lead
       GROUP BY source
       ORDER BY count DESC
     `);
@@ -1966,12 +2468,12 @@ crmRouter.get('/offers', requireAgent, async (req, res) => {
              COALESCE(p.postcode, pp.postcode) as "propertyPostcode",
              pl.full_name as "landlordName",
              u.full_name as "handlerName"
-      FROM offers o
-      LEFT JOIN leads l ON o.lead_id = l.id
-      LEFT JOIN properties p ON o.property_id = p.id
-      LEFT JOIN pm_properties pp ON o.property_id = pp.id
-      LEFT JOIN pm_landlords pl ON o.landlord_id = pl.id
-      LEFT JOIN users u ON o.handled_by = u.id
+      FROM offer o
+      LEFT JOIN lead l ON o.lead_id = l.id
+      LEFT JOIN property p ON o.property_id = p.id
+      LEFT JOIN property pp ON o.property_id = pp.id
+      LEFT JOIN landlord pl ON o.landlord_id = pl.id
+      LEFT JOIN "user" u ON o.handled_by = u.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -2025,12 +2527,12 @@ crmRouter.get('/offers/:id', requireAgent, async (req, res) => {
              COALESCE(p.price, pp.price) as "propertyPrice",
              pl.id as "landlordId", pl.full_name as "landlordName", pl.email as "landlordEmail", pl.phone as "landlordPhone",
              u.full_name as "handlerName"
-      FROM offers o
-      LEFT JOIN leads l ON o.lead_id = l.id
-      LEFT JOIN properties p ON o.property_id = p.id
-      LEFT JOIN pm_properties pp ON o.property_id = pp.id
-      LEFT JOIN pm_landlords pl ON o.landlord_id = pl.id
-      LEFT JOIN users u ON o.handled_by = u.id
+      FROM offer o
+      LEFT JOIN lead l ON o.lead_id = l.id
+      LEFT JOIN property p ON o.property_id = p.id
+      LEFT JOIN property pp ON o.property_id = pp.id
+      LEFT JOIN landlord pl ON o.landlord_id = pl.id
+      LEFT JOIN "user" u ON o.handled_by = u.id
       WHERE o.id = $1
     `, [offerId]);
 
@@ -2042,7 +2544,7 @@ crmRouter.get('/offers/:id', requireAgent, async (req, res) => {
     const historyResult = await pool.query(`
       SELECT oh.*, u.full_name as "performerName"
       FROM offer_history oh
-      LEFT JOIN users u ON oh.performed_by = u.id
+      LEFT JOIN "user" u ON oh.performed_by = u.id
       WHERE oh.offer_id = $1
       ORDER BY oh.created_at DESC
     `, [offerId]);
@@ -2074,13 +2576,13 @@ crmRouter.post('/offers', requireAgent, async (req, res) => {
     let originalAskingPrice = null;
 
     // First try properties table
-    const propResult = await pool.query('SELECT landlord_id, price FROM properties WHERE id = $1', [propertyId]);
+    const propResult = await pool.query('SELECT landlord_id, price FROM property WHERE id = $1', [propertyId]);
     if (propResult.rows.length > 0) {
       landlordId = propResult.rows[0].landlord_id;
       originalAskingPrice = propResult.rows[0].price;
     } else {
-      // Try pm_properties
-      const pmPropResult = await pool.query('SELECT landlord_id, price FROM pm_properties WHERE id = $1', [propertyId]);
+      // Try properties
+      const pmPropResult = await pool.query('SELECT landlord_id, price FROM property WHERE id = $1', [propertyId]);
       if (pmPropResult.rows.length > 0) {
         landlordId = pmPropResult.rows[0].landlord_id;
         originalAskingPrice = pmPropResult.rows[0].price;
@@ -2088,12 +2590,12 @@ crmRouter.post('/offers', requireAgent, async (req, res) => {
     }
 
     // Get lead verification status
-    const leadResult = await pool.query('SELECT kyc_status, proof_of_funds_verified FROM leads WHERE id = $1', [leadId]);
+    const leadResult = await pool.query('SELECT kyc_status, proof_of_funds_verified FROM lead WHERE id = $1', [leadId]);
     const lead = leadResult.rows[0];
 
     // Create offer
     const result = await pool.query(`
-      INSERT INTO offers (
+      INSERT INTO offer (
         lead_id, property_id, landlord_id, offer_type, offer_amount, original_asking_price,
         deposit_offered, move_in_date, tenancy_length, conditions, chain_free, cash_buyer,
         mortgage_approved, expires_at, handled_by, proof_of_funds_verified, kyc_verified, internal_notes
@@ -2117,7 +2619,7 @@ crmRouter.post('/offers', requireAgent, async (req, res) => {
 
     // Update lead status to offer_made
     await pool.query(`
-      UPDATE leads SET
+      UPDATE lead SET
         status = 'offer_made',
         last_activity_at = NOW()
       WHERE id = $1 AND status NOT IN ('converted', 'lost')
@@ -2125,7 +2627,7 @@ crmRouter.post('/offers', requireAgent, async (req, res) => {
 
     // Create lead activity
     await pool.query(`
-      INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+      INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
       VALUES ($1, 'offer_made', $2, $3, $4)
     `, [leadId, `Made ${offerType} offer of £${(offerAmount / 100).toLocaleString()}`, propertyId, req.user?.id || null]);
 
@@ -2146,7 +2648,7 @@ crmRouter.put('/offers/:id', requireAgent, async (req, res) => {
     } = req.body;
 
     // Get current offer
-    const currentResult = await pool.query('SELECT * FROM offers WHERE id = $1', [offerId]);
+    const currentResult = await pool.query('SELECT * FROM offer WHERE id = $1', [offerId]);
     if (currentResult.rows.length === 0) {
       return res.status(404).json({ error: 'Offer not found' });
     }
@@ -2214,7 +2716,7 @@ crmRouter.put('/offers/:id', requireAgent, async (req, res) => {
     updateValues.push(offerId);
 
     const updateQuery = `
-      UPDATE offers SET ${updateFields.join(', ')}
+      UPDATE offer SET ${updateFields.join(', ')}
       WHERE id = $${valueIndex}
       RETURNING *
     `;
@@ -2242,12 +2744,12 @@ crmRouter.put('/offers/:id', requireAgent, async (req, res) => {
     // Update lead status based on offer outcome
     if (status === 'accepted') {
       await pool.query(`
-        INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
         VALUES ($1, 'status_change', 'Offer accepted by landlord', $2, $3)
       `, [currentOffer.lead_id, currentOffer.property_id, req.user?.id || null]);
     } else if (status === 'rejected') {
       await pool.query(`
-        INSERT INTO lead_activities (lead_id, activity_type, description, related_property_id, performed_by)
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
         VALUES ($1, 'status_change', $2, $3, $4)
       `, [currentOffer.lead_id, `Offer rejected: ${rejectionReason || 'No reason given'}`, currentOffer.property_id, req.user?.id || null]);
     }
@@ -2268,7 +2770,7 @@ crmRouter.delete('/offers/:id', requireAgent, async (req, res) => {
     await pool.query('DELETE FROM offer_history WHERE offer_id = $1', [offerId]);
 
     // Delete offer
-    const result = await pool.query('DELETE FROM offers WHERE id = $1 RETURNING *', [offerId]);
+    const result = await pool.query('DELETE FROM offer WHERE id = $1 RETURNING *', [offerId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Offer not found' });
@@ -2291,10 +2793,10 @@ crmRouter.get('/leads/:id/offers', requireAgent, async (req, res) => {
              COALESCE(p.title, pp.title) as "propertyTitle",
              COALESCE(p.address_line1, pp.address) as "propertyAddress",
              pl.full_name as "landlordName"
-      FROM offers o
-      LEFT JOIN properties p ON o.property_id = p.id
-      LEFT JOIN pm_properties pp ON o.property_id = pp.id
-      LEFT JOIN pm_landlords pl ON o.landlord_id = pl.id
+      FROM offer o
+      LEFT JOIN property p ON o.property_id = p.id
+      LEFT JOIN property pp ON o.property_id = pp.id
+      LEFT JOIN landlord pl ON o.landlord_id = pl.id
       WHERE o.lead_id = $1
       ORDER BY o.created_at DESC
     `, [leadId]);
@@ -2315,8 +2817,8 @@ crmRouter.get('/properties/:id/offers', requireAgent, async (req, res) => {
       SELECT o.*,
              l.full_name as "leadName", l.email as "leadEmail", l.phone as "leadPhone",
              l.kyc_status as "leadKycStatus", l.proof_of_funds_status as "leadFundsStatus"
-      FROM offers o
-      LEFT JOIN leads l ON o.lead_id = l.id
+      FROM offer o
+      LEFT JOIN lead l ON o.lead_id = l.id
       WHERE o.property_id = $1
       ORDER BY o.created_at DESC
     `, [propertyId]);
@@ -2339,10 +2841,10 @@ crmRouter.get('/landlords/:id/offers', requireAgent, async (req, res) => {
              l.kyc_status as "leadKycStatus", l.proof_of_funds_status as "leadFundsStatus",
              COALESCE(p.title, pp.title) as "propertyTitle",
              COALESCE(p.address_line1, pp.address) as "propertyAddress"
-      FROM offers o
-      LEFT JOIN leads l ON o.lead_id = l.id
-      LEFT JOIN properties p ON o.property_id = p.id
-      LEFT JOIN pm_properties pp ON o.property_id = pp.id
+      FROM offer o
+      LEFT JOIN lead l ON o.lead_id = l.id
+      LEFT JOIN property p ON o.property_id = p.id
+      LEFT JOIN property pp ON o.property_id = pp.id
       WHERE o.landlord_id = $1
       ORDER BY o.created_at DESC
     `, [landlordId]);
@@ -2362,8 +2864,8 @@ crmRouter.post('/offers/:id/convert-to-tenancy', requireAgent, async (req, res) 
     // Get offer
     const offerResult = await pool.query(`
       SELECT o.*, l.full_name, l.email, l.phone, l.mobile
-      FROM offers o
-      LEFT JOIN leads l ON o.lead_id = l.id
+      FROM offer o
+      LEFT JOIN lead l ON o.lead_id = l.id
       WHERE o.id = $1
     `, [offerId]);
 
@@ -2384,7 +2886,7 @@ crmRouter.post('/offers/:id/convert-to-tenancy', requireAgent, async (req, res) 
     // Create tenant from lead if not already exists
     let tenantId = null;
     const existingTenantResult = await pool.query(
-      'SELECT id FROM pm_tenants WHERE email = $1 OR mobile = $2 LIMIT 1',
+      'SELECT id FROM tenant WHERE email = $1 OR mobile = $2 LIMIT 1',
       [offer.email, offer.mobile]
     );
 
@@ -2392,7 +2894,7 @@ crmRouter.post('/offers/:id/convert-to-tenancy', requireAgent, async (req, res) 
       tenantId = existingTenantResult.rows[0].id;
     } else {
       const tenantResult = await pool.query(`
-        INSERT INTO pm_tenants (name, email, phone, mobile, status)
+        INSERT INTO tenant (name, email, phone, mobile, status)
         VALUES ($1, $2, $3, $4, 'active')
         RETURNING id
       `, [offer.full_name, offer.email, offer.phone, offer.mobile]);
@@ -2401,7 +2903,7 @@ crmRouter.post('/offers/:id/convert-to-tenancy', requireAgent, async (req, res) 
 
     // Create tenancy
     const tenancyResult = await pool.query(`
-      INSERT INTO pm_tenancies (
+      INSERT INTO tenancy (
         property_id, tenant_id, landlord_id, rent_amount, deposit_amount,
         start_date, end_date, status
       )
@@ -2421,13 +2923,13 @@ crmRouter.post('/offers/:id/convert-to-tenancy', requireAgent, async (req, res) 
 
     // Update offer with conversion
     await pool.query(`
-      UPDATE offers SET converted_to_agreement_id = $1, updated_at = NOW()
+      UPDATE offer SET converted_to_agreement_id = $1, updated_at = NOW()
       WHERE id = $2
     `, [tenancyResult.rows[0].id, offerId]);
 
     // Update lead as converted
     await pool.query(`
-      UPDATE leads SET
+      UPDATE lead SET
         status = 'converted',
         converted_at = NOW(),
         converted_to_tenant_id = $1,
@@ -2624,6 +3126,76 @@ crmRouter.post('/properties/:id/publish', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error publishing property:', error);
     res.status(500).json({ error: 'Failed to publish property' });
+  }
+});
+
+// Bulk publish properties to multiple portals
+crmRouter.post('/properties/bulk-publish', requireAgent, async (req, res) => {
+  try {
+    const { propertyIds, targets } = req.body;
+
+    if (!propertyIds || !Array.isArray(propertyIds) || propertyIds.length === 0) {
+      return res.status(400).json({ error: 'Property IDs are required' });
+    }
+
+    if (!targets || typeof targets !== 'object') {
+      return res.status(400).json({ error: 'Publishing targets are required' });
+    }
+
+    // Build the SET clause dynamically based on targets
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (targets.website !== undefined) {
+      setClauses.push(`is_published_website = $${paramIndex++}`);
+      values.push(targets.website);
+    }
+    if (targets.zoopla !== undefined) {
+      setClauses.push(`is_published_zoopla = $${paramIndex++}`);
+      values.push(targets.zoopla);
+    }
+    if (targets.rightmove !== undefined) {
+      setClauses.push(`is_published_rightmove = $${paramIndex++}`);
+      values.push(targets.rightmove);
+    }
+    if (targets.onTheMarket !== undefined) {
+      setClauses.push(`is_published_onthemarket = $${paramIndex++}`);
+      values.push(targets.onTheMarket);
+    }
+    if (targets.social !== undefined) {
+      setClauses.push(`is_published_social = $${paramIndex++}`);
+      values.push(targets.social);
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'At least one publishing target must be specified' });
+    }
+
+    // Add updated_at
+    setClauses.push(`updated_at = NOW()`);
+
+    // Build the WHERE clause with property IDs
+    const placeholders = propertyIds.map((_, i) => `$${paramIndex + i}`).join(', ');
+    values.push(...propertyIds);
+
+    const query = `
+      UPDATE property
+      SET ${setClauses.join(', ')}
+      WHERE id IN (${placeholders})
+      RETURNING id
+    `;
+
+    const result = await pool.query(query, values);
+
+    res.json({
+      success: true,
+      updated: result.rowCount,
+      propertyIds: result.rows.map(r => r.id)
+    });
+  } catch (error) {
+    console.error('Error bulk publishing properties:', error);
+    res.status(500).json({ error: 'Failed to bulk publish properties' });
   }
 });
 
@@ -4609,7 +5181,7 @@ crmRouter.get('/analytics/kpis', requireAgent, async (req, res) => {
     const properties = await storage.getAllProperties();
     const activeProperties = properties.filter(p => p.status === 'active');
     const soldProperties = properties.filter(p => p.status === 'sold');
-    const lettingsProperties = properties.filter(p => p.listingType === 'rental' && p.status === 'let');
+    const lettingsProperties = properties.filter(p => p.isRental === true && p.status === 'let');
 
     // Calculate revenue (simplified)
     const totalSalesValue = soldProperties.reduce((sum, p) => sum + p.price, 0);
@@ -6538,11 +7110,13 @@ crmRouter.post('/docusign/envelopes/:envelopeId/signing-url', requireAgent, asyn
 crmRouter.get('/landlords', requireAgent, async (req, res) => {
   try {
     const result = await pool.query(`
-      SELECT id, name as "fullName", email, phone, mobile, address,
-             bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode",
-             landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo",
+      SELECT id, name, email, phone, mobile,
+             address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode,
+             bank_name as "bankName", bank_account_number as "bankAccountNumber", bank_sort_code as "bankSortCode",
+             landlord_type as "landlordType", is_corporate as "isCorporate", corporate_owner_id as "corporateOwnerId",
+             company_name as "companyName", company_registration_no as "companyRegNo",
              notes, status, created_at as "createdAt", updated_at as "updatedAt"
-      FROM pm_landlords
+      FROM landlord
       ORDER BY created_at DESC
     `);
     res.json(result.rows);
@@ -6557,11 +7131,13 @@ crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const result = await pool.query(`
-      SELECT id, name as "fullName", email, phone, mobile, address,
-             bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode",
-             landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo",
+      SELECT id, name, email, phone, mobile,
+             address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode,
+             bank_name as "bankName", bank_account_number as "bankAccountNumber", bank_sort_code as "bankSortCode",
+             landlord_type as "landlordType", is_corporate as "isCorporate", corporate_owner_id as "corporateOwnerId",
+             company_name as "companyName", company_registration_no as "companyRegNo",
              notes, status, created_at as "createdAt", updated_at as "updatedAt"
-      FROM pm_landlords WHERE id = $1
+      FROM landlord WHERE id = $1
     `, [id]);
 
     if (result.rows.length === 0) {
@@ -6578,17 +7154,22 @@ crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
 // Create landlord - RAW SQL
 crmRouter.post('/landlords', requireAgent, async (req, res) => {
   try {
-    const { fullName, email, phone, mobile, address, bankName, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes } = req.body;
+    const { name, fullName, email, phone, mobile, addressLine1, address, bankName, bankAccountNumber, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes } = req.body;
 
-    if (!fullName) {
-      return res.status(400).json({ error: 'Full name is required' });
+    // Support both old and new field names for backwards compatibility
+    const landlordName = name || fullName;
+    const addrLine1 = addressLine1 || address;
+    const bankAccNum = bankAccountNumber || bankAccountNo;
+
+    if (!landlordName) {
+      return res.status(400).json({ error: 'Name is required' });
     }
 
     const result = await pool.query(`
-      INSERT INTO pm_landlords (name, email, phone, mobile, address, bank_name, bank_account_number, bank_sort_code, landlord_type, company_name, company_registration_no, notes, status)
+      INSERT INTO landlord (name, email, phone, mobile, address_line1, bank_name, bank_account_number, bank_sort_code, landlord_type, company_name, company_registration_no, notes, status)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
-      RETURNING id, name as "fullName", email, phone, mobile, address, bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt"
-    `, [fullName, email || null, phone || mobile || null, mobile || null, address || null, bankName || null, bankAccountNo || null, bankSortCode || null, landlordType || 'individual', companyName || null, companyRegNo || null, notes || null]);
+      RETURNING id, name, email, phone, mobile, address_line1 as "addressLine1", bank_name as "bankName", bank_account_number as "bankAccountNumber", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt"
+    `, [landlordName, email || null, phone || mobile || null, mobile || null, addrLine1 || null, bankName || null, bankAccNum || null, bankSortCode || null, landlordType || 'individual', companyName || null, companyRegNo || null, notes || null]);
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -6601,15 +7182,20 @@ crmRouter.post('/landlords', requireAgent, async (req, res) => {
 crmRouter.put('/landlords/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { fullName, email, phone, mobile, address, bankName, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes, status } = req.body;
+    const { name, fullName, email, phone, mobile, addressLine1, address, bankName, bankAccountNumber, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes, status } = req.body;
+
+    // Support both old and new field names for backwards compatibility
+    const landlordName = name || fullName;
+    const addrLine1 = addressLine1 || address;
+    const bankAccNum = bankAccountNumber || bankAccountNo;
 
     const result = await pool.query(`
-      UPDATE pm_landlords SET
+      UPDATE landlord SET
         name = COALESCE($2, name),
         email = COALESCE($3, email),
         phone = COALESCE($4, phone),
         mobile = COALESCE($5, mobile),
-        address = COALESCE($6, address),
+        address_line1 = COALESCE($6, address_line1),
         bank_name = COALESCE($7, bank_name),
         bank_account_number = COALESCE($8, bank_account_number),
         bank_sort_code = COALESCE($9, bank_sort_code),
@@ -6620,8 +7206,8 @@ crmRouter.put('/landlords/:id', requireAgent, async (req, res) => {
         status = COALESCE($14, status),
         updated_at = NOW()
       WHERE id = $1
-      RETURNING id, name as "fullName", email, phone, mobile, address, bank_name as "bankName", bank_account_number as "bankAccountNo", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt", updated_at as "updatedAt"
-    `, [id, fullName, email, phone, mobile, address, bankName, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes, status]);
+      RETURNING id, name, email, phone, mobile, address_line1 as "addressLine1", bank_name as "bankName", bank_account_number as "bankAccountNumber", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt", updated_at as "updatedAt"
+    `, [id, landlordName, email, phone, mobile, addrLine1, bankName, bankAccNum, bankSortCode, landlordType, companyName, companyRegNo, notes, status]);
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -6634,11 +7220,549 @@ crmRouter.put('/landlords/:id', requireAgent, async (req, res) => {
 crmRouter.delete('/landlords/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    await pool.query('DELETE FROM pm_landlords WHERE id = $1', [id]);
+    await pool.query('DELETE FROM landlord WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting landlord:', error);
     res.status(500).json({ error: 'Failed to delete landlord' });
+  }
+});
+
+// ==========================================
+// CORPORATE OWNER ROUTES
+// ==========================================
+// For corporate landlords: Landlord → Corporate Owner → Beneficial Owners
+
+// Get corporate owner for a landlord
+crmRouter.get('/landlords/:landlordId/corporate-owner', requireAgent, async (req, res) => {
+  try {
+    const landlordId = parseInt(req.params.landlordId);
+
+    // First check if landlord is corporate
+    const landlordResult = await pool.query(`
+      SELECT id, is_corporate as "isCorporate", corporate_owner_id as "corporateOwnerId"
+      FROM landlord WHERE id = $1
+    `, [landlordId]);
+
+    if (landlordResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+
+    const landlord = landlordResult.rows[0];
+    if (!landlord.isCorporate) {
+      return res.status(400).json({ error: 'Landlord is not a corporate entity' });
+    }
+
+    if (!landlord.corporateOwnerId) {
+      return res.status(404).json({ error: 'Corporate owner not found for this landlord' });
+    }
+
+    const result = await pool.query(`
+      SELECT id, landlord_id as "landlordId",
+             company_name as "companyName", company_registration_no as "companyRegistrationNo", company_vat_no as "companyVatNo",
+             address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode, country,
+             email, phone,
+             certificate_of_incorporation_url as "certificateOfIncorporationUrl",
+             memorandum_of_association_url as "memorandumOfAssociationUrl",
+             articles_of_association_url as "articlesOfAssociationUrl",
+             is_active as "isActive",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM corporate_owner WHERE id = $1
+    `, [landlord.corporateOwnerId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Corporate owner not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching corporate owner:', error);
+    res.status(500).json({ error: 'Failed to fetch corporate owner' });
+  }
+});
+
+// Get a single corporate owner by ID
+crmRouter.get('/corporate-owners/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await pool.query(`
+      SELECT id, landlord_id as "landlordId",
+             company_name as "companyName", company_registration_no as "companyRegistrationNo", company_vat_no as "companyVatNo",
+             address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode, country,
+             email, phone,
+             certificate_of_incorporation_url as "certificateOfIncorporationUrl",
+             memorandum_of_association_url as "memorandumOfAssociationUrl",
+             articles_of_association_url as "articlesOfAssociationUrl",
+             is_active as "isActive",
+             created_at as "createdAt", updated_at as "updatedAt"
+      FROM corporate_owner WHERE id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Corporate owner not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching corporate owner:', error);
+    res.status(500).json({ error: 'Failed to fetch corporate owner' });
+  }
+});
+
+// Create corporate owner for a landlord (and update landlord to corporate)
+crmRouter.post('/landlords/:landlordId/corporate-owner', requireAgent, async (req, res) => {
+  try {
+    const landlordId = parseInt(req.params.landlordId);
+    const {
+      companyName, companyRegistrationNo, companyVatNo,
+      addressLine1, addressLine2, city, postcode, country,
+      email, phone,
+      certificateOfIncorporationUrl, memorandumOfAssociationUrl, articlesOfAssociationUrl
+    } = req.body;
+
+    if (!companyName) {
+      return res.status(400).json({ error: 'Company name is required' });
+    }
+
+    // Check if landlord exists
+    const landlordCheck = await pool.query('SELECT id FROM landlord WHERE id = $1', [landlordId]);
+    if (landlordCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+
+    // Create corporate owner
+    const result = await pool.query(`
+      INSERT INTO corporate_owner (
+        landlord_id, company_name, company_registration_no, company_vat_no,
+        address_line1, address_line2, city, postcode, country,
+        email, phone,
+        certificate_of_incorporation_url, memorandum_of_association_url, articles_of_association_url
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      RETURNING id, landlord_id as "landlordId",
+                company_name as "companyName", company_registration_no as "companyRegistrationNo",
+                company_vat_no as "companyVatNo",
+                created_at as "createdAt"
+    `, [
+      landlordId, companyName, companyRegistrationNo || null, companyVatNo || null,
+      addressLine1 || null, addressLine2 || null, city || null, postcode || null, country || 'United Kingdom',
+      email || null, phone || null,
+      certificateOfIncorporationUrl || null, memorandumOfAssociationUrl || null, articlesOfAssociationUrl || null
+    ]);
+
+    const corporateOwner = result.rows[0];
+
+    // Update landlord to be corporate and link to corporate owner
+    await pool.query(`
+      UPDATE landlord SET is_corporate = true, corporate_owner_id = $1, updated_at = NOW()
+      WHERE id = $2
+    `, [corporateOwner.id, landlordId]);
+
+    res.json(corporateOwner);
+  } catch (error) {
+    console.error('Error creating corporate owner:', error);
+    res.status(500).json({ error: 'Failed to create corporate owner' });
+  }
+});
+
+// Update corporate owner
+crmRouter.put('/corporate-owners/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const {
+      companyName, companyRegistrationNo, companyVatNo,
+      addressLine1, addressLine2, city, postcode, country,
+      email, phone,
+      certificateOfIncorporationUrl, memorandumOfAssociationUrl, articlesOfAssociationUrl,
+      isActive
+    } = req.body;
+
+    const result = await pool.query(`
+      UPDATE corporate_owner SET
+        company_name = COALESCE($2, company_name),
+        company_registration_no = COALESCE($3, company_registration_no),
+        company_vat_no = COALESCE($4, company_vat_no),
+        address_line1 = COALESCE($5, address_line1),
+        address_line2 = COALESCE($6, address_line2),
+        city = COALESCE($7, city),
+        postcode = COALESCE($8, postcode),
+        country = COALESCE($9, country),
+        email = COALESCE($10, email),
+        phone = COALESCE($11, phone),
+        certificate_of_incorporation_url = COALESCE($12, certificate_of_incorporation_url),
+        memorandum_of_association_url = COALESCE($13, memorandum_of_association_url),
+        articles_of_association_url = COALESCE($14, articles_of_association_url),
+        is_active = COALESCE($15, is_active),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, landlord_id as "landlordId",
+                company_name as "companyName", company_registration_no as "companyRegistrationNo",
+                company_vat_no as "companyVatNo",
+                is_active as "isActive", updated_at as "updatedAt"
+    `, [
+      id, companyName, companyRegistrationNo, companyVatNo,
+      addressLine1, addressLine2, city, postcode, country,
+      email, phone,
+      certificateOfIncorporationUrl, memorandumOfAssociationUrl, articlesOfAssociationUrl,
+      isActive
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Corporate owner not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating corporate owner:', error);
+    res.status(500).json({ error: 'Failed to update corporate owner' });
+  }
+});
+
+// Delete corporate owner (and update landlord to non-corporate)
+crmRouter.delete('/corporate-owners/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    // Get landlord_id before deleting
+    const corpResult = await pool.query('SELECT landlord_id FROM corporate_owner WHERE id = $1', [id]);
+    if (corpResult.rows.length > 0) {
+      const landlordId = corpResult.rows[0].landlord_id;
+      // Reset landlord to non-corporate
+      await pool.query(`
+        UPDATE landlord SET is_corporate = false, corporate_owner_id = NULL, updated_at = NOW()
+        WHERE id = $1
+      `, [landlordId]);
+    }
+
+    await pool.query('DELETE FROM corporate_owner WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting corporate owner:', error);
+    res.status(500).json({ error: 'Failed to delete corporate owner' });
+  }
+});
+
+// Get beneficial owners for a corporate owner directly
+crmRouter.get('/corporate-owners/:corporateOwnerId/beneficial-owners', requireAgent, async (req, res) => {
+  try {
+    const corporateOwnerId = parseInt(req.params.corporateOwnerId);
+
+    const result = await pool.query(`
+      SELECT id, landlord_id as "landlordId", corporate_owner_id as "corporateOwnerId",
+             full_name as "fullName", email, phone,
+             date_of_birth as "dateOfBirth", nationality,
+             address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode, country,
+             ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee", is_director as "isDirector", is_psc as "isPsc",
+             national_insurance_no as "nationalInsuranceNo",
+             passport_number as "passportNumber", passport_expiry as "passportExpiry",
+             id_document_type as "idDocumentType", id_document_number as "idDocumentNumber",
+             id_document_expiry as "idDocumentExpiry", id_document_url as "idDocumentUrl",
+             proof_of_address_url as "proofOfAddressUrl", proof_of_address_date as "proofOfAddressDate", proof_of_address_type as "proofOfAddressType",
+             pep_check_completed as "pepCheckCompleted", sanctions_check_completed as "sanctionsCheckCompleted",
+             aml_check_completed as "amlCheckCompleted", aml_check_result as "amlCheckResult",
+             kyc_verified as "kycVerified", kyc_verified_at as "kycVerifiedAt", kyc_verified_by as "kycVerifiedBy",
+             notes, created_at as "createdAt", updated_at as "updatedAt"
+      FROM beneficial_owner
+      WHERE corporate_owner_id = $1
+      ORDER BY ownership_percentage DESC NULLS LAST, created_at ASC
+    `, [corporateOwnerId]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching beneficial owners for corporate owner:', error);
+    res.status(500).json({ error: 'Failed to fetch beneficial owners' });
+  }
+});
+
+// ==========================================
+// BENEFICIAL OWNERS ROUTES
+// ==========================================
+// Flow:
+// - Individual landlords: Property → Landlord → Beneficial Owners (via landlord_id)
+// - Corporate landlords: Property → Landlord → Corporate Owner → Beneficial Owners (via corporate_owner_id)
+
+// Get all beneficial owners for a landlord
+// This endpoint handles both individual and corporate landlords transparently
+crmRouter.get('/landlords/:landlordId/beneficial-owners', requireAgent, async (req, res) => {
+  try {
+    const landlordId = parseInt(req.params.landlordId);
+
+    // First check if the landlord is corporate
+    const landlordResult = await pool.query(`
+      SELECT id, is_corporate as "isCorporate", corporate_owner_id as "corporateOwnerId"
+      FROM landlord WHERE id = $1
+    `, [landlordId]);
+
+    if (landlordResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+
+    const landlord = landlordResult.rows[0];
+    let result;
+
+    if (landlord.isCorporate && landlord.corporateOwnerId) {
+      // Corporate landlord: get beneficial owners via corporate_owner_id
+      result = await pool.query(`
+        SELECT id, landlord_id as "landlordId", corporate_owner_id as "corporateOwnerId",
+               full_name as "fullName", email, phone,
+               date_of_birth as "dateOfBirth", nationality,
+               address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode, country,
+               ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee", is_director as "isDirector", is_psc as "isPsc",
+               national_insurance_no as "nationalInsuranceNo",
+               passport_number as "passportNumber", passport_expiry as "passportExpiry",
+               id_document_type as "idDocumentType", id_document_number as "idDocumentNumber",
+               id_document_expiry as "idDocumentExpiry", id_document_url as "idDocumentUrl",
+               proof_of_address_url as "proofOfAddressUrl", proof_of_address_date as "proofOfAddressDate", proof_of_address_type as "proofOfAddressType",
+               pep_check_completed as "pepCheckCompleted", sanctions_check_completed as "sanctionsCheckCompleted",
+               aml_check_completed as "amlCheckCompleted", aml_check_result as "amlCheckResult",
+               kyc_verified as "kycVerified", kyc_verified_at as "kycVerifiedAt", kyc_verified_by as "kycVerifiedBy",
+               notes, created_at as "createdAt", updated_at as "updatedAt"
+        FROM beneficial_owner
+        WHERE corporate_owner_id = $1
+        ORDER BY ownership_percentage DESC NULLS LAST, created_at ASC
+      `, [landlord.corporateOwnerId]);
+    } else {
+      // Individual landlord: get beneficial owners via landlord_id
+      result = await pool.query(`
+        SELECT id, landlord_id as "landlordId", corporate_owner_id as "corporateOwnerId",
+               full_name as "fullName", email, phone,
+               date_of_birth as "dateOfBirth", nationality,
+               address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode, country,
+               ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee", is_director as "isDirector", is_psc as "isPsc",
+               national_insurance_no as "nationalInsuranceNo",
+               passport_number as "passportNumber", passport_expiry as "passportExpiry",
+               id_document_type as "idDocumentType", id_document_number as "idDocumentNumber",
+               id_document_expiry as "idDocumentExpiry", id_document_url as "idDocumentUrl",
+               proof_of_address_url as "proofOfAddressUrl", proof_of_address_date as "proofOfAddressDate", proof_of_address_type as "proofOfAddressType",
+               pep_check_completed as "pepCheckCompleted", sanctions_check_completed as "sanctionsCheckCompleted",
+               aml_check_completed as "amlCheckCompleted", aml_check_result as "amlCheckResult",
+               kyc_verified as "kycVerified", kyc_verified_at as "kycVerifiedAt", kyc_verified_by as "kycVerifiedBy",
+               notes, created_at as "createdAt", updated_at as "updatedAt"
+        FROM beneficial_owner
+        WHERE landlord_id = $1
+        ORDER BY ownership_percentage DESC NULLS LAST, created_at ASC
+      `, [landlordId]);
+    }
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching beneficial owners:', error);
+    res.status(500).json({ error: 'Failed to fetch beneficial owners' });
+  }
+});
+
+// Get a single beneficial owner
+crmRouter.get('/beneficial-owners/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await pool.query(`
+      SELECT id, landlord_id as "landlordId", corporate_owner_id as "corporateOwnerId",
+             full_name as "fullName", email, phone, mobile,
+             date_of_birth as "dateOfBirth", nationality,
+             address_line1 as "addressLine1", address_line2 as "addressLine2", city, postcode, country,
+             ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee", is_director as "isDirector", is_psc as "isPsc",
+             national_insurance_no as "nationalInsuranceNo",
+             passport_number as "passportNumber", passport_expiry as "passportExpiry",
+             id_document_type as "idDocumentType", id_document_number as "idDocumentNumber",
+             id_document_expiry as "idDocumentExpiry", id_document_url as "idDocumentUrl",
+             secondary_id_type as "secondaryIdType", secondary_id_number as "secondaryIdNumber",
+             secondary_id_expiry as "secondaryIdExpiry", secondary_id_url as "secondaryIdUrl",
+             proof_of_address_url as "proofOfAddressUrl", proof_of_address_date as "proofOfAddressDate", proof_of_address_type as "proofOfAddressType",
+             pep_check_completed as "pepCheckCompleted", pep_check_date as "pepCheckDate", pep_check_result as "pepCheckResult",
+             sanctions_check_completed as "sanctionsCheckCompleted", sanctions_check_date as "sanctionsCheckDate", sanctions_check_result as "sanctionsCheckResult",
+             aml_check_completed as "amlCheckCompleted", aml_check_date as "amlCheckDate", aml_check_result as "amlCheckResult",
+             kyc_verified as "kycVerified", kyc_verified_at as "kycVerifiedAt", kyc_verified_by as "kycVerifiedBy", kyc_verification_notes as "kycVerificationNotes",
+             notes, is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+      FROM beneficial_owner WHERE id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Beneficial owner not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching beneficial owner:', error);
+    res.status(500).json({ error: 'Failed to fetch beneficial owner' });
+  }
+});
+
+// Create beneficial owner for a landlord
+// For individual landlords: sets landlord_id
+// For corporate landlords: sets corporate_owner_id (from landlord's corporate owner)
+crmRouter.post('/landlords/:landlordId/beneficial-owners', requireAgent, async (req, res) => {
+  try {
+    const landlordId = parseInt(req.params.landlordId);
+    const {
+      fullName, email, phone, mobile, dateOfBirth, nationality,
+      addressLine1, addressLine2, city, postcode, country,
+      ownershipPercentage, isTrustee, isDirector, isPsc,
+      nationalInsuranceNo, passportNumber, passportExpiry,
+      idDocumentType, idDocumentNumber, idDocumentExpiry, idDocumentUrl,
+      proofOfAddressUrl, proofOfAddressDate, proofOfAddressType,
+      pepCheckCompleted, sanctionsCheckCompleted, amlCheckCompleted,
+      notes
+    } = req.body;
+
+    if (!fullName) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    // Check if landlord is corporate to determine how to link the beneficial owner
+    const landlordResult = await pool.query(`
+      SELECT id, is_corporate as "isCorporate", corporate_owner_id as "corporateOwnerId"
+      FROM landlord WHERE id = $1
+    `, [landlordId]);
+
+    if (landlordResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+
+    const landlord = landlordResult.rows[0];
+    let result;
+
+    if (landlord.isCorporate && landlord.corporateOwnerId) {
+      // Corporate landlord: link via corporate_owner_id
+      result = await pool.query(`
+        INSERT INTO beneficial_owner (
+          corporate_owner_id, full_name, email, phone, mobile, date_of_birth, nationality,
+          address_line1, address_line2, city, postcode, country,
+          ownership_percentage, is_trustee, is_director, is_psc,
+          national_insurance_no, passport_number, passport_expiry,
+          id_document_type, id_document_number, id_document_expiry, id_document_url,
+          proof_of_address_url, proof_of_address_date, proof_of_address_type,
+          pep_check_completed, sanctions_check_completed, aml_check_completed,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+        RETURNING id, corporate_owner_id as "corporateOwnerId", full_name as "fullName", email, phone,
+                  ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee", is_director as "isDirector",
+                  kyc_verified as "kycVerified", created_at as "createdAt"
+      `, [
+        landlord.corporateOwnerId, fullName, email || null, phone || null, mobile || null, dateOfBirth || null, nationality || null,
+        addressLine1 || null, addressLine2 || null, city || null, postcode || null, country || 'United Kingdom',
+        ownershipPercentage || null, isTrustee || false, isDirector || false, isPsc || false,
+        nationalInsuranceNo || null, passportNumber || null, passportExpiry || null,
+        idDocumentType || null, idDocumentNumber || null, idDocumentExpiry || null, idDocumentUrl || null,
+        proofOfAddressUrl || null, proofOfAddressDate || null, proofOfAddressType || null,
+        pepCheckCompleted || false, sanctionsCheckCompleted || false, amlCheckCompleted || false,
+        notes || null
+      ]);
+    } else {
+      // Individual landlord: link via landlord_id
+      result = await pool.query(`
+        INSERT INTO beneficial_owner (
+          landlord_id, full_name, email, phone, mobile, date_of_birth, nationality,
+          address_line1, address_line2, city, postcode, country,
+          ownership_percentage, is_trustee, is_director, is_psc,
+          national_insurance_no, passport_number, passport_expiry,
+          id_document_type, id_document_number, id_document_expiry, id_document_url,
+          proof_of_address_url, proof_of_address_date, proof_of_address_type,
+          pep_check_completed, sanctions_check_completed, aml_check_completed,
+          notes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
+        RETURNING id, landlord_id as "landlordId", full_name as "fullName", email, phone,
+                  ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee", is_director as "isDirector",
+                  kyc_verified as "kycVerified", created_at as "createdAt"
+      `, [
+        landlordId, fullName, email || null, phone || null, mobile || null, dateOfBirth || null, nationality || null,
+        addressLine1 || null, addressLine2 || null, city || null, postcode || null, country || 'United Kingdom',
+        ownershipPercentage || null, isTrustee || false, isDirector || false, isPsc || false,
+        nationalInsuranceNo || null, passportNumber || null, passportExpiry || null,
+        idDocumentType || null, idDocumentNumber || null, idDocumentExpiry || null, idDocumentUrl || null,
+        proofOfAddressUrl || null, proofOfAddressDate || null, proofOfAddressType || null,
+        pepCheckCompleted || false, sanctionsCheckCompleted || false, amlCheckCompleted || false,
+        notes || null
+      ]);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating beneficial owner:', error);
+    res.status(500).json({ error: 'Failed to create beneficial owner' });
+  }
+});
+
+// Update beneficial owner
+crmRouter.put('/beneficial-owners/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const {
+      fullName, email, phone, dateOfBirth, nationality,
+      addressLine1, addressLine2, city, postcode, country,
+      ownershipPercentage, isTrustee,
+      nationalInsuranceNo, passportNumber, passportExpiry,
+      idDocumentType, idDocumentNumber, idDocumentExpiry, idDocumentUrl,
+      proofOfAddressUrl, proofOfAddressDate,
+      pepCheckCompleted, sanctionsCheckCompleted,
+      kycVerified,
+      notes
+    } = req.body;
+
+    const result = await pool.query(`
+      UPDATE beneficial_owner SET
+        full_name = COALESCE($2, full_name),
+        email = COALESCE($3, email),
+        phone = COALESCE($4, phone),
+        date_of_birth = COALESCE($5, date_of_birth),
+        nationality = COALESCE($6, nationality),
+        address_line1 = COALESCE($7, address_line1),
+        address_line2 = COALESCE($8, address_line2),
+        city = COALESCE($9, city),
+        postcode = COALESCE($10, postcode),
+        country = COALESCE($11, country),
+        ownership_percentage = COALESCE($12, ownership_percentage),
+        is_trustee = COALESCE($13, is_trustee),
+        national_insurance_no = COALESCE($14, national_insurance_no),
+        passport_number = COALESCE($15, passport_number),
+        passport_expiry = COALESCE($16, passport_expiry),
+        id_document_type = COALESCE($17, id_document_type),
+        id_document_number = COALESCE($18, id_document_number),
+        id_document_expiry = COALESCE($19, id_document_expiry),
+        id_document_url = COALESCE($20, id_document_url),
+        proof_of_address_url = COALESCE($21, proof_of_address_url),
+        proof_of_address_date = COALESCE($22, proof_of_address_date),
+        pep_check_completed = COALESCE($23, pep_check_completed),
+        sanctions_check_completed = COALESCE($24, sanctions_check_completed),
+        kyc_verified = COALESCE($25, kyc_verified),
+        notes = COALESCE($26, notes),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, landlord_id as "landlordId", corporate_owner_id as "corporateOwnerId",
+                full_name as "fullName", email, phone,
+                ownership_percentage as "ownershipPercentage", is_trustee as "isTrustee",
+                kyc_verified as "kycVerified", updated_at as "updatedAt"
+    `, [
+      id, fullName, email, phone, dateOfBirth, nationality,
+      addressLine1, addressLine2, city, postcode, country,
+      ownershipPercentage, isTrustee,
+      nationalInsuranceNo, passportNumber, passportExpiry,
+      idDocumentType, idDocumentNumber, idDocumentExpiry, idDocumentUrl,
+      proofOfAddressUrl, proofOfAddressDate,
+      pepCheckCompleted, sanctionsCheckCompleted,
+      kycVerified,
+      notes
+    ]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Beneficial owner not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating beneficial owner:', error);
+    res.status(500).json({ error: 'Failed to update beneficial owner' });
+  }
+});
+
+// Delete beneficial owner
+crmRouter.delete('/beneficial-owners/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await pool.query('DELETE FROM beneficial_owner WHERE id = $1', [id]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting beneficial owner:', error);
+    res.status(500).json({ error: 'Failed to delete beneficial owner' });
   }
 });
 
@@ -7180,7 +8304,7 @@ crmRouter.post('/webhooks/whatsapp', async (req, res) => {
 
     // Check if sender is a contractor (look for pending quotes)
     const contractorCheck = await db.execute(sql`
-      SELECT c.id FROM contractors c
+      SELECT c.id FROM contractor c
       WHERE REPLACE(REPLACE(c.phone, ' ', ''), '+', '') LIKE '%' || ${phoneNumber.slice(-10)} || '%'
       LIMIT 1
     `);
@@ -7242,10 +8366,10 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
         p.address_line1 as property_address,
         p.postcode as property_postcode,
         c.company_name as contractor_name
-      FROM support_tickets st
-      LEFT JOIN users u ON st.tenant_id = u.id
-      LEFT JOIN properties p ON st.property_id = p.id
-      LEFT JOIN contractors c ON st.assigned_to_id = c.id
+      FROM support_ticket st
+      LEFT JOIN "user" u ON st.tenant_id = u.id
+      LEFT JOIN property p ON st.property_id = p.id
+      LEFT JOIN contractor c ON st.assigned_to_id = c.id
       WHERE 1=1
     `;
 
@@ -8236,7 +9360,7 @@ crmRouter.post('/admin/properties/set-managed', requireAdmin, async (req, res) =
     const allProperties = await storage.getAllProperties();
 
     // Filter to rental properties
-    const rentalProperties = allProperties.filter(p => p.listingType === 'rental');
+    const rentalProperties = allProperties.filter(p => p.isRental === true);
 
     let updatedCount = 0;
 
@@ -8253,11 +9377,11 @@ crmRouter.post('/admin/properties/set-managed', requireAdmin, async (req, res) =
     });
   } catch (error) {
     console.error('Error updating properties to managed status:', error);
-    res.status(500).json({ error: 'Failed to update properties' });
+    res.status(500).json({ error: 'Failed to UPDATE property' });
   }
 });
 
-// LEGACY MANAGED PROPERTIES API ROUTES REMOVED - Using pmLandlords/pmTenants/pmTenancies routes above
+// LEGACY MANAGED PROPERTIES API ROUTES REMOVED - Using main landlords/tenants/tenancies tables
 
 // ==========================================
 // CALENDAR & VIEWING ENDPOINTS
@@ -8536,50 +9660,8 @@ crmRouter.delete('/certifications/:id', requireAgent, async (req, res) => {
   }
 });
 
-// Get managed properties with landlord, tenant, and contract details
-crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
-  try {
-    // Get all properties with their associated contracts, landlords, and tenants
-    const allProperties = await db.select().from(properties);
-    const allContracts = await db.select().from(tenancyContracts);
-    const allLandlords = await db.select().from(landlords);
-    const allTenants = await db.select().from(tenants);
-    const allFees = await db.select().from(managementFees);
-    const allCertificates = await db.select().from(propertyCertificates);
-
-    // Build managed properties response
-    const managedProperties = allProperties.map(property => {
-      const propertyContracts = allContracts.filter(c => c.propertyId === property.id);
-      const activeContract = propertyContracts.find(c => c.status === 'active');
-      const propertyLandlord = activeContract ? allLandlords.find(l => l.id === activeContract.landlordId) : null;
-      const propertyTenant = activeContract && activeContract.tenantId ? allTenants.find(t => t.id === activeContract.tenantId) : null;
-      const propertyFees = allFees.filter(f => f.propertyId === property.id);
-      const currentFee = propertyFees.find(f => !f.effectiveTo);
-      const propertyCerts = allCertificates.filter(c => c.propertyId === property.id);
-      const expiringSoonCerts = propertyCerts.filter(c => {
-        if (!c.expiryDate) return false;
-        const daysUntilExpiry = Math.floor((new Date(c.expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-        return daysUntilExpiry <= 30 && daysUntilExpiry > 0;
-      });
-
-      return {
-        ...property,
-        landlord: propertyLandlord,
-        tenant: propertyTenant,
-        activeContract,
-        managementFee: currentFee?.feePercentage || null,
-        certificates: propertyCerts,
-        expiringSoonCertificates: expiringSoonCerts.length,
-        complianceStatus: propertyCerts.every(c => c.status === 'valid') ? 'compliant' : 'attention_needed'
-      };
-    });
-
-    res.json(managedProperties);
-  } catch (error) {
-    console.error('Error fetching managed properties:', error);
-    res.status(500).json({ error: 'Failed to fetch managed properties' });
-  }
-});
+// REMOVED: Duplicate /managed-properties endpoint that didn't filter by isManaged=true
+// The correct endpoint is at line ~495 which filters properties.isManaged = true
 
 // Get management fees for a property
 crmRouter.get('/properties/:id/management-fees', requireAgent, async (req, res) => {
@@ -8875,7 +9957,7 @@ crmRouter.post('/admin/seed-managed-properties', requireAdmin, async (req, res) 
   }
 });
 
-// LEGACY LANDLORD ROUTES REMOVED - Using pmLandlords routes above
+// LEGACY LANDLORD ROUTES REMOVED - Using main landlords table above
 
 // Set all properties as managed
 crmRouter.post('/admin/set-all-managed', requireAdmin, async (req, res) => {
@@ -8885,7 +9967,7 @@ crmRouter.post('/admin/set-all-managed', requireAdmin, async (req, res) => {
     res.json({ success: true, message: 'All properties set to managed' });
   } catch (error) {
     console.error('Error setting properties to managed:', error);
-    res.status(500).json({ error: 'Failed to update properties' });
+    res.status(500).json({ error: 'Failed to UPDATE property' });
   }
 });
 
@@ -8897,12 +9979,12 @@ crmRouter.get('/contacts', requireAgent, async (req, res) => {
   try {
     const contactType = req.query.contactType as string;
 
-    // Aggregate contacts from pm_landlords, pm_tenants, and contractors tables
+    // Aggregate contacts FROM landlord, tenants, and contractors tables
     const allContacts: any[] = [];
 
     // Get landlords (unless filtering for a different type)
     if (!contactType || contactType === 'landlord') {
-      const landlordRows = await db.select().from(pmLandlords).orderBy(desc(pmLandlords.createdAt));
+      const landlordRows = await db.select().from(landlords).orderBy(desc(landlords.createdAt));
       for (const l of landlordRows) {
         allContacts.push({
           id: `landlord-${l.id}`,
@@ -8924,7 +10006,7 @@ crmRouter.get('/contacts', requireAgent, async (req, res) => {
 
     // Get tenants (unless filtering for a different type)
     if (!contactType || contactType === 'tenant') {
-      const tenantRows = await db.select().from(pmTenants).orderBy(desc(pmTenants.createdAt));
+      const tenantRows = await db.select().from(tenant).orderBy(desc(tenant.createdAt));
       for (const t of tenantRows) {
         allContacts.push({
           id: `tenant-${t.id}`,
@@ -9099,12 +10181,13 @@ crmRouter.get('/sales-progression-stats', requireAgent, async (req, res) => {
 // NEW PROPERTY MANAGEMENT (PM) API ENDPOINTS
 // ==========================================
 
-// --- PM LANDLORDS ---
+// --- LANDLORDS (using main landlords table) ---
+// Routes at /pm/landlords are kept for backwards compatibility
 
 // Get all landlords
 crmRouter.get('/pm/landlords', requireAgent, async (req, res) => {
   try {
-    const allLandlords = await db.select().from(pmLandlords).orderBy(desc(pmLandlords.createdAt));
+    const allLandlords = await db.select().from(landlords).orderBy(desc(landlords.createdAt));
     res.json(allLandlords);
   } catch (error) {
     console.error('Error fetching landlords:', error);
@@ -9115,7 +10198,7 @@ crmRouter.get('/pm/landlords', requireAgent, async (req, res) => {
 // Get single landlord
 crmRouter.get('/pm/landlords/:id', requireAgent, async (req, res) => {
   try {
-    const [landlord] = await db.select().from(pmLandlords).where(eq(pmLandlords.id, parseInt(req.params.id)));
+    const [landlord] = await db.select().from(landlords).where(eq(landlords.id, parseInt(req.params.id)));
     if (!landlord) {
       return res.status(404).json({ error: 'Landlord not found' });
     }
@@ -9129,8 +10212,8 @@ crmRouter.get('/pm/landlords/:id', requireAgent, async (req, res) => {
 // Create landlord
 crmRouter.post('/pm/landlords', requireAgent, async (req, res) => {
   try {
-    const data = insertPmLandlordSchema.parse(req.body);
-    const [landlord] = await db.insert(pmLandlords).values(data).returning();
+    const data = insertLandlordSchema.parse(req.body);
+    const [landlord] = await db.insert(landlords).values(data).returning();
     res.status(201).json(landlord);
   } catch (error) {
     console.error('Error creating landlord:', error);
@@ -9141,9 +10224,9 @@ crmRouter.post('/pm/landlords', requireAgent, async (req, res) => {
 // Update landlord
 crmRouter.patch('/pm/landlords/:id', requireAgent, async (req, res) => {
   try {
-    const [landlord] = await db.update(pmLandlords)
+    const [landlord] = await db.update(landlords)
       .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(pmLandlords.id, parseInt(req.params.id)))
+      .where(eq(landlords.id, parseInt(req.params.id)))
       .returning();
     if (!landlord) {
       return res.status(404).json({ error: 'Landlord not found' });
@@ -9158,8 +10241,8 @@ crmRouter.patch('/pm/landlords/:id', requireAgent, async (req, res) => {
 // Delete landlord
 crmRouter.delete('/pm/landlords/:id', requireAgent, async (req, res) => {
   try {
-    const [landlord] = await db.delete(pmLandlords)
-      .where(eq(pmLandlords.id, parseInt(req.params.id)))
+    const [landlord] = await db.delete(landlords)
+      .where(eq(landlords.id, parseInt(req.params.id)))
       .returning();
     if (!landlord) {
       return res.status(404).json({ error: 'Landlord not found' });
@@ -9171,12 +10254,13 @@ crmRouter.delete('/pm/landlords/:id', requireAgent, async (req, res) => {
   }
 });
 
-// --- PM TENANTS ---
+// --- TENANTS (using main tenants table) ---
+// Routes at /pm/tenants are kept for backwards compatibility
 
 // Get all tenants
 crmRouter.get('/pm/tenants', requireAgent, async (req, res) => {
   try {
-    const allTenants = await db.select().from(pmTenants).orderBy(desc(pmTenants.createdAt));
+    const allTenants = await db.select().from(tenant).orderBy(desc(tenant.createdAt));
     res.json(allTenants);
   } catch (error) {
     console.error('Error fetching tenants:', error);
@@ -9187,11 +10271,11 @@ crmRouter.get('/pm/tenants', requireAgent, async (req, res) => {
 // Get single tenant
 crmRouter.get('/pm/tenants/:id', requireAgent, async (req, res) => {
   try {
-    const [tenant] = await db.select().from(pmTenants).where(eq(pmTenants.id, parseInt(req.params.id)));
-    if (!tenant) {
+    const [tenantResult] = await db.select().from(tenant).where(eq(tenant.id, parseInt(req.params.id)));
+    if (!tenantResult) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    res.json(tenant);
+    res.json(tenantResult);
   } catch (error) {
     console.error('Error fetching tenant:', error);
     res.status(500).json({ error: 'Failed to fetch tenant' });
@@ -9201,9 +10285,9 @@ crmRouter.get('/pm/tenants/:id', requireAgent, async (req, res) => {
 // Create tenant
 crmRouter.post('/pm/tenants', requireAgent, async (req, res) => {
   try {
-    const data = insertPmTenantSchema.parse(req.body);
-    const [tenant] = await db.insert(pmTenants).values(data).returning();
-    res.status(201).json(tenant);
+    const data = insertTenantSchema.parse(req.body);
+    const [newTenant] = await db.insert(tenant).values(data).returning();
+    res.status(201).json(newTenant);
   } catch (error) {
     console.error('Error creating tenant:', error);
     res.status(400).json({ error: 'Failed to create tenant' });
@@ -9213,14 +10297,14 @@ crmRouter.post('/pm/tenants', requireAgent, async (req, res) => {
 // Update tenant
 crmRouter.patch('/pm/tenants/:id', requireAgent, async (req, res) => {
   try {
-    const [tenant] = await db.update(pmTenants)
+    const [updatedTenant] = await db.update(tenant)
       .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(pmTenants.id, parseInt(req.params.id)))
+      .where(eq(tenant.id, parseInt(req.params.id)))
       .returning();
-    if (!tenant) {
+    if (!updatedTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
-    res.json(tenant);
+    res.json(updatedTenant);
   } catch (error) {
     console.error('Error updating tenant:', error);
     res.status(400).json({ error: 'Failed to update tenant' });
@@ -9230,10 +10314,10 @@ crmRouter.patch('/pm/tenants/:id', requireAgent, async (req, res) => {
 // Delete tenant
 crmRouter.delete('/pm/tenants/:id', requireAgent, async (req, res) => {
   try {
-    const [tenant] = await db.delete(pmTenants)
-      .where(eq(pmTenants.id, parseInt(req.params.id)))
+    const [deletedTenant] = await db.delete(tenant)
+      .where(eq(tenant.id, parseInt(req.params.id)))
       .returning();
-    if (!tenant) {
+    if (!deletedTenant) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
     res.json({ message: 'Tenant deleted successfully' });
@@ -9248,29 +10332,38 @@ crmRouter.delete('/pm/tenants/:id', requireAgent, async (req, res) => {
 // Get all properties (with optional filters)
 crmRouter.get('/pm/properties', requireAgent, async (req, res) => {
   try {
-    const { isManaged, isListedRental, isListedSale, propertyCategory } = req.query;
+    const { isManaged, isListed, isRental, isResidential, landlordId } = req.query;
 
-    let query = db.select().from(pmProperties);
+    console.log('PM Properties query params:', { landlordId, isManaged, isListed, isRental, isResidential });
+
+    let query = db.select().from(properties);
     const conditions = [];
 
+    if (landlordId !== undefined && landlordId !== '') {
+      const parsedLandlordId = parseInt(landlordId as string);
+      console.log('Filtering by landlordId:', parsedLandlordId);
+      conditions.push(eq(properties.landlordId, parsedLandlordId));
+    }
     if (isManaged !== undefined) {
-      conditions.push(eq(pmProperties.isManaged, isManaged === 'true'));
+      conditions.push(eq(properties.isManaged, isManaged === 'true'));
     }
-    if (isListedRental !== undefined) {
-      conditions.push(eq(pmProperties.isListedRental, isListedRental === 'true'));
+    if (isListed !== undefined) {
+      conditions.push(eq(properties.isListed, isListed === 'true'));
     }
-    if (isListedSale !== undefined) {
-      conditions.push(eq(pmProperties.isListedSale, isListedSale === 'true'));
+    if (isRental !== undefined) {
+      conditions.push(eq(properties.isRental, isRental === 'true'));
     }
-    if (propertyCategory) {
-      conditions.push(eq(pmProperties.propertyCategory, propertyCategory as string));
+    if (isResidential !== undefined) {
+      conditions.push(eq(properties.isResidential, isResidential === 'true'));
     }
 
+    console.log('Conditions count:', conditions.length);
     if (conditions.length > 0) {
       query = query.where(and(...conditions)) as typeof query;
     }
 
-    const allProperties = await query.orderBy(desc(pmProperties.createdAt));
+    const allProperties = await query.orderBy(desc(properties.createdAt));
+    console.log('Returning', allProperties.length, 'properties');
     res.json(allProperties);
   } catch (error) {
     console.error('Error fetching properties:', error);
@@ -9282,7 +10375,7 @@ crmRouter.get('/pm/properties', requireAgent, async (req, res) => {
 crmRouter.get('/pm/properties/:id', requireAgent, async (req, res) => {
   try {
     const propertyId = parseInt(req.params.id);
-    const [property] = await db.select().from(pmProperties).where(eq(pmProperties.id, propertyId));
+    const [property] = await db.select().from(properties).where(eq(properties.id, propertyId));
 
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
@@ -9291,27 +10384,27 @@ crmRouter.get('/pm/properties/:id', requireAgent, async (req, res) => {
     // Get landlord if exists
     let landlord = null;
     if (property.landlordId) {
-      [landlord] = await db.select().from(pmLandlords).where(eq(pmLandlords.id, property.landlordId));
+      [landlord] = await db.select().from(landlords).where(eq(landlords.id, property.landlordId));
     }
 
     // Get active tenancy
-    const [activeTenancy] = await db.select().from(pmTenancies)
+    const [activeTenancy] = await db.select().from(tenancies)
       .where(and(
-        eq(pmTenancies.propertyId, propertyId),
-        eq(pmTenancies.status, 'active')
+        eq(tenancies.propertyId, propertyId),
+        eq(tenancies.status, 'active')
       ));
 
     // Get tenant if active tenancy exists
-    let tenant = null;
+    let tenantData = null;
     if (activeTenancy?.tenantId) {
-      [tenant] = await db.select().from(pmTenants).where(eq(pmTenants.id, activeTenancy.tenantId));
+      [tenantData] = await db.select().from(tenant).where(eq(tenant.id, activeTenancy.tenantId));
     }
 
     res.json({
       ...property,
       landlord,
       activeTenancy,
-      tenant
+      tenant: tenantData
     });
   } catch (error) {
     console.error('Error fetching property:', error);
@@ -9322,8 +10415,8 @@ crmRouter.get('/pm/properties/:id', requireAgent, async (req, res) => {
 // Create property
 crmRouter.post('/pm/properties', requireAgent, async (req, res) => {
   try {
-    const data = insertPmPropertySchema.parse(req.body);
-    const [property] = await db.insert(pmProperties).values(data).returning();
+    const data = insertPropertySchema.parse(req.body);
+    const [property] = await db.insert(properties).values(data).returning();
     res.status(201).json(property);
   } catch (error) {
     console.error('Error creating property:', error);
@@ -9334,9 +10427,9 @@ crmRouter.post('/pm/properties', requireAgent, async (req, res) => {
 // Update property
 crmRouter.patch('/pm/properties/:id', requireAgent, async (req, res) => {
   try {
-    const [property] = await db.update(pmProperties)
+    const [property] = await db.update(properties)
       .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(pmProperties.id, parseInt(req.params.id)))
+      .where(eq(properties.id, parseInt(req.params.id)))
       .returning();
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
@@ -9351,8 +10444,8 @@ crmRouter.patch('/pm/properties/:id', requireAgent, async (req, res) => {
 // Delete property
 crmRouter.delete('/pm/properties/:id', requireAgent, async (req, res) => {
   try {
-    const [property] = await db.delete(pmProperties)
-      .where(eq(pmProperties.id, parseInt(req.params.id)))
+    const [property] = await db.delete(properties)
+      .where(eq(properties.id, parseInt(req.params.id)))
       .returning();
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
@@ -9364,29 +10457,56 @@ crmRouter.delete('/pm/properties/:id', requireAgent, async (req, res) => {
   }
 });
 
-// --- PM TENANCIES ---
+// --- TENANCIES (using main tenancies table) ---
+// Routes at /pm/tenancies are kept for backwards compatibility
 
 // Get all tenancies
 crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
   try {
-    const { propertyId, status } = req.query;
+    const { propertyId, landlordId, status } = req.query;
 
-    let query = db.select().from(pmTenancies);
+    let query = db.select().from(tenancies);
     const conditions = [];
 
     if (propertyId) {
-      conditions.push(eq(pmTenancies.propertyId, parseInt(propertyId as string)));
+      conditions.push(eq(tenancies.propertyId, parseInt(propertyId as string)));
+    }
+    if (landlordId) {
+      conditions.push(eq(tenancies.landlordId, parseInt(landlordId as string)));
     }
     if (status) {
-      conditions.push(eq(pmTenancies.status, status as string));
+      conditions.push(eq(tenancies.status, status as string));
     }
 
     if (conditions.length > 0) {
       query = query.where(and(...conditions)) as typeof query;
     }
 
-    const allTenancies = await query.orderBy(desc(pmTenancies.createdAt));
-    res.json(allTenancies);
+    const allTenancies = await query.orderBy(desc(tenancies.createdAt));
+
+    // Enrich with property and tenant info
+    const enrichedTenancies = await Promise.all(allTenancies.map(async (t) => {
+      const [property] = await db.select({
+        addressLine1: properties.addressLine1,
+        address: properties.address,
+        postcode: properties.postcode
+      }).from(properties).where(eq(properties.id, t.propertyId));
+
+      let tenantName = null;
+      if (t.tenantId) {
+        const [tenantRecord] = await db.select({ name: tenant.name }).from(tenant).where(eq(tenant.id, t.tenantId));
+        tenantName = tenantRecord?.name || null;
+      }
+
+      return {
+        ...t,
+        propertyAddress: property?.addressLine1 || property?.address || 'Unknown Property',
+        postcode: property?.postcode || '',
+        tenantName
+      };
+    }));
+
+    res.json(enrichedTenancies);
   } catch (error) {
     console.error('Error fetching tenancies:', error);
     res.status(500).json({ error: 'Failed to fetch tenancies' });
@@ -9397,33 +10517,33 @@ crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
 crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
   try {
     const tenancyId = parseInt(req.params.id);
-    const [tenancy] = await db.select().from(pmTenancies).where(eq(pmTenancies.id, tenancyId));
+    const [tenancy] = await db.select().from(tenancies).where(eq(tenancies.id, tenancyId));
 
     if (!tenancy) {
       return res.status(404).json({ error: 'Tenancy not found' });
     }
 
     // Get property
-    const [property] = await db.select().from(pmProperties).where(eq(pmProperties.id, tenancy.propertyId));
+    const [property] = await db.select().from(properties).where(eq(properties.id, tenancy.propertyId));
 
     // Get landlord
-    const [landlord] = await db.select().from(pmLandlords).where(eq(pmLandlords.id, tenancy.landlordId));
+    const [landlord] = await db.select().from(landlords).where(eq(landlords.id, tenancy.landlordId));
 
     // Get tenant
-    let tenant = null;
+    let tenantData = null;
     if (tenancy.tenantId) {
-      [tenant] = await db.select().from(pmTenants).where(eq(pmTenants.id, tenancy.tenantId));
+      [tenantData] = await db.select().from(tenant).where(eq(tenant.id, tenancy.tenantId));
     }
 
     // Get checklist items
-    const checklistItems = await db.select().from(pmTenancyChecklist)
-      .where(eq(pmTenancyChecklist.tenancyId, tenancyId));
+    const checklistItems = await db.select().from(tenancyChecklist)
+      .where(eq(tenancyChecklist.tenancyId, tenancyId));
 
     res.json({
       ...tenancy,
       property,
       landlord,
-      tenant,
+      tenant: tenantData,
       checklist: checklistItems
     });
   } catch (error) {
@@ -9435,8 +10555,8 @@ crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
 // Create tenancy (with automatic checklist creation)
 crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
   try {
-    const data = insertPmTenancySchema.parse(req.body);
-    const [tenancy] = await db.insert(pmTenancies).values(data).returning();
+    const data = insertTenancySchema.parse(req.body);
+    const [tenancy] = await db.insert(tenancies).values(data).returning();
 
     // Create checklist items for the tenancy
     const checklistItems = tenancyChecklistItemTypes.map(itemType => ({
@@ -9445,7 +10565,7 @@ crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
       isCompleted: false
     }));
 
-    await db.insert(pmTenancyChecklist).values(checklistItems);
+    await db.insert(tenancyChecklist).values(checklistItems);
 
     res.status(201).json(tenancy);
   } catch (error) {
@@ -9457,9 +10577,9 @@ crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
 // Update tenancy
 crmRouter.patch('/pm/tenancies/:id', requireAgent, async (req, res) => {
   try {
-    const [tenancy] = await db.update(pmTenancies)
+    const [tenancy] = await db.update(tenancies)
       .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(pmTenancies.id, parseInt(req.params.id)))
+      .where(eq(tenancies.id, parseInt(req.params.id)))
       .returning();
     if (!tenancy) {
       return res.status(404).json({ error: 'Tenancy not found' });
@@ -9475,10 +10595,10 @@ crmRouter.patch('/pm/tenancies/:id', requireAgent, async (req, res) => {
 crmRouter.delete('/pm/tenancies/:id', requireAgent, async (req, res) => {
   try {
     // Delete checklist items first
-    await db.delete(pmTenancyChecklist).where(eq(pmTenancyChecklist.tenancyId, parseInt(req.params.id)));
+    await db.delete(tenancyChecklist).where(eq(tenancyChecklist.tenancyId, parseInt(req.params.id)));
 
-    const [tenancy] = await db.delete(pmTenancies)
-      .where(eq(pmTenancies.id, parseInt(req.params.id)))
+    const [tenancy] = await db.delete(tenancies)
+      .where(eq(tenancies.id, parseInt(req.params.id)))
       .returning();
     if (!tenancy) {
       return res.status(404).json({ error: 'Tenancy not found' });
@@ -9490,23 +10610,31 @@ crmRouter.delete('/pm/tenancies/:id', requireAgent, async (req, res) => {
   }
 });
 
-// --- PM TENANCY CHECKLIST ---
+// --- TENANCY CHECKLIST (using main tenancy_checklist table) ---
+// Routes at /pm/tenancies/:id/checklist are kept for backwards compatibility
 
 // Get checklist items for a tenancy
 crmRouter.get('/pm/tenancies/:tenancyId/checklist', requireAgent, async (req, res) => {
   try {
     const tenancyId = parseInt(req.params.tenancyId);
-    const items = await db.select().from(pmTenancyChecklist)
-      .where(eq(pmTenancyChecklist.tenancyId, tenancyId))
-      .orderBy(pmTenancyChecklist.id);
+    const items = await db.select().from(tenancyChecklist)
+      .where(eq(tenancyChecklist.tenancyId, tenancyId))
+      .orderBy(tenancyChecklist.id);
 
-    // Add labels to items
-    const itemsWithLabels = items.map(item => ({
-      ...item,
-      label: tenancyChecklistItemLabels[item.itemType as keyof typeof tenancyChecklistItemLabels] || item.itemType
-    }));
+    // Add labels and metadata to items
+    const itemsWithMeta = items.map(item => {
+      const meta = tenancyChecklistItemMeta[item.itemType as keyof typeof tenancyChecklistItemMeta];
+      return {
+        ...item,
+        label: tenancyChecklistItemLabels[item.itemType as keyof typeof tenancyChecklistItemLabels] || item.itemType,
+        category: meta?.category || 'general',
+        workflow: meta?.workflow || 'general',
+        requiresDocument: meta?.requiresDocument || false,
+        autoCompleteOn: meta?.autoCompleteOn || null
+      };
+    });
 
-    res.json(itemsWithLabels);
+    res.json(itemsWithMeta);
   } catch (error) {
     console.error('Error fetching checklist:', error);
     res.status(500).json({ error: 'Failed to fetch checklist' });
@@ -9517,7 +10645,8 @@ crmRouter.get('/pm/tenancies/:tenancyId/checklist', requireAgent, async (req, re
 crmRouter.get('/pm/checklist-types', requireAgent, async (req, res) => {
   res.json({
     types: tenancyChecklistItemTypes,
-    labels: tenancyChecklistItemLabels
+    labels: tenancyChecklistItemLabels,
+    meta: tenancyChecklistItemMeta
   });
 });
 
@@ -9542,9 +10671,9 @@ crmRouter.patch('/pm/checklist/:id', requireAgent, async (req, res) => {
       updateData.documentUploadedBy = userId;
     }
 
-    const [item] = await db.update(pmTenancyChecklist)
+    const [item] = await db.update(tenancyChecklist)
       .set(updateData)
-      .where(eq(pmTenancyChecklist.id, parseInt(req.params.id)))
+      .where(eq(tenancyChecklist.id, parseInt(req.params.id)))
       .returning();
 
     if (!item) {
@@ -9558,138 +10687,6 @@ crmRouter.patch('/pm/checklist/:id', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error updating checklist item:', error);
     res.status(400).json({ error: 'Failed to update checklist item' });
-  }
-});
-
-// --- PM INVENTORY ---
-
-// Get all inventories for a tenancy
-crmRouter.get('/pm/tenancies/:tenancyId/inventories', requireAgent, async (req, res) => {
-  try {
-    const tenancyId = parseInt(req.params.tenancyId);
-    const inventories = await db.select().from(pmInventory)
-      .where(eq(pmInventory.tenancyId, tenancyId))
-      .orderBy(desc(pmInventory.inventoryDate));
-    res.json(inventories);
-  } catch (error) {
-    console.error('Error fetching inventories:', error);
-    res.status(500).json({ error: 'Failed to fetch inventories' });
-  }
-});
-
-// Get single inventory with items
-crmRouter.get('/pm/inventories/:id', requireAgent, async (req, res) => {
-  try {
-    const inventoryId = parseInt(req.params.id);
-    const [inventory] = await db.select().from(pmInventory).where(eq(pmInventory.id, inventoryId));
-
-    if (!inventory) {
-      return res.status(404).json({ error: 'Inventory not found' });
-    }
-
-    const items = await db.select().from(pmInventoryItems)
-      .where(eq(pmInventoryItems.inventoryId, inventoryId))
-      .orderBy(pmInventoryItems.room);
-
-    res.json({ ...inventory, items });
-  } catch (error) {
-    console.error('Error fetching inventory:', error);
-    res.status(500).json({ error: 'Failed to fetch inventory' });
-  }
-});
-
-// Create inventory
-crmRouter.post('/pm/inventories', requireAgent, async (req, res) => {
-  try {
-    const data = insertPmInventorySchema.parse(req.body);
-    const [inventory] = await db.insert(pmInventory).values(data).returning();
-    res.status(201).json(inventory);
-  } catch (error) {
-    console.error('Error creating inventory:', error);
-    res.status(400).json({ error: 'Failed to create inventory' });
-  }
-});
-
-// Update inventory
-crmRouter.patch('/pm/inventories/:id', requireAgent, async (req, res) => {
-  try {
-    const [inventory] = await db.update(pmInventory)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(pmInventory.id, parseInt(req.params.id)))
-      .returning();
-    if (!inventory) {
-      return res.status(404).json({ error: 'Inventory not found' });
-    }
-    res.json(inventory);
-  } catch (error) {
-    console.error('Error updating inventory:', error);
-    res.status(400).json({ error: 'Failed to update inventory' });
-  }
-});
-
-// Delete inventory
-crmRouter.delete('/pm/inventories/:id', requireAgent, async (req, res) => {
-  try {
-    // Delete inventory items first
-    await db.delete(pmInventoryItems).where(eq(pmInventoryItems.inventoryId, parseInt(req.params.id)));
-
-    const [inventory] = await db.delete(pmInventory)
-      .where(eq(pmInventory.id, parseInt(req.params.id)))
-      .returning();
-    if (!inventory) {
-      return res.status(404).json({ error: 'Inventory not found' });
-    }
-    res.json({ message: 'Inventory deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting inventory:', error);
-    res.status(500).json({ error: 'Failed to delete inventory' });
-  }
-});
-
-// --- PM INVENTORY ITEMS ---
-
-// Add inventory item
-crmRouter.post('/pm/inventory-items', requireAgent, async (req, res) => {
-  try {
-    const data = insertPmInventoryItemSchema.parse(req.body);
-    const [item] = await db.insert(pmInventoryItems).values(data).returning();
-    res.status(201).json(item);
-  } catch (error) {
-    console.error('Error creating inventory item:', error);
-    res.status(400).json({ error: 'Failed to create inventory item' });
-  }
-});
-
-// Update inventory item
-crmRouter.patch('/pm/inventory-items/:id', requireAgent, async (req, res) => {
-  try {
-    const [item] = await db.update(pmInventoryItems)
-      .set({ ...req.body, updatedAt: new Date() })
-      .where(eq(pmInventoryItems.id, parseInt(req.params.id)))
-      .returning();
-    if (!item) {
-      return res.status(404).json({ error: 'Inventory item not found' });
-    }
-    res.json(item);
-  } catch (error) {
-    console.error('Error updating inventory item:', error);
-    res.status(400).json({ error: 'Failed to update inventory item' });
-  }
-});
-
-// Delete inventory item
-crmRouter.delete('/pm/inventory-items/:id', requireAgent, async (req, res) => {
-  try {
-    const [item] = await db.delete(pmInventoryItems)
-      .where(eq(pmInventoryItems.id, parseInt(req.params.id)))
-      .returning();
-    if (!item) {
-      return res.status(404).json({ error: 'Inventory item not found' });
-    }
-    res.json({ message: 'Inventory item deleted successfully' });
-  } catch (error) {
-    console.error('Error deleting inventory item:', error);
-    res.status(500).json({ error: 'Failed to delete inventory item' });
   }
 });
 
@@ -9720,19 +10717,19 @@ crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), 
       // Create or find landlord
       let landlordId: number | null = null;
       if (row.landlord_name) {
-        const existingLandlords = await db.select().from(pmLandlords)
-          .where(eq(pmLandlords.name, row.landlord_name))
+        const existingLandlords = await db.select().from(landlords)
+          .where(eq(landlords.name, row.landlord_name))
           .limit(1);
 
         if (existingLandlords.length > 0) {
           landlordId = existingLandlords[0].id;
         } else {
-          const [newLandlord] = await db.insert(pmLandlords).values({
+          const [newLandlord] = await db.insert(landlords).values({
             name: row.landlord_name,
             email: row.landlord_email || null,
             phone: row.landlord_phone || null,
             mobile: row.landlord_mobile || null,
-            address: row.landlord_address || null,
+            addressLine1: row.landlord_address || null,
             bankName: row.landlord_bank_name || null,
             bankAccountNumber: row.landlord_account_number || null,
             bankSortCode: row.landlord_sort_code || null,
@@ -9746,14 +10743,14 @@ crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), 
       // Create or find tenant
       let tenantId: number | null = null;
       if (row.tenant_name) {
-        const existingTenants = await db.select().from(pmTenants)
-          .where(eq(pmTenants.name, row.tenant_name))
+        const existingTenants = await db.select().from(tenant)
+          .where(eq(tenant.name, row.tenant_name))
           .limit(1);
 
         if (existingTenants.length > 0) {
           tenantId = existingTenants[0].id;
         } else {
-          const [newTenant] = await db.insert(pmTenants).values({
+          const [newTenant] = await db.insert(tenant).values({
             name: row.tenant_name,
             email: row.tenant_email || null,
             mobile: row.tenant_mobile || null,
@@ -9768,14 +10765,14 @@ crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), 
       if (row.property_address && landlordId) {
         const postcode = row.property_address.match(/[A-Z]{1,2}\d{1,2}[A-Z]?\s*\d[A-Z]{2}/i)?.[0] || '';
 
-        const [newProperty] = await db.insert(pmProperties).values({
+        const [newProperty] = await db.insert(properties).values({
           address: row.property_address,
           postcode: postcode,
           landlordId: landlordId,
           isManaged: true,
-          isListedRental: false,
-          isListedSale: false,
-          propertyCategory: 'residential',
+          isListed: false,
+          isRental: true,
+          isResidential: true,
           propertyType: 'flat',
           managementType: 'full',
           managementStartDate: new Date(),
@@ -9790,7 +10787,7 @@ crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), 
           const rentAmount = parseFloat(row.rent_amount) || 0;
           const depositAmount = parseFloat(row.deposit_amount) || 0;
 
-          const [newTenancy] = await db.insert(pmTenancies).values({
+          const [newTenancy] = await db.insert(tenancies).values({
             propertyId: newProperty.id,
             landlordId: landlordId,
             tenantId: tenantId,
@@ -9808,7 +10805,7 @@ crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), 
             itemType,
             isCompleted: false
           }));
-          await db.insert(pmTenancyChecklist).values(checklistItems);
+          await db.insert(tenancyChecklist).values(checklistItems);
           imported.tenancies++;
         }
       }
@@ -11056,5 +12053,425 @@ crmRouter.post('/security/users', requireSecurityAccess, async (req: any, res) =
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// ==========================================
+// CMS (CONTENT MANAGEMENT SYSTEM) ROUTES
+// ==========================================
+
+// Configure multer for CMS media uploads
+const cmsUploadDir = path.join(process.cwd(), 'uploads', 'cms');
+if (!fs.existsSync(cmsUploadDir)) {
+  fs.mkdirSync(cmsUploadDir, { recursive: true });
+}
+
+const cmsMediaStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, cmsUploadDir);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = `${Date.now()}-${randomUUID()}`;
+    cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
+  }
+});
+
+const uploadCmsMedia = multer({
+  storage: cmsMediaStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (_req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only images are allowed.'));
+    }
+  }
+});
+
+// --- CMS Pages Routes ---
+
+// Get all CMS pages
+crmRouter.get('/cms/pages', requireClearance(5), async (req, res) => {
+  try {
+    const pages = await db.select().from(cmsPages).orderBy(cmsPages.displayOrder, cmsPages.title);
+    res.json(pages);
+  } catch (error) {
+    console.error('Error fetching CMS pages:', error);
+    res.status(500).json({ error: 'Failed to fetch pages' });
+  }
+});
+
+// Get single CMS page by slug with its content blocks
+crmRouter.get('/cms/pages/:slug', requireClearance(5), async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const [page] = await db.select().from(cmsPages).where(eq(cmsPages.slug, slug));
+
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    const blocks = await db.select()
+      .from(cmsContentBlocks)
+      .where(eq(cmsContentBlocks.pageId, page.id))
+      .orderBy(cmsContentBlocks.displayOrder);
+
+    res.json({ ...page, blocks });
+  } catch (error) {
+    console.error('Error fetching CMS page:', error);
+    res.status(500).json({ error: 'Failed to fetch page' });
+  }
+});
+
+// Create new CMS page
+crmRouter.post('/cms/pages', requireClearance(7), async (req, res) => {
+  try {
+    const validated = insertCmsPageSchema.parse({
+      ...req.body,
+      createdBy: req.user.id,
+      updatedBy: req.user.id
+    });
+
+    const [page] = await db.insert(cmsPages).values(validated).returning();
+    res.status(201).json(page);
+  } catch (error) {
+    console.error('Error creating CMS page:', error);
+    res.status(500).json({ error: 'Failed to create page' });
+  }
+});
+
+// Update CMS page
+crmRouter.put('/cms/pages/:id', requireClearance(7), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [page] = await db.update(cmsPages)
+      .set({
+        ...req.body,
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      })
+      .where(eq(cmsPages.id, parseInt(id)))
+      .returning();
+
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    res.json(page);
+  } catch (error) {
+    console.error('Error updating CMS page:', error);
+    res.status(500).json({ error: 'Failed to update page' });
+  }
+});
+
+// Delete CMS page (requires clearance 9)
+crmRouter.delete('/cms/pages/:id', requireClearance(9), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pageId = parseInt(id);
+
+    // Delete associated content blocks first
+    await db.delete(cmsContentBlocks).where(eq(cmsContentBlocks.pageId, pageId));
+
+    // Delete the page
+    const [deleted] = await db.delete(cmsPages).where(eq(cmsPages.id, pageId)).returning();
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    res.json({ success: true, message: 'Page deleted' });
+  } catch (error) {
+    console.error('Error deleting CMS page:', error);
+    res.status(500).json({ error: 'Failed to delete page' });
+  }
+});
+
+// Toggle publish status
+crmRouter.patch('/cms/pages/:id/publish', requireClearance(7), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isPublished } = req.body;
+
+    const [page] = await db.update(cmsPages)
+      .set({
+        isPublished,
+        publishedAt: isPublished ? new Date() : null,
+        updatedBy: req.user.id,
+        updatedAt: new Date()
+      })
+      .where(eq(cmsPages.id, parseInt(id)))
+      .returning();
+
+    if (!page) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    res.json(page);
+  } catch (error) {
+    console.error('Error updating page publish status:', error);
+    res.status(500).json({ error: 'Failed to update publish status' });
+  }
+});
+
+// --- CMS Content Blocks Routes ---
+
+// Add content block to page
+crmRouter.post('/cms/pages/:pageId/blocks', requireClearance(7), async (req, res) => {
+  try {
+    const { pageId } = req.params;
+    const validated = insertCmsContentBlockSchema.parse({
+      ...req.body,
+      pageId: parseInt(pageId)
+    });
+
+    const [block] = await db.insert(cmsContentBlocks).values(validated).returning();
+    res.status(201).json(block);
+  } catch (error) {
+    console.error('Error creating content block:', error);
+    res.status(500).json({ error: 'Failed to create content block' });
+  }
+});
+
+// Update content block
+crmRouter.put('/cms/blocks/:id', requireClearance(7), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [block] = await db.update(cmsContentBlocks)
+      .set({
+        ...req.body,
+        updatedAt: new Date()
+      })
+      .where(eq(cmsContentBlocks.id, parseInt(id)))
+      .returning();
+
+    if (!block) {
+      return res.status(404).json({ error: 'Block not found' });
+    }
+
+    res.json(block);
+  } catch (error) {
+    console.error('Error updating content block:', error);
+    res.status(500).json({ error: 'Failed to update content block' });
+  }
+});
+
+// Delete content block
+crmRouter.delete('/cms/blocks/:id', requireClearance(9), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [deleted] = await db.delete(cmsContentBlocks)
+      .where(eq(cmsContentBlocks.id, parseInt(id)))
+      .returning();
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Block not found' });
+    }
+
+    res.json({ success: true, message: 'Block deleted' });
+  } catch (error) {
+    console.error('Error deleting content block:', error);
+    res.status(500).json({ error: 'Failed to delete content block' });
+  }
+});
+
+// Reorder content blocks
+crmRouter.patch('/cms/blocks/reorder', requireClearance(7), async (req, res) => {
+  try {
+    const { blocks } = req.body; // Array of { id, displayOrder }
+
+    for (const block of blocks) {
+      await db.update(cmsContentBlocks)
+        .set({ displayOrder: block.displayOrder, updatedAt: new Date() })
+        .where(eq(cmsContentBlocks.id, block.id));
+    }
+
+    res.json({ success: true, message: 'Blocks reordered' });
+  } catch (error) {
+    console.error('Error reordering blocks:', error);
+    res.status(500).json({ error: 'Failed to reorder blocks' });
+  }
+});
+
+// --- CMS Media Routes ---
+
+// Get all media
+crmRouter.get('/cms/media', requireClearance(5), async (req, res) => {
+  try {
+    const media = await db.select().from(cmsMedia).orderBy(desc(cmsMedia.createdAt));
+    res.json(media);
+  } catch (error) {
+    console.error('Error fetching media:', error);
+    res.status(500).json({ error: 'Failed to fetch media' });
+  }
+});
+
+// Upload media
+crmRouter.post('/cms/media', requireClearance(7), uploadCmsMedia.single('file'), async (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const validated = insertCmsMediaSchema.parse({
+      filename: req.file.filename,
+      originalFilename: req.file.originalname,
+      mimeType: req.file.mimetype,
+      size: req.file.size,
+      url: `/uploads/cms/${req.file.filename}`,
+      altText: req.body.altText || '',
+      uploadedBy: req.user.id
+    });
+
+    const [media] = await db.insert(cmsMedia).values(validated).returning();
+    res.status(201).json(media);
+  } catch (error) {
+    console.error('Error uploading media:', error);
+    res.status(500).json({ error: 'Failed to upload media' });
+  }
+});
+
+// Delete media
+crmRouter.delete('/cms/media/:id', requireClearance(9), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const [media] = await db.select().from(cmsMedia).where(eq(cmsMedia.id, parseInt(id)));
+
+    if (!media) {
+      return res.status(404).json({ error: 'Media not found' });
+    }
+
+    // Delete file from filesystem
+    const filePath = path.join(cmsUploadDir, media.filename);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+
+    // Delete from database
+    await db.delete(cmsMedia).where(eq(cmsMedia.id, parseInt(id)));
+
+    res.json({ success: true, message: 'Media deleted' });
+  } catch (error) {
+    console.error('Error deleting media:', error);
+    res.status(500).json({ error: 'Failed to delete media' });
+  }
+});
+
+// --- Staff Public Profile Routes (for Team Page) ---
+
+// Get all staff with public profiles (for team page management)
+crmRouter.get('/cms/team', requireClearance(7), async (req, res) => {
+  try {
+    const staff = await db
+      .select({
+        id: users.id,
+        fullName: users.fullName,
+        email: users.email,
+        role: users.role,
+        isActive: users.isActive,
+        profileId: staffProfiles.id,
+        jobTitle: staffProfiles.jobTitle,
+        department: staffProfiles.department,
+        publicDisplayName: staffProfiles.publicDisplayName,
+        publicBio: staffProfiles.publicBio,
+        publicPhoto: staffProfiles.publicPhoto,
+        publicJobTitle: staffProfiles.publicJobTitle,
+        publicDisplayOrder: staffProfiles.publicDisplayOrder,
+        showOnTeamPage: staffProfiles.showOnTeamPage
+      })
+      .from(users)
+      .leftJoin(staffProfiles, eq(users.id, staffProfiles.userId))
+      .where(
+        and(
+          eq(users.isActive, true),
+          or(eq(users.role, 'admin'), eq(users.role, 'agent'))
+        )
+      )
+      .orderBy(staffProfiles.publicDisplayOrder);
+
+    res.json(staff);
+  } catch (error) {
+    console.error('Error fetching team members:', error);
+    res.status(500).json({ error: 'Failed to fetch team members' });
+  }
+});
+
+// Update staff public profile
+crmRouter.put('/staff/:id/public-profile', requireClearance(7), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = parseInt(id);
+    const { publicDisplayName, publicBio, publicPhoto, publicJobTitle, publicDisplayOrder, showOnTeamPage } = req.body;
+
+    // Check if staff profile exists
+    const [existingProfile] = await db.select().from(staffProfiles).where(eq(staffProfiles.userId, userId));
+
+    if (existingProfile) {
+      // Update existing profile
+      const [updated] = await db.update(staffProfiles)
+        .set({
+          publicDisplayName,
+          publicBio,
+          publicPhoto,
+          publicJobTitle,
+          publicDisplayOrder,
+          showOnTeamPage,
+          updatedAt: new Date()
+        })
+        .where(eq(staffProfiles.userId, userId))
+        .returning();
+
+      res.json(updated);
+    } else {
+      // Get user info to create profile
+      const [user] = await db.select().from(users).where(eq(users.id, userId));
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Create new staff profile with public fields
+      const [created] = await db.insert(staffProfiles)
+        .values({
+          userId,
+          jobTitle: 'Staff Member',
+          department: user.department || 'sales',
+          startDate: new Date(),
+          publicDisplayName,
+          publicBio,
+          publicPhoto,
+          publicJobTitle,
+          publicDisplayOrder,
+          showOnTeamPage
+        })
+        .returning();
+
+      res.json(created);
+    }
+  } catch (error) {
+    console.error('Error updating public profile:', error);
+    res.status(500).json({ error: 'Failed to update public profile' });
+  }
+});
+
+// Toggle staff visibility on team page
+crmRouter.patch('/staff/:id/team-visibility', requireClearance(7), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { showOnTeamPage } = req.body;
+
+    const [updated] = await db.update(staffProfiles)
+      .set({ showOnTeamPage, updatedAt: new Date() })
+      .where(eq(staffProfiles.userId, parseInt(id)))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Staff profile not found' });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating team visibility:', error);
+    res.status(500).json({ error: 'Failed to update visibility' });
   }
 });

@@ -25,7 +25,8 @@ gsap.registerPlugin(ScrollTrigger);
 
 interface CommercialProperty {
   id: number;
-  listingType: string;
+  isRental: boolean; // true = rental/let, false = sale
+  isResidential: boolean; // false for commercial
   title: string;
   description: string;
   price: number;
@@ -59,7 +60,7 @@ export default function CommercialPage() {
   const { data: featuredProperties = [], isLoading: featuredLoading } = useQuery({
     queryKey: ['/api/properties', 'featured', 'commercial'],
     queryFn: async () => {
-      const response = await fetch('/api/properties?listingType=commercial&featured=true&limit=6');
+      const response = await fetch('/api/properties?isResidential=false&featured=true&limit=6');
       return response.json();
     }
   });
@@ -69,7 +70,7 @@ export default function CommercialPage() {
     queryKey: ['/api/properties', 'commercial', searchForm],
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set('listingType', 'commercial');
+      params.set('isResidential', 'false');
       if (searchForm.location) params.set('location', searchForm.location);
       if (searchForm.propertyType) params.set('propertyType', searchForm.propertyType);
       if (searchForm.minSize) params.set('minSize', searchForm.minSize);
@@ -152,7 +153,7 @@ export default function CommercialPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query, listingType: 'commercial' })
+        body: JSON.stringify({ query, isResidential: false })
       });
 
       if (response.ok) {
@@ -493,7 +494,7 @@ export default function CommercialPage() {
                       </div>
                       <div className="absolute bottom-4 right-4">
                         <span className="bg-black/80 text-white px-3 py-2 rounded-full text-lg font-bold">
-                          {formatPrice(property.price, property.listingType === 'rental')}
+                          {formatPrice(property.price, property.isRental)}
                         </span>
                       </div>
                     </div>
@@ -581,7 +582,7 @@ export default function CommercialPage() {
                       </div>
                       <div className="absolute bottom-4 right-4">
                         <span className="bg-black/80 text-white px-3 py-1 rounded-full text-lg font-bold">
-                          {formatPrice(property.price, property.listingType === 'rental')}
+                          {formatPrice(property.price, property.isRental)}
                         </span>
                       </div>
                     </div>

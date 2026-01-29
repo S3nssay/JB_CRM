@@ -22,7 +22,7 @@ import {
   propertyPortalListings, maintenanceTickets, maintenanceTicketUpdates,
   maintenanceCategories, portalCredentials,
   staffProfiles, staffAttendance, staffLeave, staffPerformance, staffTraining,
-  landlords, tenants, rentalAgreements,
+  landlords, tenant, rentalAgreements,
   estateAgencyRoles, rolePermissions, staffRoleAssignments,
   calendarEvents, contractors, propertyChecklists,
   ESTATE_AGENCY_ROLE_DEFINITIONS,
@@ -34,7 +34,7 @@ import {
   ManagedProperty, InsertManagedProperty,
   JointTenant, InsertJointTenant,
   SalesProgression, InsertSalesProgression,
-  unifiedContacts, companyDetails, beneficialOwners, kycDocuments,
+  unifiedContacts, companyDetails, beneficialOwner, kycDocuments,
   contactStatusHistory, managedProperties, managedPropertyCompliance,
   jointTenants, salesProgression, communications
 } from "@shared/schema";
@@ -78,7 +78,7 @@ export interface IStorage {
   deleteProperty(id: number): Promise<boolean>;
   getProperty(id: number): Promise<Property | undefined>;
   getAllProperties(): Promise<Property[]>;
-  getPropertiesByListingType(listingType: string): Promise<Property[]>;
+  getPropertiesByRentalStatus(isRental: boolean): Promise<Property[]>;
   getPropertiesByPostcode(postcode: string): Promise<Property[]>;
   getPropertiesByArea(areaId: number): Promise<Property[]>;
   getFilteredProperties(filters: any): Promise<Property[]>;
@@ -257,10 +257,10 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(properties.createdAt));
   }
 
-  async getPropertiesByListingType(listingType: string): Promise<Property[]> {
+  async getPropertiesByRentalStatus(isRental: boolean): Promise<Property[]> {
     return await db.select()
       .from(properties)
-      .where(eq(properties.listingType, listingType))
+      .where(eq(properties.isRental, isRental))
       .orderBy(desc(properties.createdAt));
   }
 
@@ -356,8 +356,8 @@ export class DatabaseStorage implements IStorage {
   async getFilteredProperties(filters: any): Promise<Property[]> {
     const conditions = [];
 
-    if (filters.listingType) {
-      conditions.push(eq(properties.listingType, filters.listingType));
+    if (filters.isRental !== undefined) {
+      conditions.push(eq(properties.isRental, filters.isRental));
     }
 
     if (filters.propertyType && Array.isArray(filters.propertyType)) {
@@ -736,38 +736,38 @@ export class DatabaseStorage implements IStorage {
   // ==========================================
 
   async getAllTenants(): Promise<Tenant[]> {
-    return await db.select().from(tenants).orderBy(desc(tenants.createdAt));
+    return await db.select().from(tenant).orderBy(desc(tenant.createdAt));
   }
 
   async getTenant(id: number): Promise<Tenant | undefined> {
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
-    return tenant;
+    const [tenantRecord] = await db.select().from(tenant).where(eq(tenant.id, id));
+    return tenantRecord;
   }
 
   async getTenantByUserId(userId: number): Promise<Tenant | undefined> {
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.userId, userId));
-    return tenant;
+    const [tenantRecord] = await db.select().from(tenant).where(eq(tenant.userId, userId));
+    return tenantRecord;
   }
 
   async getTenantsByProperty(propertyId: number): Promise<Tenant[]> {
-    return await db.select().from(tenants).where(eq(tenants.propertyId, propertyId));
+    return await db.select().from(tenant).where(eq(tenant.propertyId, propertyId));
   }
 
   async createTenant(data: InsertTenant): Promise<Tenant> {
-    const [tenant] = await db.insert(tenants).values(data).returning();
-    return tenant;
+    const [newTenant] = await db.insert(tenant).values(data).returning();
+    return newTenant;
   }
 
   async updateTenant(id: number, data: Partial<InsertTenant>): Promise<Tenant | undefined> {
-    const [tenant] = await db.update(tenants)
+    const [updatedTenant] = await db.update(tenant)
       .set({ ...data, updatedAt: new Date() })
-      .where(eq(tenants.id, id))
+      .where(eq(tenant.id, id))
       .returning();
-    return tenant;
+    return updatedTenant;
   }
 
   async deleteTenant(id: number): Promise<void> {
-    await db.delete(tenants).where(eq(tenants.id, id));
+    await db.delete(tenant).where(eq(tenant.id, id));
   }
 
   // ==========================================
@@ -1215,9 +1215,9 @@ export class DatabaseStorage implements IStorage {
     return comm;
   }
 
-  async getTenant(id: number): Promise<Tenant | undefined> {
-    const [tenant] = await db.select().from(tenants).where(eq(tenants.id, id));
-    return tenant;
+  async getTenantById(id: number): Promise<Tenant | undefined> {
+    const [tenantRecord] = await db.select().from(tenant).where(eq(tenant.id, id));
+    return tenantRecord;
   }
 
   async getUnifiedInbox(): Promise<InboxItem[]> {
@@ -1233,8 +1233,8 @@ export class DatabaseStorage implements IStorage {
       // We need to join to get details.
     })
       .from(communications)
-      .leftJoin(tenants, eq(communications.tenantId, tenants.id))
-      .leftJoin(users, eq(tenants.userId, users.id));
+      .leftJoin(tenant, eq(communications.tenantId, tenant.id))
+      .leftJoin(users, eq(tenant.userId, users.id));
 
     // Actually, simple normalization first.
     // Fetch generic lists then map.
@@ -1246,13 +1246,12 @@ export class DatabaseStorage implements IStorage {
       type: communications.type,
       direction: communications.direction,
       tenantId: communications.tenantId,
-      firstName: tenants.firstName,
-      lastName: tenants.lastName,
-      email: tenants.email,
-      phone: tenants.phone
+      tenantName: tenant.name,
+      email: tenant.email,
+      phone: tenant.phone
     })
       .from(communications)
-      .leftJoin(tenants, eq(communications.tenantId, tenants.id));
+      .leftJoin(tenant, eq(communications.tenantId, tenant.id));
 
     const inquiriesList = await db.select().from(propertyInquiries);
     const contactsList = await db.select().from(contacts);

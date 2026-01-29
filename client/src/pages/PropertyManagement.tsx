@@ -1,17 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Wrench, Shield, AlertCircle, CheckCircle, Clock, Calendar, Users, FileText, Plus, Eye, Send, AlertTriangle, Home, ArrowLeft, Building, User, Phone, Mail, CreditCard, ClipboardCheck, ExternalLink, UserCheck, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Wrench, Shield, AlertCircle, CheckCircle, Clock, Calendar, Users, FileText, Plus, Eye, Send, AlertTriangle, Home, ArrowLeft, Building, User, Phone, Mail, CreditCard, ClipboardCheck, ExternalLink, UserCheck, Upload, Download, FileSpreadsheet, ChevronsUpDown, Check } from 'lucide-react';
 import { Link } from 'wouter';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -21,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 // Form schemas
 const maintenanceFormSchema = z.object({
@@ -91,6 +94,8 @@ export default function PropertyManagement() {
   const [showRenewalDialog, setShowRenewalDialog] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<any>(null);
   const [selectedCertification, setSelectedCertification] = useState<any>(null);
+  const [selectedPropertyForMaintenance, setSelectedPropertyForMaintenance] = useState<any>(null);
+  const [propertySelectOpen, setPropertySelectOpen] = useState(false);
 
   // Fetch maintenance requests
   const { data: maintenanceRequests, isLoading: loadingMaintenance } = useQuery({
@@ -185,6 +190,23 @@ export default function PropertyManagement() {
       expiryDate: ''
     }
   });
+
+  // Pre-populate maintenance form when property is selected from table
+  useEffect(() => {
+    if (selectedPropertyForMaintenance && showMaintenanceDialog) {
+      maintenanceForm.setValue('propertyId', String(selectedPropertyForMaintenance.id));
+      // Auto-fill tenant info if available
+      if (selectedPropertyForMaintenance.tenantName) {
+        maintenanceForm.setValue('tenantName', selectedPropertyForMaintenance.tenantName);
+      }
+      if (selectedPropertyForMaintenance.tenantEmail) {
+        maintenanceForm.setValue('tenantEmail', selectedPropertyForMaintenance.tenantEmail);
+      }
+      if (selectedPropertyForMaintenance.tenantPhone) {
+        maintenanceForm.setValue('tenantPhone', selectedPropertyForMaintenance.tenantPhone);
+      }
+    }
+  }, [selectedPropertyForMaintenance, showMaintenanceDialog, maintenanceForm]);
 
   // Submit maintenance request
   const submitMaintenance = useMutation({
@@ -594,27 +616,23 @@ export default function PropertyManagement() {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-auto p-1 text-left justify-start"
-                              onClick={() => {
-                                setSelectedLandlord({
-                                  id: property.landlordId,
-                                  name: property.landlordName,
-                                  email: property.landlordEmail,
-                                  mobile: property.landlordMobile,
-                                  companyName: property.landlordCompanyName
-                                });
-                                setShowLandlordDialog(true);
-                              }}
-                              data-testid={`button-landlord-${property.id}`}
-                            >
-                              <div className="flex items-center gap-2">
-                                <User className="h-4 w-4 text-[#791E75]" />
-                                <span className="text-sm font-medium hover:underline">{property.landlordName}</span>
-                              </div>
-                            </Button>
+                            {property.landlordId ? (
+                              <Link href={`/crm/landlords/${property.landlordId}`}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-auto p-1 text-left justify-start"
+                                  data-testid={`button-landlord-${property.id}`}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <User className="h-4 w-4 text-[#791E75]" />
+                                    <span className="text-sm font-medium hover:underline">{property.landlordName}</span>
+                                  </div>
+                                </Button>
+                              </Link>
+                            ) : (
+                              <Badge variant="outline" className="text-xs">No landlord</Badge>
+                            )}
                           </TableCell>
                           <TableCell>
                             {property.tenantId ? (
@@ -723,7 +741,10 @@ export default function PropertyManagement() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                onClick={() => setShowMaintenanceDialog(true)}
+                                onClick={() => {
+                                  setSelectedPropertyForMaintenance(property);
+                                  setShowMaintenanceDialog(true);
+                                }}
                                 data-testid={`button-maintenance-${property.id}`}
                               >
                                 <Wrench className="h-4 w-4" />
@@ -1008,7 +1029,13 @@ export default function PropertyManagement() {
       </Tabs>
 
       {/* Maintenance Request Dialog */}
-      <Dialog open={showMaintenanceDialog} onOpenChange={setShowMaintenanceDialog}>
+      <Dialog open={showMaintenanceDialog} onOpenChange={(open) => {
+        setShowMaintenanceDialog(open);
+        if (!open) {
+          setSelectedPropertyForMaintenance(null);
+          setPropertySelectOpen(false);
+        }
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Report Maintenance Issue</DialogTitle>
@@ -1020,11 +1047,83 @@ export default function PropertyManagement() {
                 control={maintenanceForm.control}
                 name="propertyId"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem className="flex flex-col">
                     <FormLabel>Property</FormLabel>
-                    <FormControl>
-                      <Input placeholder="Property ID or Address" {...field} />
-                    </FormControl>
+                    <Popover open={propertySelectOpen} onOpenChange={setPropertySelectOpen}>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={propertySelectOpen}
+                            className={cn(
+                              "w-full justify-between",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value
+                              ? (() => {
+                                  const prop = managedProperties?.find((p: any) => String(p.id) === field.value);
+                                  // Try all possible address field names - addressLine1 for first line, propertyAddress as computed fallback
+                                  const addr = prop?.addressLine1 || prop?.propertyAddress || prop?.address || prop?.address_line1;
+                                  // Remove postcode from address if present (keep just street address)
+                                  if (addr && prop?.postcode) {
+                                    return addr.replace(new RegExp(`,?\\s*${prop.postcode}.*$`, 'i'), '').trim();
+                                  }
+                                  return addr || "Select property...";
+                                })()
+                              : "Select property..."}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[350px] p-0">
+                        <Command>
+                          <CommandInput placeholder="Search properties..." />
+                          <CommandList>
+                            <CommandEmpty>No property found.</CommandEmpty>
+                            <CommandGroup>
+                              {managedProperties?.map((property: any) => (
+                                <CommandItem
+                                  key={property.id}
+                                  value={`${property.address || property.addressLine1 || ''} ${property.postcode || ''}`}
+                                  onSelect={() => {
+                                    field.onChange(String(property.id));
+                                    setSelectedPropertyForMaintenance(property);
+                                    setPropertySelectOpen(false);
+                                    // Auto-fill tenant info if available
+                                    if (property.tenantName) {
+                                      maintenanceForm.setValue('tenantName', property.tenantName);
+                                    }
+                                    if (property.tenantEmail) {
+                                      maintenanceForm.setValue('tenantEmail', property.tenantEmail);
+                                    }
+                                    if (property.tenantPhone) {
+                                      maintenanceForm.setValue('tenantPhone', property.tenantPhone);
+                                    }
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      field.value === String(property.id) ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-medium">
+                                      {property.addressLine1 || property.address || property.address_line1 || `Property #${property.id}`}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {property.postcode} {property.landlordName ? `• ${property.landlordName}` : ''}
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
                   </FormItem>
                 )}
               />

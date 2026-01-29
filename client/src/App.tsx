@@ -19,6 +19,7 @@ import RegisterRentalPage from "@/pages/RegisterRentalPage";
 import AreaPage from "@/pages/AreaPage";
 import ScrollToTop from "@/components/ScrollToTop";
 import { Switch, Route, useLocation } from "wouter";
+import { useRef } from 'react';
 import { AuthProvider } from "@/hooks/use-auth";
 import AuthPage from "@/pages/auth-page";
 import { ProtectedRoute } from "@/lib/protected-route";
@@ -32,6 +33,7 @@ import TestDashboardPage from "@/pages/TestDashboardPage";
 import CRMLogin from "@/pages/CRMLogin";
 import CRMDashboard from "@/pages/CRMDashboard";
 import PropertyCreate from "@/pages/PropertyCreate";
+import PropertyEdit from "@/pages/PropertyEdit";
 import WorkflowManagement from "@/pages/WorkflowManagement";
 import PropertyManagement from "@/pages/PropertyManagement";
 import TenantDetails from "@/pages/TenantDetails";
@@ -68,10 +70,17 @@ import LandlordDetails from "@/pages/LandlordDetails";
 import ContactManagement from "@/pages/ContactManagement";
 import SalesProgressionPage from "@/pages/SalesProgressionPage";
 import ContractorManagement from "@/pages/ContractorManagement";
+import LandlordLeadPipeline from "@/pages/LandlordLeadPipeline";
+import LandlordLeadDetails from "@/pages/LandlordLeadDetails";
 import PropertyImport from "@/pages/PropertyImport";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import SecurityMatrix from "@/pages/SecurityMatrix";
+import CMSManagement from "@/pages/CMSManagement";
+import CMSPageEditor from "@/pages/CMSPageEditor";
+import CMSMediaLibrary from "@/pages/CMSMediaLibrary";
+import TeamPageSettings from "@/pages/TeamPageSettings";
+import TeamPage from "@/pages/TeamPage";
 import { ProtectedRoute as ClearanceProtectedRoute } from "@/components/ProtectedRoute";
 
 // Area-specific pages
@@ -89,27 +98,52 @@ import WillesdenPage from "@/pages/areas/WillesdenPage";
 
 
 function App() {
-  useEffect(() => {
-    // Initialize Lenis
-    const lenis = new Lenis();
+  const [location] = useLocation();
+  const lenisRef = useRef<Lenis | null>(null);
+  const rafRef = useRef<number | null>(null);
 
-    // Listen for the scroll event and log the event data
-    lenis.on('scroll', (e: any) => {
-      // You can add custom scroll handlers here if needed
-    });
+  useEffect(() => {
+    // Check if this is a CRM/admin page
+    const isCrmPage = location.startsWith('/crm') || location.startsWith('/portal') || location.startsWith('/dashboard') || location.startsWith('/login');
+
+    // Always destroy existing Lenis instance first
+    if (lenisRef.current) {
+      lenisRef.current.destroy();
+      lenisRef.current = null;
+    }
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+
+    // Don't use Lenis on CRM pages - it interferes with form interactions
+    if (isCrmPage) {
+      // Ensure smooth scroll is reset to native
+      document.documentElement.style.scrollBehavior = 'auto';
+      return;
+    }
+
+    // Initialize Lenis for public pages only
+    const lenis = new Lenis();
+    lenisRef.current = lenis;
 
     function raf(time: number) {
       lenis.raf(time);
-      requestAnimationFrame(raf);
+      rafRef.current = requestAnimationFrame(raf);
     }
 
-    requestAnimationFrame(raf);
+    rafRef.current = requestAnimationFrame(raf);
 
     // Cleanup
     return () => {
       lenis.destroy();
+      lenisRef.current = null;
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     };
-  }, []);
+  }, [location]);
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -158,12 +192,16 @@ function Router() {
         <Route path="/terms-and-conditions" component={TermsAndConditions} />
         <Route path="/privacy-policy" component={PrivacyPolicy} />
 
+        {/* Public Team Page */}
+        <Route path="/team" component={TeamPage} />
+
         {/* CRM Routes */}
         <Route path="/crm" component={CRMDashboard} />
         <Route path="/crm/login" component={CRMLogin} />
         <Route path="/crm/dashboard" component={CRMDashboard} />
         <Route path="/crm/properties/create" component={PropertyCreate} />
         <Route path="/crm/properties/import" component={PropertyImport} />
+        <Route path="/crm/properties/:id/edit" component={PropertyEdit} />
         <Route path="/crm/properties" component={CRMDashboard} />
         <Route path="/crm/workflows" component={WorkflowManagement} />
         <Route path="/crm/property-management" component={PropertyManagement} />
@@ -186,6 +224,8 @@ function Router() {
         <Route path="/crm/lead-generation" component={LeadGeneration} />
         <Route path="/crm/leads" component={LeadManagement} />
         <Route path="/crm/website-leads" component={WebsiteLeads} />
+        <Route path="/crm/landlord-lead-pipeline" component={LandlordLeadPipeline} />
+        <Route path="/crm/landlord-lead/:id" component={LandlordLeadDetails} />
         <Route path="/crm/ai-agents" component={AIAgentDashboard} />
         <Route path="/crm/landlords" component={LandlordManagement} />
         <Route path="/crm/landlords/:id" component={LandlordDetails} />
@@ -209,6 +249,27 @@ function Router() {
           </ClearanceProtectedRoute>
         </Route>
 
+        {/* CMS Routes */}
+        <Route path="/crm/cms">
+          <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
+            <CMSManagement />
+          </ClearanceProtectedRoute>
+        </Route>
+        <Route path="/crm/cms/pages/:slug">
+          <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
+            <CMSPageEditor />
+          </ClearanceProtectedRoute>
+        </Route>
+        <Route path="/crm/cms/media">
+          <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
+            <CMSMediaLibrary />
+          </ClearanceProtectedRoute>
+        </Route>
+        <Route path="/crm/cms/team">
+          <ClearanceProtectedRoute requiredClearance={7} featureKey="team_page_edit" showAccessDenied={true}>
+            <TeamPageSettings />
+          </ClearanceProtectedRoute>
+        </Route>
 
         {/* User Account Routes */}
         <Route path="/login" component={Login} />

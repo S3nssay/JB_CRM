@@ -13,16 +13,19 @@ import { Progress } from '@/components/ui/progress';
 import {
   ArrowLeft, ArrowRight, Wand2, Save, Sparkles, Upload,
   Home, MapPin, Bed, Bath, Square, Check,
-  Plus, X, Image, Trash2, Loader2, CheckCircle2
+  Plus, X, Image, Trash2, Loader2, CheckCircle2, Building2,
+  Link as LinkIcon, Globe
 } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 type WizardStep = 'address' | 'details' | 'price' | 'images' | 'review';
 
 interface ParsedProperty {
   title?: string;
   description?: string;
-  listingType?: string;
+  isRental?: boolean; // true = rental, false = sale
   propertyType?: string;
+  isResidential?: boolean;
   bedrooms?: number;
   bathrooms?: number;
   receptions?: number;
@@ -51,7 +54,8 @@ export default function PropertyCreate() {
   const [newFeature, setNewFeature] = useState('');
   
   const [price, setPrice] = useState('');
-  const [listingType, setListingType] = useState<'sale' | 'rental'>('sale');
+  const [isRental, setIsRental] = useState<boolean>(false); // false = sale, true = rental
+  const [isResidential, setIsResidential] = useState<boolean>(true);
   
   const [images, setImages] = useState<{ file: File; preview: string; isPrimary: boolean }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -142,10 +146,14 @@ export default function PropertyCreate() {
       if (result.parsed) {
         setParsedData(result.parsed);
         if (result.parsed.features) {
-          setFeatures(result.parsed.features);
+          // Ensure features is always an array
+          setFeatures(Array.isArray(result.parsed.features) ? result.parsed.features : []);
         }
-        if (result.parsed.listingType) {
-          setListingType(result.parsed.listingType as 'sale' | 'rental');
+        if (result.parsed.isRental !== undefined) {
+          setIsRental(result.parsed.isRental);
+        }
+        if (result.parsed.isResidential !== undefined) {
+          setIsResidential(result.parsed.isResidential);
         }
         toast({
           title: "Property details generated!",
@@ -193,14 +201,18 @@ export default function PropertyCreate() {
         imageUrls = await uploadImages();
       }
 
+      // Use isResidential from parsedData if AI detected it, otherwise use the user's selection
+      const finalIsResidential = parsedData.isResidential !== undefined ? parsedData.isResidential : isResidential;
+
       const propertyData = {
-        listingType,
-        propertyType: parsedData.propertyType || 'flat',
+        isRental,
+        isResidential: finalIsResidential,
+        propertyType: parsedData.propertyType || (finalIsResidential ? 'flat' : 'retail'),
         title: parsedData.title || `${parsedData.bedrooms} Bed Property in ${parsedData.postcode}`,
         description: parsedData.description || '',
         price: Math.round(parseFloat(price) * 100),
-        bedrooms: parsedData.bedrooms || 1,
-        bathrooms: parsedData.bathrooms || 1,
+        bedrooms: finalIsResidential ? (parsedData.bedrooms || 1) : 0,
+        bathrooms: finalIsResidential ? (parsedData.bathrooms || 1) : 0,
         receptions: parsedData.receptions || 0,
         squareFootage: parsedData.squareFootage || 0,
         addressLine1: parsedData.addressLine1 || '',
@@ -214,7 +226,8 @@ export default function PropertyCreate() {
         viewingArrangements: 'by_appointment',
         images: imageUrls,
         areaId: 1,
-        status: 'active'
+        status: 'active',
+        isListed: true  // Mark as listed so it appears on website and CRM dashboard
       };
 
       await apiRequest('/api/crm/properties', 'POST', propertyData);
@@ -302,41 +315,143 @@ export default function PropertyCreate() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
-                Enter the Property Address
+                Add Property
               </CardTitle>
               <CardDescription>
-                Enter the street address or describe the property location. Our AI will look up typical property details for that area.
+                Enter the property address manually or import from a property portal URL.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Textarea
-                placeholder="Example: 42 Elgin Avenue, W9&#10;&#10;Or describe it: 2 bed Victorian flat on Elgin Avenue in Maida Vale, recently renovated with period features"
-                className="min-h-[150px]"
-                value={addressInput}
-                onChange={(e) => setAddressInput(e.target.value)}
-                data-testid="input-address"
-              />
-              
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleParseAddress}
-                  disabled={isProcessing || !addressInput.trim()}
-                  className="bg-gradient-to-r from-purple-600 to-blue-600"
-                  data-testid="button-parse"
-                >
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating Details...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate Property Details
-                    </>
-                  )}
-                </Button>
-              </div>
+              <Tabs defaultValue="manual" className="w-full">
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="manual" className="flex items-center gap-2">
+                    <Home className="h-4 w-4" />
+                    Manual Entry
+                  </TabsTrigger>
+                  <TabsTrigger value="import" className="flex items-center gap-2">
+                    <Globe className="h-4 w-4" />
+                    Import from URL
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="manual" className="space-y-4 mt-4">
+                  {/* Property Category Selection */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <Button
+                      type="button"
+                      variant={isResidential ? 'default' : 'outline'}
+                      className={isResidential ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                      onClick={() => setIsResidential(true)}
+                    >
+                      <Home className="mr-2 h-4 w-4" />
+                      Residential
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!isResidential ? 'default' : 'outline'}
+                      className={!isResidential ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                      onClick={() => setIsResidential(false)}
+                    >
+                      <Building2 className="mr-2 h-4 w-4" />
+                      Commercial
+                    </Button>
+                  </div>
+
+                  <Textarea
+                    placeholder={!isResidential
+                      ? "Example: A3 restaurant premises on Malvern Road, ground floor with basement, currently trading as Mediterranean restaurant"
+                      : "Example: 42 Elgin Avenue, W9\n\nOr describe it: 2 bed Victorian flat on Elgin Avenue in Maida Vale, recently renovated with period features"}
+                    className="min-h-[150px]"
+                    value={addressInput}
+                    onChange={(e) => setAddressInput(e.target.value)}
+                    data-testid="input-address"
+                  />
+
+                  <div className="flex justify-end gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setParsedData({
+                          title: '',
+                          description: addressInput,
+                          propertyType: isResidential ? 'flat' : 'retail',
+                          isResidential: isResidential,
+                          bedrooms: isResidential ? 1 : 0,
+                          bathrooms: isResidential ? 1 : 0,
+                          addressLine1: addressInput.split('\n')[0] || '',
+                          postcode: '',
+                          features: []
+                        });
+                        setCurrentStep('details');
+                      }}
+                      data-testid="button-skip-ai"
+                    >
+                      Continue
+                    </Button>
+                    <Button
+                      onClick={handleParseAddress}
+                      disabled={isProcessing || !addressInput.trim()}
+                      className="bg-gradient-to-r from-purple-600 to-blue-600"
+                      data-testid="button-parse"
+                    >
+                      {isProcessing ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4" />
+                          AI Generate
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </TabsContent>
+
+                <TabsContent value="import" className="space-y-4 mt-4">
+                  <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg p-6 border border-blue-100 dark:border-blue-900">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 bg-white dark:bg-gray-800 rounded-full shadow-sm">
+                        <LinkIcon className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold mb-2">Import from Property Portal</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          Quickly import property details from Rightmove, Zoopla, OnTheMarket, or our website.
+                          The system will automatically extract all property information including images.
+                        </p>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
+                            <span className="text-green-600 font-medium">Rightmove</span>
+                          </Badge>
+                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
+                            <span className="text-purple-600 font-medium">Zoopla</span>
+                          </Badge>
+                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
+                            <span className="text-orange-600 font-medium">OnTheMarket</span>
+                          </Badge>
+                          <Badge variant="outline" className="bg-white dark:bg-gray-800">
+                            <span className="text-blue-600 font-medium">John Barclay</span>
+                          </Badge>
+                        </div>
+                        <Button
+                          onClick={() => setLocation('/crm/properties/import')}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
+                          <Globe className="mr-2 h-4 w-4" />
+                          Open Import Tool
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-center text-sm text-muted-foreground pt-4">
+                    <p>The import tool will scrape property details and images automatically.</p>
+                    <p>You can review and edit before saving.</p>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
         )}
@@ -385,8 +500,8 @@ export default function PropertyCreate() {
                 <div>
                   <label className="block text-sm font-medium mb-2">Listing Type</label>
                   <Select
-                    value={listingType}
-                    onValueChange={(v) => setListingType(v as 'sale' | 'rental')}
+                    value={isRental ? 'rental' : 'sale'}
+                    onValueChange={(v) => setIsRental(v === 'rental')}
                   >
                     <SelectTrigger data-testid="select-listing-type">
                       <SelectValue />
@@ -476,7 +591,7 @@ export default function PropertyCreate() {
               <div>
                 <label className="block text-sm font-medium mb-2">Features</label>
                 <div className="flex flex-wrap gap-2 mb-2">
-                  {features.map((feature, idx) => (
+                  {(Array.isArray(features) ? features : []).map((feature, idx) => (
                     <Badge key={idx} variant="secondary" className="gap-1">
                       {feature}
                       <button onClick={() => handleRemoveFeature(feature)}>
@@ -516,7 +631,7 @@ export default function PropertyCreate() {
             <CardHeader>
               <CardTitle>Set the Price</CardTitle>
               <CardDescription>
-                {listingType === 'sale' 
+                {!isRental 
                   ? 'Enter the asking price for this property'
                   : 'Enter the monthly rent for this property'}
               </CardDescription>
@@ -524,7 +639,7 @@ export default function PropertyCreate() {
             <CardContent className="space-y-6">
               <div>
                 <label className="block text-sm font-medium mb-2">
-                  {listingType === 'sale' ? 'Asking Price' : 'Monthly Rent'}
+                  {!isRental ? 'Asking Price' : 'Monthly Rent'}
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">£</span>
@@ -535,11 +650,11 @@ export default function PropertyCreate() {
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
                     className="pl-8 text-2xl h-14"
-                    placeholder={listingType === 'sale' ? '500000' : '2500'}
+                    placeholder={!isRental ? '500000' : '2500'}
                     data-testid="input-price"
                   />
                 </div>
-                {listingType === 'rental' && (
+                {isRental && (
                   <p className="text-sm text-muted-foreground mt-2">Per calendar month (PCM)</p>
                 )}
               </div>
@@ -674,12 +789,12 @@ export default function PropertyCreate() {
                   <p className="text-muted-foreground">Price</p>
                   <p className="font-medium text-xl">
                     £{parseFloat(price).toLocaleString()}
-                    {listingType === 'rental' && ' PCM'}
+                    {isRental && ' PCM'}
                   </p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Type</p>
-                  <p className="font-medium capitalize">{parsedData.propertyType} - For {listingType}</p>
+                  <p className="font-medium capitalize">{parsedData.propertyType} - For {isRental ? 'Rent' : 'Sale'}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Location</p>

@@ -8,7 +8,7 @@ import {
   ticketWorkflowEvents,
   users,
   properties,
-  tenants,
+  tenant,
   messages,
   conversations
 } from '@shared/schema';
@@ -1593,8 +1593,8 @@ John Barclay Property Management`;
 
     if (user) {
       // Get associated property if tenant
-      const tenantRecord = await db.query.tenants.findFirst({
-        where: eq(tenants.userId, user.id)
+      const tenantRecord = await db.query.tenant.findFirst({
+        where: eq(tenant.userId, user.id)
       });
 
       return {

@@ -11,12 +11,16 @@ import {
   MessageSquare, Share2, DollarSign, TrendingUp,
   FileText, Clock, AlertCircle, CheckCircle, Shield,
   GitBranch, Mic, Globe, Mail, Search, MapPin, Loader2,
-  Building, UserCircle, Key, ArrowLeft, User, Gavel, Lock, UserPlus
+  Building, UserCircle, Key, ArrowLeft, User, Gavel, Lock, UserPlus,
+  LayoutGrid, List, Send, HardHat
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PropertyCard, type PropertyCardData } from '@/components/PropertyCard';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BulkPropertyOperations } from '@/components/BulkPropertyOperations';
 import { queryClient } from '@/lib/queryClient';
 import { ScheduleViewingWizard } from '@/components/ScheduleViewingWizard';
@@ -63,23 +67,42 @@ export default function CRMDashboard() {
   const [isImporting, setIsImporting] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
   const [propertyFilter, setPropertyFilter] = useState<'all' | 'sale' | 'rental' | 'commercial_sale' | 'commercial_rental'>('all');
+  const [propertyViewMode, setPropertyViewMode] = useState<'card' | 'list'>('list');
   const [showViewingWizard, setShowViewingWizard] = useState(false);
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<number>>(new Set());
+  const [showBulkPublishDialog, setShowBulkPublishDialog] = useState(false);
+  const [isBulkPublishing, setIsBulkPublishing] = useState(false);
 
   // Fetch properties from API
   const { data: properties = [], isLoading: loadingProperties, refetch: refetchProperties } = useQuery({
     queryKey: ['/api/crm/properties'],
     queryFn: async () => {
-      const response = await fetch('/api/crm/properties');
+      const response = await fetch('/api/crm/properties', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch properties');
       return response.json();
     }
+  });
+
+  // Fetch managed properties from PM system (separate table)
+  const { data: pmManagedProperties = [], error: managedPropertiesError } = useQuery({
+    queryKey: ['/api/crm/managed-properties'],
+    queryFn: async () => {
+      const response = await fetch('/api/crm/managed-properties', { credentials: 'include' });
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Failed to fetch managed properties:', response.status, errorText);
+        throw new Error(`Failed to fetch managed properties: ${response.status}`);
+      }
+      return response.json();
+    },
+    retry: false
   });
 
   // Fetch rental agreements (active tenancies)
   const { data: rentalAgreements = [] } = useQuery({
     queryKey: ['/api/crm/rental-agreements'],
     queryFn: async () => {
-      const response = await fetch('/api/crm/rental-agreements');
+      const response = await fetch('/api/crm/rental-agreements', { credentials: 'include' });
       if (!response.ok) return [];
       return response.json();
     }
@@ -89,52 +112,89 @@ export default function CRMDashboard() {
   const { data: landlords = [] } = useQuery({
     queryKey: ['/api/crm/landlords'],
     queryFn: async () => {
-      const response = await fetch('/api/crm/landlords');
+      const response = await fetch('/api/crm/landlords', { credentials: 'include' });
       if (!response.ok) return [];
       return response.json();
     }
   });
 
+  // Fetch tenants
+  const { data: tenants = [] } = useQuery({
+    queryKey: ['/api/crm/tenants'],
+    queryFn: async () => {
+      const response = await fetch('/api/crm/tenants', { credentials: 'include' });
+      if (!response.ok) return [];
+      return response.json();
+    }
+  });
+
+  // Fetch landlord leads (contacts with inquiry_type: valuation/selling/letting) to count unread/new ones
+  const { data: landlordLeads = [] } = useQuery({
+    queryKey: ['/api/crm/landlord-leads'],
+    queryFn: async () => {
+      const response = await fetch('/api/crm/landlord-leads', { credentials: 'include' });
+      if (!response.ok) return [];
+      return response.json();
+    }
+  });
+
+  // Fetch buyer/renter leads to count unread/new ones
+  const { data: buyerRenterLeads = [] } = useQuery({
+    queryKey: ['/api/crm/leads'],
+    queryFn: async () => {
+      const response = await fetch('/api/crm/leads', { credentials: 'include' });
+      if (!response.ok) return [];
+      return response.json();
+    }
+  });
+
+  // Count new/unread leads (landlord leads use workflow_stage)
+  const newLandlordLeadsCount = landlordLeads.filter((l: any) => l.workflow_stage === 'new' || !l.workflow_stage).length;
+  const newBuyerRenterLeadsCount = buyerRenterLeads.filter((l: any) => l.status === 'new').length;
+
   // Calculate property stats
-  // Managed properties = properties with isManaged flag set to true (under JB management)
-  const managedProperties = properties.filter((p: any) => p.isManaged === true);
-  // Listed properties = properties actively listed on portals for sale/rent
-  const listedProperties = properties.filter((p: any) => p.isListed === true);
+  // Managed properties count - use the PM system data (pm_properties table)
+  const managedPropertiesCount = pmManagedProperties.length;
+  // Listing properties = properties marked as listings (isListed=true) - these are sales/rentals shown in CRM
+  // isPublishedWebsite controls visibility on PUBLIC WEBSITE (separate from CRM display)
+  const listingProperties = properties.filter((p: any) => p.isListed === true);
   const activeRentalAgreements = rentalAgreements.filter((ra: any) => ra.status === 'active');
 
-  // Listings Filters - Only show properties that are actively listed (isListed = true)
-  const resSalesProperties = listedProperties.filter((p: any) =>
-    p.listingType === 'sale' && (p.propertyCategory === 'residential' || !p.propertyCategory)
+  // Listings Filters - Show all listing properties in CRM
+  // isRental: true = rental, false = sale
+  // isResidential: true = residential, false = commercial
+  const resSalesProperties = listingProperties.filter((p: any) =>
+    p.isRental === false && (p.isResidential === true || p.isResidential === undefined)
   );
 
-  const resLetProperties = listedProperties.filter((p: any) =>
-    p.listingType === 'rental' && (p.propertyCategory === 'residential' || !p.propertyCategory) && p.status !== 'let'
+  const resLetProperties = listingProperties.filter((p: any) =>
+    p.isRental === true && (p.isResidential === true || p.isResidential === undefined) && p.status !== 'let'
   );
 
-  const comSalesProperties = listedProperties.filter((p: any) =>
-    p.listingType === 'sale' && p.propertyCategory === 'commercial'
+  const comSalesProperties = listingProperties.filter((p: any) =>
+    p.isRental === false && p.isResidential === false
   );
 
-  const comLetProperties = listedProperties.filter((p: any) =>
-    p.listingType === 'rental' && p.propertyCategory === 'commercial' && p.status !== 'let'
+  const comLetProperties = listingProperties.filter((p: any) =>
+    p.isRental === true && p.isResidential === false && p.status !== 'let'
   );
 
-  // Filter properties - for Listings tab, only show listed properties
-  const filteredProperties = listedProperties.filter((p: any) => {
+  // Filter properties - show all listing properties in CRM
+  const filteredProperties = listingProperties.filter((p: any) => {
     const matchesSearch = !propertySearch ||
       p.title?.toLowerCase().includes(propertySearch.toLowerCase()) ||
       p.postcode?.toLowerCase().includes(propertySearch.toLowerCase()) ||
       p.addressLine1?.toLowerCase().includes(propertySearch.toLowerCase());
 
-    const isResidential = p.propertyCategory === 'residential' || !p.propertyCategory;
-    const isCommercial = p.propertyCategory === 'commercial';
+    const isResidentialProp = p.isResidential === true || p.isResidential === undefined;
+    const isCommercialProp = p.isResidential === false;
 
     let matchesType = false;
     if (propertyFilter === 'all') matchesType = true;
-    else if (propertyFilter === 'sale') matchesType = p.listingType === 'sale' && isResidential;
-    else if (propertyFilter === 'rental') matchesType = p.listingType === 'rental' && isResidential;
-    else if (propertyFilter === 'commercial_sale') matchesType = p.listingType === 'sale' && isCommercial;
-    else if (propertyFilter === 'commercial_rental') matchesType = p.listingType === 'rental' && isCommercial;
+    else if (propertyFilter === 'sale') matchesType = p.isRental === false && isResidentialProp;
+    else if (propertyFilter === 'rental') matchesType = p.isRental === true && isResidentialProp;
+    else if (propertyFilter === 'commercial_sale') matchesType = p.isRental === false && isCommercialProp;
+    else if (propertyFilter === 'commercial_rental') matchesType = p.isRental === true && isCommercialProp;
 
     return matchesSearch && matchesType;
   });
@@ -144,9 +204,9 @@ export default function CRMDashboard() {
     setShowTicketDialog(true);
   };
 
-  const handleViewProperty = (propertyId: number, listingType?: string) => {
+  const handleViewProperty = (propertyId: number, isRental?: boolean) => {
     // For rental/managed properties, go to managed property card
-    if (listingType === 'rental') {
+    if (isRental === true) {
       setLocation(`/crm/managed-property/${propertyId}`);
     } else {
       setLocation(`/property/${propertyId}`);
@@ -189,6 +249,7 @@ export default function CRMDashboard() {
       const response = await fetch('/api/crm/properties/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ url: importUrl })
       });
 
@@ -216,6 +277,77 @@ export default function CRMDashboard() {
     }
   };
 
+  // Property selection handlers
+  const togglePropertySelection = (propertyId: number) => {
+    setSelectedPropertyIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(propertyId)) {
+        newSet.delete(propertyId);
+      } else {
+        newSet.add(propertyId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllProperties = () => {
+    if (selectedPropertyIds.size === filteredProperties.length) {
+      setSelectedPropertyIds(new Set());
+    } else {
+      setSelectedPropertyIds(new Set(filteredProperties.map((p: any) => p.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedPropertyIds(new Set());
+  };
+
+  // Bulk publish handler
+  const handleBulkPublish = async (targets: {
+    website?: boolean;
+    zoopla?: boolean;
+    rightmove?: boolean;
+    onTheMarket?: boolean;
+    social?: boolean;
+  }) => {
+    if (selectedPropertyIds.size === 0) return;
+
+    setIsBulkPublishing(true);
+    try {
+      const response = await fetch('/api/crm/properties/bulk-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          propertyIds: Array.from(selectedPropertyIds),
+          targets
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to publish properties');
+      }
+
+      const result = await response.json();
+      toast({
+        title: 'Properties Published',
+        description: `Successfully updated ${result.updated} properties.`
+      });
+
+      refetchProperties();
+      setShowBulkPublishDialog(false);
+      clearSelection();
+    } catch (error: any) {
+      toast({
+        title: 'Publish Failed',
+        description: error.message,
+        variant: 'destructive'
+      });
+    } finally {
+      setIsBulkPublishing(false);
+    }
+  };
+
   useEffect(() => {
     // Get user from localStorage
     const storedUser = localStorage.getItem('user');
@@ -233,7 +365,18 @@ export default function CRMDashboard() {
     setLocation('/crm/login');
   };
 
-  if (!user) return null;
+  // Show loading state while checking auth instead of returning null
+  // This prevents the grey flash when transitioning from login
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[#791E75] mx-auto mb-4" />
+          <p className="text-gray-600">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -337,6 +480,14 @@ export default function CRMDashboard() {
               <Button
                 variant="ghost"
                 className="w-full justify-start"
+                onClick={() => setLocation('/crm/contractors')}
+              >
+                <HardHat className="mr-2 h-4 w-4" />
+                Contractors
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
                 onClick={() => setLocation('/crm/contacts')}
               >
                 <Users className="mr-2 h-4 w-4" />
@@ -359,19 +510,29 @@ export default function CRMDashboard() {
               </p>
               <Button
                 variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/website-leads')}
+                className="w-full justify-start relative"
+                onClick={() => setLocation('/crm/landlord-lead-pipeline')}
               >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Landlord Leads
+                <GitBranch className="mr-2 h-4 w-4" />
+                Landlord Pipeline
+                {newLandlordLeadsCount > 0 && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
+                    {newLandlordLeadsCount > 99 ? '99+' : newLandlordLeadsCount}
+                  </span>
+                )}
               </Button>
               <Button
                 variant="ghost"
-                className="w-full justify-start"
+                className="w-full justify-start relative"
                 onClick={() => setLocation('/crm/leads')}
               >
                 <Users className="mr-2 h-4 w-4" />
                 Buyer/Renter Leads
+                {newBuyerRenterLeadsCount > 0 && (
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
+                    {newBuyerRenterLeadsCount > 99 ? '99+' : newBuyerRenterLeadsCount}
+                  </span>
+                )}
               </Button>
             </div>
 
@@ -524,7 +685,7 @@ export default function CRMDashboard() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Dashboard Overview</h2>
-                <Button>
+                <Button onClick={() => setLocation('/crm/properties/create')}>
                   <Plus className="mr-2 h-4 w-4" />
                   Add Property
                 </Button>
@@ -536,10 +697,10 @@ export default function CRMDashboard() {
                   <Shield className="h-5 w-5 text-purple-600" />
                   Managed Portfolio
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   <StatsCard
                     title="Managed Properties"
-                    value={String(managedProperties.length)}
+                    value={String(managedPropertiesCount)}
                     change={null}
                     icon={Building2}
                     color="bg-[#791E75] text-white"
@@ -557,9 +718,17 @@ export default function CRMDashboard() {
                     title="Total Landlords"
                     value={String(landlords.length)}
                     change={null}
-                    icon={Users}
+                    icon={User}
                     color="bg-blue-600 text-white"
                     onClick={() => setLocation('/crm/landlords')}
+                  />
+                  <StatsCard
+                    title="Total Tenants"
+                    value={String(tenants.length)}
+                    change={null}
+                    icon={Users}
+                    color="bg-teal-600 text-white"
+                    onClick={() => setLocation('/crm/tenants')}
                   />
                 </div>
               </div>
@@ -719,7 +888,7 @@ export default function CRMDashboard() {
               {/* Search and Filter */}
               <Card>
                 <CardContent className="p-4">
-                  <div className="flex flex-wrap gap-4">
+                  <div className="flex flex-wrap gap-4 items-center">
                     <div className="flex-1 min-w-[200px]">
                       <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -733,23 +902,47 @@ export default function CRMDashboard() {
                     </div>
                     <Tabs value={propertyFilter} onValueChange={(v) => setPropertyFilter(v as any)}>
                       <TabsList>
-                        <TabsTrigger value="all">All ({listedProperties.length})</TabsTrigger>
+                        <TabsTrigger value="all">All ({listingProperties.length})</TabsTrigger>
                         <TabsTrigger value="sale">
-                          Sale ({listedProperties.filter((p: any) => p.listingType === 'sale').length})
+                          Res. Sale ({listingProperties.filter((p: any) => p.isRental === false && p.isResidential !== false).length})
                         </TabsTrigger>
                         <TabsTrigger value="rental">
-                          Rent ({listedProperties.filter((p: any) => p.listingType === 'rental').length})
+                          Res. Rent ({listingProperties.filter((p: any) => p.isRental === true && p.isResidential !== false).length})
                         </TabsTrigger>
-                        <TabsTrigger value="commercial">
-                          Commercial ({listedProperties.filter((p: any) => p.listingType === 'commercial').length})
+                        <TabsTrigger value="commercial_sale">
+                          Com. Sale ({listingProperties.filter((p: any) => p.isRental === false && p.isResidential === false).length})
+                        </TabsTrigger>
+                        <TabsTrigger value="commercial_rental">
+                          Com. Rent ({listingProperties.filter((p: any) => p.isRental === true && p.isResidential === false).length})
                         </TabsTrigger>
                       </TabsList>
                     </Tabs>
+                    {/* View Toggle */}
+                    <div className="flex border rounded-md">
+                      <Button
+                        variant={propertyViewMode === 'card' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="rounded-r-none"
+                        onClick={() => setPropertyViewMode('card')}
+                        title="Card View"
+                      >
+                        <LayoutGrid className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant={propertyViewMode === 'list' ? 'default' : 'ghost'}
+                        size="sm"
+                        className="rounded-l-none"
+                        onClick={() => setPropertyViewMode('list')}
+                        title="List View"
+                      >
+                        <List className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
 
-              {/* Property Cards Grid */}
+              {/* Property Display */}
               {loadingProperties ? (
                 <div className="flex justify-center items-center h-64">
                   <Loader2 className="h-8 w-8 animate-spin text-[#791E75]" />
@@ -759,14 +952,14 @@ export default function CRMDashboard() {
                   <CardContent className="py-12 text-center">
                     <Building2 className="h-12 w-12 mx-auto text-gray-300 mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      {listedProperties.length === 0 ? 'No listed properties' : 'No matching properties'}
+                      {listingProperties.length === 0 ? 'No listed properties' : 'No matching properties'}
                     </h3>
                     <p className="text-gray-500 mb-4">
-                      {listedProperties.length === 0
+                      {listingProperties.length === 0
                         ? 'Properties need to be marked as "listed" to appear here'
                         : 'Try adjusting your search or filter criteria'}
                     </p>
-                    {listedProperties.length === 0 && (
+                    {listingProperties.length === 0 && (
                       <Button onClick={() => setLocation('/crm/properties/create')}>
                         <Plus className="h-4 w-4 mr-2" />
                         Add Listed Property
@@ -774,34 +967,280 @@ export default function CRMDashboard() {
                     )}
                   </CardContent>
                 </Card>
+              ) : propertyViewMode === 'list' ? (
+                /* List View */
+                <>
+                  {/* Bulk Actions Bar */}
+                  {selectedPropertyIds.size > 0 && (
+                    <Card className="mb-4 border-[#791E75] bg-purple-50">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            <Badge variant="secondary" className="text-sm">
+                              {selectedPropertyIds.size} selected
+                            </Badge>
+                            <Button variant="ghost" size="sm" onClick={clearSelection}>
+                              Clear Selection
+                            </Button>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-[#791E75] hover:bg-[#5d1759]"
+                              onClick={() => setShowBulkPublishDialog(true)}
+                            >
+                              <Send className="h-4 w-4 mr-2" />
+                              Publish Selected
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  <Card>
+                    <CardContent className="p-0">
+                      <TooltipProvider>
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[50px]">
+                                <Checkbox
+                                  checked={selectedPropertyIds.size === filteredProperties.length && filteredProperties.length > 0}
+                                  onCheckedChange={selectAllProperties}
+                                />
+                              </TableHead>
+                              <TableHead className="w-[80px]">ID</TableHead>
+                              <TableHead>Property</TableHead>
+                              <TableHead>Type</TableHead>
+                              <TableHead>Price</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-center">Publishing Status</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredProperties.map((property: any) => (
+                              <TableRow key={property.id} className={selectedPropertyIds.has(property.id) ? 'bg-purple-50' : ''}>
+                                <TableCell>
+                                  <Checkbox
+                                    checked={selectedPropertyIds.has(property.id)}
+                                    onCheckedChange={() => togglePropertySelection(property.id)}
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  <span className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                                    #{property.id}
+                                  </span>
+                                </TableCell>
+                              <TableCell>
+                                <div className="min-w-[200px]">
+                                  <div className="font-medium">
+                                    {property.title || `${property.bedrooms} Bed ${property.propertyType}`}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" />
+                                    {property.addressLine1 ? `${property.addressLine1}, ` : ''}{property.postcode}
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={
+                                  property.isRental === false ? 'bg-[#791E75] text-white' :
+                                  property.isRental === true ? 'bg-[#F8B324] text-black' :
+                                  'bg-purple-600 text-white'
+                                }>
+                                  {property.isRental === false ? 'Sale' : property.isRental === true ? 'Rent' : 'Commercial'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="font-semibold">
+                                {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(property.price)}
+                                {property.isRental === true && '/mo'}
+                              </TableCell>
+                              <TableCell>
+                                <Badge variant="outline" className={
+                                  (property.status || 'Active').toLowerCase() === 'active' ? 'bg-green-100 text-green-800' :
+                                  (property.status || '').toLowerCase() === 'under offer' ? 'bg-yellow-100 text-yellow-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }>
+                                  {property.status || 'Active'}
+                                </Badge>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center justify-center gap-1">
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <div className={`p-1 rounded ${property.isPublishedWebsite ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-400'}`}>
+                                        <Globe className="h-4 w-4" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Website: {property.isPublishedWebsite ? 'Published' : 'Not Published'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <div className={`p-1 rounded text-xs font-bold ${property.isPublishedZoopla ? 'bg-purple-100 text-purple-600' : 'bg-gray-100 text-gray-400'}`}>
+                                        Z
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Zoopla: {property.isPublishedZoopla ? 'Published' : 'Not Published'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <div className={`p-1 rounded text-xs font-bold ${property.isPublishedRightmove ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                                        R
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Rightmove: {property.isPublishedRightmove ? 'Published' : 'Not Published'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <div className={`p-1 rounded text-xs font-bold ${property.isPublishedOnTheMarket ? 'bg-orange-100 text-orange-600' : 'bg-gray-100 text-gray-400'}`}>
+                                        O
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>OnTheMarket: {property.isPublishedOnTheMarket ? 'Published' : 'Not Published'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger>
+                                      <div className={`p-1 rounded ${property.isPublishedSocial ? 'bg-pink-100 text-pink-600' : 'bg-gray-100 text-gray-400'}`}>
+                                        <Share2 className="h-4 w-4" />
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Social Media: {property.isPublishedSocial ? 'Published' : 'Not Published'}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button variant="ghost" size="sm" onClick={() => handleViewProperty(property.id, property.isRental)}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => handleEditProperty(property.id)}>
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => handleShareProperty(property)}>
+                                    <Share2 className="h-4 w-4" />
+                                  </Button>
+                                  {user?.role === 'admin' && (
+                                    <Button variant="ghost" size="sm" className="text-red-600" onClick={() => handleDeleteProperty(property.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TooltipProvider>
+                  </CardContent>
+                </Card>
+                </>
               ) : (
+                /* Card View */
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                   {filteredProperties.map((property: any) => (
-                    <PropertyCard
-                      key={property.id}
-                      property={{
-                        id: property.id,
-                        title: property.title || `${property.bedrooms} Bed ${property.propertyType} in ${property.area || 'London'}`,
-                        addressLine1: property.addressLine1,
-                        addressLine2: property.addressLine2,
-                        postcode: property.postcode,
-                        area: property.area,
-                        propertyType: property.propertyType,
-                        listingType: property.listingType,
-                        price: property.price,
-                        bedrooms: property.bedrooms,
-                        bathrooms: property.bathrooms,
-                        sqft: property.sqft,
-                        status: property.status || 'Active',
-                        primaryImage: property.primaryImage,
-                        createdAt: property.createdAt
-                      }}
-                      showMap={true}
-                      onView={handleViewProperty}
-                      onEdit={handleEditProperty}
-                      onShare={handleShareProperty}
-                      onDelete={user?.role === 'admin' ? handleDeleteProperty : undefined}
-                    />
+                    <div key={property.id} className="relative">
+                      {/* Property ID Badge */}
+                      <div className="absolute top-3 left-3 z-10">
+                        <span className="font-mono text-xs bg-black/70 text-white px-2 py-1 rounded shadow">
+                          #{property.id}
+                        </span>
+                      </div>
+                      <PropertyCard
+                        property={{
+                          id: property.id,
+                          title: property.title || `${property.bedrooms} Bed ${property.propertyType} in ${property.area || 'London'}`,
+                          addressLine1: property.addressLine1,
+                          addressLine2: property.addressLine2,
+                          postcode: property.postcode,
+                          area: property.area,
+                          propertyType: property.propertyType,
+                          isRental: property.isRental,
+                          price: property.price,
+                          bedrooms: property.bedrooms,
+                          bathrooms: property.bathrooms,
+                          sqft: property.sqft,
+                          status: property.status || 'Active',
+                          primaryImage: property.primaryImage,
+                          createdAt: property.createdAt,
+                          isPublishedWebsite: property.isPublishedWebsite,
+                          isPublishedZoopla: property.isPublishedZoopla,
+                          isPublishedRightmove: property.isPublishedRightmove,
+                          isPublishedOnTheMarket: property.isPublishedOnTheMarket,
+                          isPublishedSocial: property.isPublishedSocial
+                        }}
+                        showMap={true}
+                        onView={handleViewProperty}
+                        onEdit={handleEditProperty}
+                        onShare={handleShareProperty}
+                        onDelete={user?.role === 'admin' ? handleDeleteProperty : undefined}
+                      />
+                      {/* Publishing Status Indicators on Card */}
+                      <TooltipProvider>
+                        <div className="absolute top-12 right-3 flex flex-col gap-1">
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className={`p-1 rounded shadow-sm ${property.isPublishedWebsite ? 'bg-blue-500 text-white' : 'bg-white/80 text-gray-400'}`}>
+                                <Globe className="h-3 w-3" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              <p>Website: {property.isPublishedWebsite ? 'Published' : 'Not Published'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className={`p-1 rounded shadow-sm text-xs font-bold w-6 h-6 flex items-center justify-center ${property.isPublishedZoopla ? 'bg-purple-500 text-white' : 'bg-white/80 text-gray-400'}`}>
+                                Z
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              <p>Zoopla: {property.isPublishedZoopla ? 'Published' : 'Not Published'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className={`p-1 rounded shadow-sm text-xs font-bold w-6 h-6 flex items-center justify-center ${property.isPublishedRightmove ? 'bg-green-500 text-white' : 'bg-white/80 text-gray-400'}`}>
+                                R
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              <p>Rightmove: {property.isPublishedRightmove ? 'Published' : 'Not Published'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className={`p-1 rounded shadow-sm text-xs font-bold w-6 h-6 flex items-center justify-center ${property.isPublishedOnTheMarket ? 'bg-orange-500 text-white' : 'bg-white/80 text-gray-400'}`}>
+                                O
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              <p>OnTheMarket: {property.isPublishedOnTheMarket ? 'Published' : 'Not Published'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                          <Tooltip>
+                            <TooltipTrigger>
+                              <div className={`p-1 rounded shadow-sm ${property.isPublishedSocial ? 'bg-pink-500 text-white' : 'bg-white/80 text-gray-400'}`}>
+                                <Share2 className="h-3 w-3" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="left">
+                              <p>Social: {property.isPublishedSocial ? 'Published' : 'Not Published'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </TooltipProvider>
+                    </div>
                   ))}
                 </div>
               )}
@@ -812,7 +1251,7 @@ export default function CRMDashboard() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Maintenance Management</h2>
-                <Button>
+                <Button onClick={() => setShowTicketDialog(true)}>
                   <Plus className="mr-2 h-4 w-4" />
                   New Ticket
                 </Button>
@@ -1051,6 +1490,146 @@ export default function CRMDashboard() {
           });
         }}
       />
+
+      {/* Bulk Publish Dialog */}
+      <Dialog open={showBulkPublishDialog} onOpenChange={setShowBulkPublishDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Publish Properties</DialogTitle>
+            <DialogDescription>
+              Select where to publish {selectedPropertyIds.size} selected properties
+            </DialogDescription>
+          </DialogHeader>
+          <BulkPublishForm
+            propertyCount={selectedPropertyIds.size}
+            onPublish={handleBulkPublish}
+            isPublishing={isBulkPublishing}
+            onCancel={() => setShowBulkPublishDialog(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// Bulk Publish Form Component
+function BulkPublishForm({
+  propertyCount,
+  onPublish,
+  isPublishing,
+  onCancel
+}: {
+  propertyCount: number;
+  onPublish: (targets: {
+    website?: boolean;
+    zoopla?: boolean;
+    rightmove?: boolean;
+    onTheMarket?: boolean;
+    social?: boolean;
+  }) => void;
+  isPublishing: boolean;
+  onCancel: () => void;
+}) {
+  const [targets, setTargets] = useState({
+    website: false,
+    zoopla: false,
+    rightmove: false,
+    onTheMarket: false,
+    social: false
+  });
+
+  const toggleTarget = (key: keyof typeof targets) => {
+    setTargets(prev => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const hasSelection = Object.values(targets).some(Boolean);
+
+  return (
+    <div className="space-y-4 py-4">
+      <div className="space-y-3">
+        <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+          <Checkbox
+            checked={targets.website}
+            onCheckedChange={() => toggleTarget('website')}
+          />
+          <Globe className="h-5 w-5 text-blue-600" />
+          <div className="flex-1">
+            <div className="font-medium">Website</div>
+            <div className="text-xs text-muted-foreground">Publish to johnbarclay.co.uk</div>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+          <Checkbox
+            checked={targets.zoopla}
+            onCheckedChange={() => toggleTarget('zoopla')}
+          />
+          <div className="h-5 w-5 bg-purple-600 text-white rounded flex items-center justify-center text-xs font-bold">Z</div>
+          <div className="flex-1">
+            <div className="font-medium">Zoopla</div>
+            <div className="text-xs text-muted-foreground">Publish to Zoopla portal</div>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+          <Checkbox
+            checked={targets.rightmove}
+            onCheckedChange={() => toggleTarget('rightmove')}
+          />
+          <div className="h-5 w-5 bg-green-600 text-white rounded flex items-center justify-center text-xs font-bold">R</div>
+          <div className="flex-1">
+            <div className="font-medium">Rightmove</div>
+            <div className="text-xs text-muted-foreground">Publish to Rightmove portal</div>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+          <Checkbox
+            checked={targets.onTheMarket}
+            onCheckedChange={() => toggleTarget('onTheMarket')}
+          />
+          <div className="h-5 w-5 bg-orange-600 text-white rounded flex items-center justify-center text-xs font-bold">O</div>
+          <div className="flex-1">
+            <div className="font-medium">OnTheMarket</div>
+            <div className="text-xs text-muted-foreground">Publish to OnTheMarket portal</div>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+          <Checkbox
+            checked={targets.social}
+            onCheckedChange={() => toggleTarget('social')}
+          />
+          <Share2 className="h-5 w-5 text-pink-600" />
+          <div className="flex-1">
+            <div className="font-medium">Social Media</div>
+            <div className="text-xs text-muted-foreground">Share to social media channels</div>
+          </div>
+        </label>
+      </div>
+
+      <DialogFooter className="gap-2">
+        <Button variant="outline" onClick={onCancel} disabled={isPublishing}>
+          Cancel
+        </Button>
+        <Button
+          onClick={() => onPublish(targets)}
+          disabled={!hasSelection || isPublishing}
+          className="bg-[#791E75] hover:bg-[#5d1759]"
+        >
+          {isPublishing ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Publishing...
+            </>
+          ) : (
+            <>
+              <Send className="h-4 w-4 mr-2" />
+              Publish {propertyCount} Properties
+            </>
+          )}
+        </Button>
+      </DialogFooter>
     </div>
   );
 }

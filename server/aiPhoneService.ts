@@ -2,7 +2,6 @@ import twilio from 'twilio';
 import { db } from './db';
 import {
   properties,
-  pmProperties,
   viewingAppointments,
   propertyWorkflows,
   customerEnquiries,
@@ -58,7 +57,7 @@ Your responsibilities:
 4. Qualify leads by understanding budget, timeline, and requirements
 5. Capture contact details for follow-up
 6. Handle landlord enquiries about property management services
-7. Gather property details from landlords wanting to let their property
+7. Gather property details FROM landlord wanting to let their property
 8. Handle both SALES and RENTAL enquiries with appropriate questions
 
 Key information:
@@ -524,9 +523,9 @@ Remember: You represent a premium London estate agency. Be helpful but not pushy
 
       // Filter by listing type if we know the enquiry type
       if (isRentalEnquiry) {
-        mainConditions.push(eq(properties.listingType, 'rental'));
+        mainConditions.push(eq(properties.isRental, true));
       } else if (isSalesEnquiry) {
-        mainConditions.push(eq(properties.listingType, 'sale'));
+        mainConditions.push(eq(properties.isRental, false));
       }
 
       if (bedrooms) {
@@ -544,8 +543,7 @@ Remember: You represent a premium London estate agency. Be helpful but not pushy
 
       // Format main properties results
       for (const p of mainResults) {
-        const isRental = p.listingType === 'rental';
-        const priceFormatted = isRental
+        const priceFormatted = p.isRental
           ? `£${Math.round(p.price / 100).toLocaleString()} pw`
           : `£${(p.price / 100).toLocaleString()}`;
 
@@ -558,97 +556,99 @@ Remember: You represent a premium London estate agency. Be helpful but not pushy
           type: p.propertyType,
           bedrooms: p.bedrooms,
           bathrooms: p.bathrooms,
-          listingType: p.listingType,
+          isRental: p.isRental,
           features: p.features?.slice(0, 3).join(', '),
           tenure: p.tenure,
           description: p.description?.substring(0, 200)
         });
       }
 
-      // Also check pm_properties for rentals
+      // Also check properties table for rentals (using isRental flag)
       if (isRentalEnquiry || (!isRentalEnquiry && !isSalesEnquiry)) {
         try {
-          const pmConditions = [
-            eq(pmProperties.isListedRental, true),
-            sql`${pmProperties.bedrooms} IS NOT NULL`
+          const rentalConditions = [
+            eq(properties.isRental, true),
+            eq(properties.isListed, true),
+            sql`${properties.bedrooms} IS NOT NULL`
           ];
 
           if (bedrooms) {
-            pmConditions.push(gte(pmProperties.bedrooms, bedrooms));
+            rentalConditions.push(gte(properties.bedrooms, bedrooms));
           }
 
           if (postcode) {
-            pmConditions.push(like(pmProperties.postcode, `${postcode}%`));
+            rentalConditions.push(like(properties.postcode, `${postcode}%`));
           }
 
-          const pmResults = await db.select()
-            .from(pmProperties)
-            .where(and(...pmConditions))
+          const rentalResults = await db.select()
+            .from(properties)
+            .where(and(...rentalConditions))
             .limit(5);
 
-          for (const p of pmResults) {
+          for (const p of rentalResults) {
             // Avoid duplicates if already in main listings
             if (!allProperties.some(existing => existing.address === p.address)) {
               allProperties.push({
                 id: p.id,
                 source: 'managed',
                 address: p.address || `${p.addressLine1}, ${p.postcode}`,
-                price: 'Price on application',
-                priceValue: 0,
+                price: p.rentAmount ? `£${(p.rentAmount / 100).toLocaleString()} ${p.rentPeriod || 'pcm'}` : 'Price on application',
+                priceValue: p.rentAmount || 0,
                 type: p.propertyType,
                 bedrooms: p.bedrooms,
                 bathrooms: p.bathrooms,
-                listingType: 'rental',
+                isRental: true,
                 features: p.features?.slice(0, 3).join(', '),
                 description: p.description?.substring(0, 200)
               });
             }
           }
         } catch (err) {
-          console.log('PM properties query skipped:', err);
+          console.log('Rental properties query skipped:', err);
         }
       }
 
-      // Also check pm_properties for sales
+      // Also check properties table for sales (using isRental=false flag)
       if (isSalesEnquiry || (!isRentalEnquiry && !isSalesEnquiry)) {
         try {
-          const pmSaleConditions = [
-            eq(pmProperties.isListedSale, true),
-            sql`${pmProperties.bedrooms} IS NOT NULL`
+          const saleConditions = [
+            eq(properties.isRental, false),
+            eq(properties.isListed, true),
+            sql`${properties.bedrooms} IS NOT NULL`
           ];
 
           if (bedrooms) {
-            pmSaleConditions.push(gte(pmProperties.bedrooms, bedrooms));
+            saleConditions.push(gte(properties.bedrooms, bedrooms));
           }
 
           if (postcode) {
-            pmSaleConditions.push(like(pmProperties.postcode, `${postcode}%`));
+            saleConditions.push(like(properties.postcode, `${postcode}%`));
           }
 
-          const pmSaleResults = await db.select()
-            .from(pmProperties)
-            .where(and(...pmSaleConditions))
+          const saleResults = await db.select()
+            .from(properties)
+            .where(and(...saleConditions))
             .limit(5);
 
-          for (const p of pmSaleResults) {
+          for (const p of saleResults) {
             if (!allProperties.some(existing => existing.address === p.address)) {
               allProperties.push({
                 id: p.id,
                 source: 'managed',
                 address: p.address || `${p.addressLine1}, ${p.postcode}`,
-                price: 'Price on application',
-                priceValue: 0,
+                price: p.price ? `£${(p.price / 100).toLocaleString()}` : 'Price on application',
+                priceValue: p.price || 0,
                 type: p.propertyType,
                 bedrooms: p.bedrooms,
                 bathrooms: p.bathrooms,
-                listingType: 'sale',
+                isRental: false,
                 features: p.features?.slice(0, 3).join(', '),
                 description: p.description?.substring(0, 200)
               });
             }
           }
         } catch (err) {
-          console.log('PM properties sale query skipped:', err);
+          console.log('Sale properties query skipped:', err);
         }
       }
 
@@ -676,11 +676,11 @@ Remember: You represent a premium London estate agency. Be helpful but not pushy
       }
 
       // Build context message
-      const listingTypeLabel = isRentalEnquiry ? 'RENTAL' : isSalesEnquiry ? 'SALE' : 'available';
-      let contextMessage = `=== ${listingTypeLabel.toUpperCase()} PROPERTIES MATCHING QUERY ===\n`;
+      const enquiryTypeLabel = isRentalEnquiry ? 'RENTAL' : isSalesEnquiry ? 'SALE' : 'available';
+      let contextMessage = `=== ${enquiryTypeLabel.toUpperCase()} PROPERTIES MATCHING QUERY ===\n`;
 
       contextMessage += allProperties.map(p => {
-        const typeLabel = p.listingType === 'rental' ? '(TO LET)' : '(FOR SALE)';
+        const typeLabel = p.isRental ? '(TO LET)' : '(FOR SALE)';
         return `- [ID: ${p.id}] ${p.bedrooms} bed ${p.type} ${typeLabel} at ${p.address} - ${p.price}${p.features ? ` | Features: ${p.features}` : ''}${p.tenure ? ` | ${p.tenure}` : ''}`;
       }).join('\n');
 

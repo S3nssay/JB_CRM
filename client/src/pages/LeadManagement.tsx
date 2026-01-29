@@ -537,8 +537,41 @@ export default function LeadManagement() {
 
       <main className="p-6">
         <div className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {/* Stats Cards - Primary: Rental vs Sales */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-blue-700 uppercase tracking-wide">Rental Leads</p>
+                    <p className="text-4xl font-bold mt-2 text-blue-900">{stats?.rental_leads || 0}</p>
+                    <p className="text-xs text-blue-600 mt-1">Looking to rent a property</p>
+                  </div>
+                  <div className="p-4 rounded-full bg-blue-500">
+                    <Home className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-gradient-to-r from-green-50 to-green-100 border-green-200">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-green-700 uppercase tracking-wide">Sales Leads</p>
+                    <p className="text-4xl font-bold mt-2 text-green-900">{stats?.purchase_leads || 0}</p>
+                    <p className="text-xs text-green-600 mt-1">Looking to buy a property</p>
+                  </div>
+                  <div className="p-4 rounded-full bg-green-500">
+                    <Banknote className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Stats Cards - Secondary */}
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <Card>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
@@ -557,8 +590,8 @@ export default function LeadManagement() {
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">New Today</p>
-                    <p className="text-2xl font-bold mt-1">{stats?.newToday || 0}</p>
+                    <p className="text-sm font-medium text-gray-600">New This Week</p>
+                    <p className="text-2xl font-bold mt-1">{stats?.new_this_week || 0}</p>
                   </div>
                   <div className="p-3 rounded-full bg-blue-500">
                     <UserPlus className="h-5 w-5 text-white" />
@@ -572,7 +605,7 @@ export default function LeadManagement() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Hot Leads</p>
-                    <p className="text-2xl font-bold mt-1">{stats?.hot || 0}</p>
+                    <p className="text-2xl font-bold mt-1">{stats?.hot_leads || 0}</p>
                   </div>
                   <div className="p-3 rounded-full bg-red-500">
                     <Star className="h-5 w-5 text-white" />
@@ -586,7 +619,7 @@ export default function LeadManagement() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Viewings Booked</p>
-                    <p className="text-2xl font-bold mt-1">{stats?.viewingsBooked || 0}</p>
+                    <p className="text-2xl font-bold mt-1">{stats?.viewing_booked || 0}</p>
                   </div>
                   <div className="p-3 rounded-full bg-amber-500">
                     <Calendar className="h-5 w-5 text-white" />

@@ -22,7 +22,7 @@ interface ScrapedPropertyData {
     sqft: number;
     images: string[];
     propertyType?: string;
-    listingType?: 'sale' | 'rental';
+    isRental?: boolean;
     epcRating?: string;
     tenure?: string;
     councilTaxBand?: string;
@@ -101,7 +101,6 @@ export class PropertyImportService {
             }
 
             const downloadedImages = await this.downloadImages(data.images);
-            const primaryImage = downloadedImages.length > 0 ? downloadedImages[0] : null;
 
             const postcodeMatch = data.address.match(/[A-Z]{1,2}[0-9][0-9A-Z]?\s?[0-9][A-Z]{2}/i);
             const postcode = postcodeMatch ? postcodeMatch[0].toUpperCase() : '';
@@ -110,22 +109,24 @@ export class PropertyImportService {
             const newProperty: InsertProperty = {
                 title: data.title,
                 description: data.description,
+                address: data.address || data.title, // Full address (required)
                 addressLine1: addressLine1 || data.title,
                 postcode: postcode || 'UNKNOWN',
                 price: data.price,
                 bedrooms: data.bedrooms,
                 bathrooms: data.bathrooms,
-                sqft: data.sqft,
+                squareFootage: data.sqft,
                 propertyType: data.propertyType || this.inferPropertyType(data.title),
-                listingType: data.listingType || 'sale',
+                isRental: data.isRental ?? false,
                 status: 'available',
                 features: data.features,
                 images: downloadedImages,
-                primaryImage: primaryImage,
                 agentId: userId,
-                epcRating: data.epcRating || null,
+                energyRating: data.epcRating || null,
                 tenure: data.tenure || 'freehold',
-                councilTaxBand: data.councilTaxBand || null
+                councilTaxBand: data.councilTaxBand || null,
+                isListed: true, // Imported properties should show in CRM listings
+                isResidential: true // Default to residential, can be changed manually
             };
 
             const [savedProperty] = await db.insert(properties).values(newProperty).returning();
@@ -240,7 +241,7 @@ export class PropertyImportService {
             sqft,
             images: images.slice(0, 10),
             propertyType,
-            listingType: isRental ? 'rental' : 'sale',
+            isRental,
             portalRef
         };
     }
@@ -300,7 +301,7 @@ export class PropertyImportService {
             sqft,
             images: images.slice(0, 10),
             propertyType,
-            listingType: isRental ? 'rental' : 'sale',
+            isRental,
             portalRef
         };
     }
@@ -358,41 +359,138 @@ export class PropertyImportService {
             sqft,
             images: images.slice(0, 10),
             propertyType,
-            listingType: isRental ? 'rental' : 'sale',
+            isRental,
             portalRef
         };
     }
 
     private async scrapeJohnBarclay(page: Page, url: string): Promise<ScrapedPropertyData> {
-        const isRental = url.includes('let') || url.includes('rent');
+        const isRental = url.includes('let') || url.includes('rent') || url.includes('to-let');
 
+        // John Barclay uses minimal CSS classes - semantic HTML only
+        // Title is in H1
         const title = await page.$eval('h1', el => el.textContent?.trim() || '').catch(() => '');
-        const address = await page.$eval('.address, .property-address',
-            el => el.textContent?.trim() || '').catch(() => title);
 
-        const priceStr = await page.$eval('.price, .property-price',
-            el => el.textContent?.trim() || '0').catch(() => '0');
-        const price = parseInt(priceStr.replace(/[^0-9]/g, '')) || 0;
+        // Address is in the title or look for location context
+        const address = title;
 
-        const description = await page.$eval('.description, .property-description',
-            el => el.textContent?.trim() || '').catch(() => '');
-
-        const features = await page.$$eval('.features li, .property-features li',
-            els => els.map(el => el.textContent?.trim() || '').filter(Boolean)).catch(() => []);
-
+        // Price is in a paragraph containing "Price:" or "£" symbol
         const pageText = await page.$eval('body', el => el.textContent || '').catch(() => '');
-        const bedMatch = pageText.match(/(\d+)\s*bed/i);
-        const bathMatch = pageText.match(/(\d+)\s*bath/i);
-        const sqftMatch = pageText.match(/([\d,]+)\s*sq\.?\s*ft/i);
 
-        const bedrooms = bedMatch ? parseInt(bedMatch[1]) : 0;
-        const bathrooms = bathMatch ? parseInt(bathMatch[1]) : 0;
+        // Try to find price - look for "Price: £XXX" pattern
+        const priceMatch = pageText.match(/Price[:\s]*£([\d,]+)/i) || pageText.match(/£([\d,]+(?:,\d{3})*)/);
+        const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : 0;
+
+        // Description follows "Property Description" heading
+        const description = await page.evaluate(() => {
+            const headings = Array.from(document.querySelectorAll('h2'));
+            for (const h of headings) {
+                if (h.textContent?.toLowerCase().includes('description')) {
+                    // Get all following paragraph siblings
+                    let desc = '';
+                    let next = h.nextElementSibling;
+                    while (next && next.tagName !== 'H2') {
+                        if (next.tagName === 'P') {
+                            desc += (desc ? ' ' : '') + (next.textContent?.trim() || '');
+                        }
+                        next = next.nextElementSibling;
+                    }
+                    return desc;
+                }
+            }
+            return '';
+        }).catch(() => '');
+
+        // Features follow "Key Features" heading - may be a list
+        const features = await page.evaluate(() => {
+            const headings = Array.from(document.querySelectorAll('h2'));
+            for (const h of headings) {
+                if (h.textContent?.toLowerCase().includes('feature')) {
+                    let next = h.nextElementSibling;
+                    // Check for UL/OL list
+                    if (next && (next.tagName === 'UL' || next.tagName === 'OL')) {
+                        return Array.from(next.querySelectorAll('li')).map(li => li.textContent?.trim() || '').filter(Boolean);
+                    }
+                }
+            }
+            return [];
+        }).catch(() => []);
+
+        // Extract property details from page text
+        // Handle both numeric (3 bed) and word-based (one bedroom) formats
+        const wordToNum: Record<string, number> = {
+            'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10
+        };
+
+        // Try numeric first, then word-based
+        let bedrooms = 0;
+        const bedNumMatch = pageText.match(/(\d+)\s*(?:bed(?:room)?s?|double bedroom)/i);
+        if (bedNumMatch) {
+            bedrooms = parseInt(bedNumMatch[1]);
+        } else {
+            const bedWordMatch = pageText.match(/(one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:bed(?:room)?s?|double bedroom)/i);
+            if (bedWordMatch) {
+                bedrooms = wordToNum[bedWordMatch[1].toLowerCase()] || 0;
+            }
+        }
+
+        let bathrooms = 0;
+        const bathNumMatch = pageText.match(/(\d+)\s*bath/i);
+        if (bathNumMatch) {
+            bathrooms = parseInt(bathNumMatch[1]);
+        } else {
+            const bathWordMatch = pageText.match(/(one|two|three|four|five)\s*bath/i);
+            if (bathWordMatch) {
+                bathrooms = wordToNum[bathWordMatch[1].toLowerCase()] || 0;
+            }
+        }
+
+        const sqftMatch = pageText.match(/([\d,]+)\s*sq\.?\s*ft/i);
         const sqft = sqftMatch ? parseInt(sqftMatch[1].replace(',', '')) : 0;
 
-        const images = await page.$$eval('.gallery img, .property-gallery img', els => {
-            return els.map(el => el.getAttribute('src') || '')
-                .filter(src => src && !src.includes('placeholder'));
-        }).catch(() => []);
+        // Images on John Barclay are in anchor links, src pattern: /assets/content/properties/{id}/photos/{n}.JPG
+        // Extract property ID from URL
+        const propertyIdMatch = url.match(/\/property\/(\d+)/);
+        const propertyId = propertyIdMatch ? propertyIdMatch[1] : null;
+
+        let images: string[] = [];
+
+        if (propertyId) {
+            // Try to find images by pattern - check for img tags with the property ID in src
+            images = await page.$$eval('img', (els, propId) => {
+                return els.map(el => el.getAttribute('src') || '')
+                    .filter(src => src && src.includes(`/properties/${propId}/`) && src.includes('/photos/'));
+            }, propertyId).catch(() => []);
+
+            // Also check anchor hrefs for full-size images
+            if (images.length === 0) {
+                images = await page.$$eval('a[href*="/photos/"]', (els, propId) => {
+                    return els.map(el => el.getAttribute('href') || '')
+                        .filter(href => href && href.includes(`/properties/${propId}/`));
+                }, propertyId).catch(() => []);
+            }
+
+            // Fallback: construct image URLs directly if we know the pattern
+            if (images.length === 0) {
+                // Try fetching known image paths - John Barclay uses sequential numbering
+                for (let i = 1; i <= 10; i++) {
+                    images.push(`https://johnbarclay.co.uk/assets/content/properties/${propertyId}/photos/${i}.JPG`);
+                }
+            }
+        }
+
+        // Make URLs absolute
+        images = images.map(src => {
+            if (src.startsWith('/')) {
+                return `https://johnbarclay.co.uk${src}`;
+            }
+            return src;
+        });
+
+        // Property type detection
+        const propertyTypeMatch = pageText.match(/\b(flat|apartment|house|bungalow|maisonette|studio|detached|semi-detached|terraced|cottage)\b/i);
+        const propertyType = propertyTypeMatch ? propertyTypeMatch[1].toLowerCase() : '';
 
         return {
             title,
@@ -404,7 +502,8 @@ export class PropertyImportService {
             bathrooms,
             sqft,
             images: images.slice(0, 10),
-            listingType: isRental ? 'rental' : 'sale'
+            propertyType,
+            isRental
         };
     }
 
@@ -429,6 +528,7 @@ export class PropertyImportService {
         }
 
         const savedPaths: string[] = [];
+        const seenSizes = new Set<number>(); // Track file sizes to detect duplicates
 
         for (const url of urls.slice(0, 10)) {
             try {
@@ -436,6 +536,22 @@ export class PropertyImportService {
                 const filepath = path.join(downloadDir, filename);
 
                 await this.downloadFile(url, filepath);
+
+                // Check file size to detect duplicates (same image = same size)
+                const stats = fs.statSync(filepath);
+                if (stats.size < 1000) {
+                    // Too small - probably an error page or placeholder
+                    fs.unlinkSync(filepath);
+                    continue;
+                }
+
+                if (seenSizes.has(stats.size)) {
+                    // Duplicate image - same file size as one we already have
+                    fs.unlinkSync(filepath);
+                    continue;
+                }
+
+                seenSizes.add(stats.size);
                 savedPaths.push(`/uploads/properties/${filename}`);
             } catch (e) {
                 console.error(`Failed to download image ${url}:`, e);

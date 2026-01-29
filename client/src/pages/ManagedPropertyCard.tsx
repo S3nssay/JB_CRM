@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     ArrowLeft, Building2, User, FileText, PoundSterling,
     Calendar, Shield, CheckCircle2, AlertTriangle, Key,
-    Phone, Mail, CreditCard, Home, Pencil
+    Phone, Mail, CreditCard, Home, Pencil, Upload, ExternalLink,
+    Loader2, FileUp
 } from 'lucide-react';
 import {
     Dialog,
@@ -27,10 +28,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from "@/hooks/use-toast";
 
 interface ChecklistItem {
-    id: string;
+    id: number;
+    itemType: string;
     label: string;
-    checked: boolean;
+    isCompleted: boolean;
     category: 'financial' | 'legal' | 'tenant' | 'property' | 'deposit' | 'keys';
+    workflow: 'onboarding' | 'vacating' | 'renewal' | 'general';
+    requiresDocument: boolean;
+    documentUrl?: string;
+    documentName?: string;
+    notes?: string;
+    completedAt?: string;
 }
 
 export default function ManagedPropertyCard() {
@@ -134,51 +142,118 @@ export default function ManagedPropertyCard() {
         }
     });
 
-    // Property checklist state (would normally come from DB)
-    const [checklist, setChecklist] = useState<ChecklistItem[]>([
-        // Financial
-        { id: 'deposit_rent', label: 'Deposit & Rent Collected', checked: false, category: 'financial' },
-        { id: 'standing_order', label: 'Standing Order Set Up', checked: false, category: 'financial' },
+    // Fetch checklist from database (based on active tenancy)
+    const { data: checklist = [], refetch: refetchChecklist } = useQuery({
+        queryKey: ['/api/crm/pm/tenancies', tenancy?.id, 'checklist'],
+        queryFn: async () => {
+            if (!tenancy?.id) return [];
+            const res = await fetch(`/api/crm/pm/tenancies/${tenancy.id}/checklist`);
+            if (!res.ok) return [];
+            return res.json();
+        },
+        enabled: !!tenancy?.id
+    });
 
-        // Legal Documents
-        { id: 'tenancy_agreement', label: 'Tenancy Agreement Signed', checked: false, category: 'legal' },
-        { id: 'guarantors_agreement', label: 'Guarantors Agreement', checked: false, category: 'legal' },
-        { id: 'notices', label: 'Notices Served', checked: false, category: 'legal' },
-        { id: 'auth_landlord', label: 'Authorization to L/L', checked: false, category: 'legal' },
-        { id: 'terms_landlord', label: 'Terms & Conditions to L/L', checked: false, category: 'legal' },
-        { id: 'info_sheet', label: 'Information Sheet to L/L', checked: false, category: 'legal' },
+    // State for document upload
+    const [uploadingItemId, setUploadingItemId] = useState<number | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null);
+    const fileInputRef = useState<HTMLInputElement | null>(null);
 
-        // Tenant Verification
-        { id: 'tenant_id', label: "Tenant's ID Verified", checked: false, category: 'tenant' },
-        { id: 'prev_landlord_ref', label: 'Previous L/L Reference', checked: false, category: 'tenant' },
-        { id: 'bank_ref', label: 'Bank Reference', checked: false, category: 'tenant' },
-        { id: 'work_ref', label: 'Work Reference', checked: false, category: 'tenant' },
+    // Toggle checklist item completion
+    const toggleCheck = async (item: ChecklistItem) => {
+        try {
+            const res = await fetch(`/api/crm/pm/checklist/${item.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ isCompleted: !item.isCompleted })
+            });
+            if (!res.ok) throw new Error('Failed to update');
+            refetchChecklist();
+            toast({
+                title: item.isCompleted ? 'Item unchecked' : 'Item completed',
+                description: item.label
+            });
+        } catch (error) {
+            toast({ title: 'Error', description: 'Failed to update checklist item', variant: 'destructive' });
+        }
+    };
 
-        // Property Items
-        { id: 'inventory', label: 'Inventory Complete', checked: false, category: 'property' },
-        { id: 'gas_safety', label: 'Gas Safety Certificate', checked: false, category: 'property' },
+    // Handle file upload for checklist item
+    const handleFileUpload = async (itemId: number, file: File) => {
+        setUploadingItemId(itemId);
+        try {
+            // Create form data for upload
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('folder', 'checklist');
 
-        // Deposit Protection
-        { id: 'deposit_tds', label: 'Deposit Protection (TDS)', checked: false, category: 'deposit' },
-        { id: 'deposit_dps', label: 'Deposit Protection (DPS)', checked: false, category: 'deposit' },
-        { id: 'deposit_landlord', label: 'Deposit Held by Landlord', checked: false, category: 'deposit' },
+            // Upload file
+            const uploadRes = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+            if (!uploadRes.ok) throw new Error('Upload failed');
+            const { url } = await uploadRes.json();
 
-        // Keys
-        { id: 'keys_office', label: 'Spare Keys in Office', checked: false, category: 'keys' },
-        { id: 'keys_tenant', label: 'Keys Given to Tenant', checked: false, category: 'keys' },
-    ]);
+            // Update checklist item with document URL
+            const updateRes = await fetch(`/api/crm/pm/checklist/${itemId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    documentUrl: url,
+                    documentName: file.name,
+                    isCompleted: true // Auto-complete when document is uploaded
+                })
+            });
+            if (!updateRes.ok) throw new Error('Failed to update checklist');
 
-    const toggleCheck = (itemId: string) => {
-        setChecklist(prev => prev.map(item =>
-            item.id === itemId ? { ...item, checked: !item.checked } : item
-        ));
+            refetchChecklist();
+            toast({ title: 'Document uploaded', description: `${file.name} has been uploaded and item marked complete` });
+        } catch (error) {
+            toast({ title: 'Error', description: 'Failed to upload document', variant: 'destructive' });
+        } finally {
+            setUploadingItemId(null);
+            setSelectedFile(null);
+        }
     };
 
     const getChecklistByCategory = (category: string) =>
-        checklist.filter(item => item.category === category);
+        checklist.filter((item: ChecklistItem) => item.category === category);
 
-    const completedCount = checklist.filter(c => c.checked).length;
-    const completionPercent = Math.round((completedCount / checklist.length) * 100);
+    // Workflow order for grouping checklist items
+    const workflowOrder = ['onboarding', 'compliance', 'general', 'vacating', 'renewal'] as const;
+    const workflowLabels: Record<string, string> = {
+        'onboarding': 'Onboarding',
+        'compliance': 'Compliance',
+        'general': 'General / Ongoing',
+        'vacating': 'Vacating',
+        'renewal': 'Renewal'
+    };
+
+    // Group checklist items by workflow
+    const getChecklistByWorkflow = () => {
+        const grouped: Record<string, ChecklistItem[]> = {};
+        workflowOrder.forEach(wf => { grouped[wf] = []; });
+
+        checklist.forEach((item: ChecklistItem) => {
+            const workflow = item.workflow || 'general';
+            if (!grouped[workflow]) grouped[workflow] = [];
+            grouped[workflow].push(item);
+        });
+
+        return grouped;
+    };
+
+    // Check if item is truly complete (has document if required)
+    const isItemTrulyComplete = (item: ChecklistItem) => {
+        if (item.requiresDocument && !item.documentUrl) {
+            return false; // Requires document but none uploaded
+        }
+        return item.isCompleted;
+    };
+
+    const completedCount = checklist.filter((c: ChecklistItem) => isItemTrulyComplete(c)).length;
+    const completionPercent = checklist.length > 0 ? Math.round((completedCount / checklist.length) * 100) : 0;
 
     // Open edit dialog and populate form
     const openEditDialog = () => {
@@ -203,12 +278,12 @@ export default function ManagedPropertyCard() {
         if (t) {
             setEditingTenancyId(t.id);
             setTenancyForm({
-                tenantId: t.tenantId?.toString() || '',
+                tenantId: t.tenantId?.toString() || 'none',
                 rentAmount: t.rentAmount?.toString() || '',
                 rentFrequency: t.rentFrequency || 'monthly',
                 rentDueDay: t.rentDueDay?.toString() || '1',
                 depositAmount: t.depositAmount?.toString() || '',
-                depositScheme: t.depositScheme || '',
+                depositScheme: t.depositScheme || 'not_specified',
                 startDate: t.startDate ? new Date(t.startDate).toISOString().split('T')[0] : '',
                 endDate: t.endDate ? new Date(t.endDate).toISOString().split('T')[0] : '',
                 status: t.status || 'active'
@@ -222,16 +297,24 @@ export default function ManagedPropertyCard() {
         if (!editingTenancyId) return;
         setSaving(true);
         try {
+            // Handle special select values
+            const tenantId = tenancyForm.tenantId && tenancyForm.tenantId !== 'none'
+                ? parseInt(tenancyForm.tenantId)
+                : null;
+            const depositScheme = tenancyForm.depositScheme && tenancyForm.depositScheme !== 'not_specified'
+                ? tenancyForm.depositScheme
+                : null;
+
             const res = await fetch(`/api/crm/pm/tenancies/${editingTenancyId}`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    tenantId: tenancyForm.tenantId ? parseInt(tenancyForm.tenantId) : null,
+                    tenantId,
                     rentAmount: tenancyForm.rentAmount || null,
                     rentFrequency: tenancyForm.rentFrequency,
                     rentDueDay: parseInt(tenancyForm.rentDueDay) || 1,
                     depositAmount: tenancyForm.depositAmount || null,
-                    depositScheme: tenancyForm.depositScheme || null,
+                    depositScheme,
                     startDate: tenancyForm.startDate ? new Date(tenancyForm.startDate) : null,
                     endDate: tenancyForm.endDate ? new Date(tenancyForm.endDate) : null,
                     status: tenancyForm.status
@@ -454,7 +537,7 @@ export default function ManagedPropertyCard() {
                                     <SelectValue placeholder="Select a tenant" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="">No tenant (Void)</SelectItem>
+                                    <SelectItem value="none">No tenant (Void)</SelectItem>
                                     {allTenants.map((t: any) => (
                                         <SelectItem key={t.id} value={t.id.toString()}>
                                             {t.fullName} {t.email ? `(${t.email})` : ''}
@@ -528,7 +611,7 @@ export default function ManagedPropertyCard() {
                                         <SelectValue placeholder="Select scheme" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="">Not specified</SelectItem>
+                                        <SelectItem value="not_specified">Not specified</SelectItem>
                                         <SelectItem value="dps">DPS (Deposit Protection Service)</SelectItem>
                                         <SelectItem value="tds">TDS (Tenancy Deposit Scheme)</SelectItem>
                                         <SelectItem value="mydeposits">MyDeposits</SelectItem>
@@ -920,32 +1003,126 @@ export default function ManagedPropertyCard() {
                                     </div>
                                 </TabsContent>
 
-                                {/* Checklist Tab (all categories combined) */}
-                                <TabsContent value="financial" className="space-y-3">
-                                    {checklist.map(item => (
-                                        <div
-                                            key={item.id}
-                                            className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer
-                          ${item.checked ? 'bg-green-50 border-green-200' : 'bg-white border-gray-200 hover:bg-gray-50'}`}
-                                            onClick={() => toggleCheck(item.id)}
-                                        >
-                                            <Checkbox
-                                                checked={item.checked}
-                                                onCheckedChange={() => toggleCheck(item.id)}
-                                            />
-                                            <div className="flex-1">
-                                                <span className={item.checked ? 'line-through text-muted-foreground' : ''}>
-                                                    {item.label}
-                                                </span>
-                                                <Badge variant="outline" className="ml-2 text-xs capitalize">
-                                                    {item.category}
-                                                </Badge>
-                                            </div>
-                                            {item.checked && (
-                                                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                                            )}
+                                {/* Checklist Tab - grouped by workflow */}
+                                <TabsContent value="financial" className="space-y-6">
+                                    {checklist.length === 0 ? (
+                                        <div className="text-center py-8 text-muted-foreground border rounded-lg bg-gray-50">
+                                            <FileText className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                                            <p>No checklist items found</p>
+                                            <p className="text-sm">Checklist items are created when a tenancy is set up</p>
                                         </div>
-                                    ))}
+                                    ) : (
+                                        <>
+                                            {workflowOrder.map(workflow => {
+                                                const items = getChecklistByWorkflow()[workflow];
+                                                if (!items || items.length === 0) return null;
+
+                                                const workflowComplete = items.filter(i => isItemTrulyComplete(i)).length;
+                                                const workflowTotal = items.length;
+
+                                                return (
+                                                    <div key={workflow} className="space-y-3">
+                                                        {/* Workflow section header */}
+                                                        <div className="flex items-center justify-between border-b pb-2">
+                                                            <h4 className={`font-semibold text-sm ${
+                                                                workflow === 'onboarding' ? 'text-blue-700' :
+                                                                workflow === 'vacating' ? 'text-orange-700' :
+                                                                workflow === 'compliance' ? 'text-red-700' :
+                                                                workflow === 'renewal' ? 'text-purple-700' :
+                                                                'text-gray-700'
+                                                            }`}>
+                                                                {workflowLabels[workflow]}
+                                                            </h4>
+                                                            <span className="text-xs text-muted-foreground">
+                                                                {workflowComplete}/{workflowTotal} complete
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Items in this workflow */}
+                                                        {items.map((item: ChecklistItem) => {
+                                                            const trulyComplete = isItemTrulyComplete(item);
+                                                            const needsDocument = item.requiresDocument && !item.documentUrl;
+
+                                                            return (
+                                                                <div
+                                                                    key={item.id}
+                                                                    className={`p-3 rounded-lg border transition-colors
+                                                                        ${trulyComplete ? 'bg-green-50 border-green-200' :
+                                                                          needsDocument && item.isCompleted ? 'bg-amber-50 border-amber-200' :
+                                                                          'bg-white border-gray-200 hover:bg-gray-50'}`}
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <Checkbox
+                                                                            checked={item.isCompleted}
+                                                                            onCheckedChange={() => toggleCheck(item)}
+                                                                        />
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                                <span className={trulyComplete ? 'line-through text-muted-foreground' : 'font-medium'}>
+                                                                                    {item.label}
+                                                                                </span>
+                                                                                <Badge variant="outline" className="text-xs capitalize">
+                                                                                    {item.category}
+                                                                                </Badge>
+                                                                            </div>
+                                                                            {item.documentUrl ? (
+                                                                                <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+                                                                                    <FileText className="h-3 w-3" />
+                                                                                    <a
+                                                                                        href={item.documentUrl}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="text-blue-600 hover:underline flex items-center gap-1"
+                                                                                        onClick={(e) => e.stopPropagation()}
+                                                                                    >
+                                                                                        {item.documentName || 'View document'}
+                                                                                        <ExternalLink className="h-3 w-3" />
+                                                                                    </a>
+                                                                                </div>
+                                                                            ) : needsDocument && (
+                                                                                <div className="mt-1 text-xs text-amber-600 flex items-center gap-1">
+                                                                                    <AlertTriangle className="h-3 w-3" />
+                                                                                    Document required
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            {item.requiresDocument && (
+                                                                                <label className="cursor-pointer">
+                                                                                    <input
+                                                                                        type="file"
+                                                                                        className="hidden"
+                                                                                        onChange={(e) => {
+                                                                                            const file = e.target.files?.[0];
+                                                                                            if (file) handleFileUpload(item.id, file);
+                                                                                        }}
+                                                                                        accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                                                                                    />
+                                                                                    {uploadingItemId === item.id ? (
+                                                                                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                                                    ) : (
+                                                                                        <Button variant="ghost" size="sm" asChild>
+                                                                                            <span>
+                                                                                                <Upload className="h-4 w-4 mr-1" />
+                                                                                                Upload
+                                                                                            </span>
+                                                                                        </Button>
+                                                                                    )}
+                                                                                </label>
+                                                                            )}
+                                                                            {trulyComplete && (
+                                                                                <CheckCircle2 className="h-5 w-5 text-green-600" />
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                );
+                                            })}
+                                        </>
+                                    )}
                                 </TabsContent>
                             </Tabs>
                         </CardContent>

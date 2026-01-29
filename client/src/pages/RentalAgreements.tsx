@@ -27,16 +27,19 @@ interface RentalAgreement {
   landlordId: number;
   rentAmount: number;
   rentFrequency: string;
-  managementFeePercent: number | null;
-  tenancyStart: string | null;
-  tenancyEnd: string | null;
-  depositHeldBy: string | null;
+  managementFeeType?: string | null;
+  managementFeeValue?: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  depositAmount?: number | null;
+  depositScheme?: string | null;
+  depositReference?: string | null;
   status: string;
   createdAt: string;
   // Joined data
   propertyTitle?: string;
   propertyAddress?: string;
-  propertyPostcode?: string;
+  postcode?: string;
   landlordName?: string;
 }
 
@@ -63,27 +66,51 @@ export default function RentalAgreements() {
 
   const activeAgreements = agreements.filter((a: RentalAgreement) => {
     if (a.status !== 'active') return false;
-    if (!a.tenancyEnd) return true;
-    return new Date(a.tenancyEnd) > now;
+    if (!a.endDate) return true;
+    return new Date(a.endDate) > now;
   });
 
   const expiredAgreements = agreements.filter((a: RentalAgreement) => {
     if (a.status === 'expired') return true;
-    if (!a.tenancyEnd) return false;
-    return new Date(a.tenancyEnd) <= now;
+    if (!a.endDate) return false;
+    return new Date(a.endDate) <= now;
   });
 
   const endingSoonAgreements = activeAgreements.filter((a: RentalAgreement) => {
-    if (!a.tenancyEnd) return false;
-    const endDate = new Date(a.tenancyEnd);
+    if (!a.endDate) return false;
+    const endDate = new Date(a.endDate);
     return endDate > now && endDate <= thirtyDaysFromNow;
   });
 
   const totalMonthlyRent = activeAgreements.reduce((sum: number, a: RentalAgreement) => {
-    if (a.rentFrequency === 'Monthly') return sum + (a.rentAmount / 100);
-    if (a.rentFrequency === 'Weekly') return sum + ((a.rentAmount / 100) * 4.33);
-    if (a.rentFrequency === 'Quarterly') return sum + ((a.rentAmount / 100) / 3);
-    if (a.rentFrequency === 'Annually') return sum + ((a.rentAmount / 100) / 12);
+    const rent = parseFloat(String(a.rentAmount)) || 0;
+    const freq = a.rentFrequency?.toLowerCase() || 'monthly';
+    if (freq === 'monthly') return sum + rent;
+    if (freq === 'weekly') return sum + (rent * 4.33);
+    if (freq === 'quarterly') return sum + (rent / 3);
+    if (freq === 'annually' || freq === 'annual') return sum + (rent / 12);
+    return sum + rent; // Default to monthly
+  }, 0);
+
+  // Calculate total monthly management fees
+  const totalMonthlyManagementFee = activeAgreements.reduce((sum: number, a: RentalAgreement) => {
+    const rent = parseFloat(String(a.rentAmount)) || 0;
+    const feeValue = parseFloat(String(a.managementFeeValue)) || 0;
+    const freq = a.rentFrequency?.toLowerCase() || 'monthly';
+
+    // Get monthly rent first
+    let monthlyRent = rent;
+    if (freq === 'weekly') monthlyRent = rent * 4.33;
+    else if (freq === 'quarterly') monthlyRent = rent / 3;
+    else if (freq === 'annually' || freq === 'annual') monthlyRent = rent / 12;
+
+    // Calculate fee based on type
+    if (a.managementFeeType === 'percentage') {
+      return sum + (monthlyRent * feeValue / 100);
+    } else if (feeValue > 0) {
+      // Fixed fee - assume it's monthly
+      return sum + feeValue;
+    }
     return sum;
   }, 0);
 
@@ -92,7 +119,7 @@ export default function RentalAgreements() {
     const matchesSearch = !searchTerm ||
       a.propertyTitle?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.propertyAddress?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.propertyPostcode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.postcode?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.landlordName?.toLowerCase().includes(searchTerm.toLowerCase());
 
     if (statusFilter === 'all') return matchesSearch;
@@ -102,14 +129,15 @@ export default function RentalAgreements() {
     return matchesSearch;
   });
 
-  const formatCurrency = (pence: number) => {
-    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(pence / 100);
+  const formatCurrency = (amount: number | string) => {
+    const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(numAmount || 0);
   };
 
   const getStatusBadge = (agreement: RentalAgreement) => {
-    if (!agreement.tenancyEnd) return <Badge className="bg-green-500">Active</Badge>;
+    if (!agreement.endDate) return <Badge className="bg-green-500">Active</Badge>;
 
-    const endDate = new Date(agreement.tenancyEnd);
+    const endDate = new Date(agreement.endDate);
     if (endDate <= now) return <Badge className="bg-red-500">Expired</Badge>;
     if (endDate <= thirtyDaysFromNow) return <Badge className="bg-orange-500">Ending Soon</Badge>;
     return <Badge className="bg-green-500">Active</Badge>;
@@ -174,74 +202,90 @@ export default function RentalAgreements() {
       <main className="p-6">
         <div className="space-y-6">
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Total Agreements</p>
-                    <p className="text-2xl font-bold mt-2">{agreements.length}</p>
+                    <p className="text-xs font-medium text-gray-600">Total Agreements</p>
+                    <p className="text-xl font-bold mt-1">{agreements.length}</p>
                   </div>
-                  <div className="p-3 rounded-full bg-[#791E75]">
-                    <FileText className="h-6 w-6 text-white" />
+                  <div className="p-2 rounded-full bg-[#791E75]">
+                    <FileText className="h-5 w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Active</p>
-                    <p className="text-2xl font-bold mt-2">{activeAgreements.length}</p>
+                    <p className="text-xs font-medium text-gray-600">Active</p>
+                    <p className="text-xl font-bold mt-1">{activeAgreements.length}</p>
                   </div>
-                  <div className="p-3 rounded-full bg-green-500">
-                    <Home className="h-6 w-6 text-white" />
+                  <div className="p-2 rounded-full bg-green-500">
+                    <Home className="h-5 w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Ending Soon</p>
-                    <p className="text-2xl font-bold mt-2 text-orange-600">{endingSoonAgreements.length}</p>
+                    <p className="text-xs font-medium text-gray-600">Ending Soon</p>
+                    <p className="text-xl font-bold mt-1 text-orange-600">{endingSoonAgreements.length}</p>
                   </div>
-                  <div className="p-3 rounded-full bg-orange-500">
-                    <AlertTriangle className="h-6 w-6 text-white" />
+                  <div className="p-2 rounded-full bg-orange-500">
+                    <AlertTriangle className="h-5 w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Expired</p>
-                    <p className="text-2xl font-bold mt-2 text-red-600">{expiredAgreements.length}</p>
+                    <p className="text-xs font-medium text-gray-600">Expired</p>
+                    <p className="text-xl font-bold mt-1 text-red-600">{expiredAgreements.length}</p>
                   </div>
-                  <div className="p-3 rounded-full bg-red-500">
-                    <Clock className="h-6 w-6 text-white" />
+                  <div className="p-2 rounded-full bg-red-500">
+                    <Clock className="h-5 w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600">Monthly Revenue</p>
-                    <p className="text-2xl font-bold mt-2 text-green-600">
+                    <p className="text-xs font-medium text-gray-600">Monthly Rent</p>
+                    <p className="text-xl font-bold mt-1 text-blue-600">
                       {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(totalMonthlyRent)}
                     </p>
                   </div>
-                  <div className="p-3 rounded-full bg-[#F8B324]">
-                    <PoundSterling className="h-6 w-6 text-white" />
+                  <div className="p-2 rounded-full bg-blue-500">
+                    <PoundSterling className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-gray-600">Mgt Fee Income</p>
+                    <p className="text-xl font-bold mt-1 text-green-600">
+                      {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(totalMonthlyManagementFee)}
+                    </p>
+                  </div>
+                  <div className="p-2 rounded-full bg-[#F8B324]">
+                    <PoundSterling className="h-5 w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
@@ -315,7 +359,7 @@ export default function RentalAgreements() {
                             <p className="font-medium text-[#791E75] hover:underline">
                               {agreement.propertyTitle || agreement.propertyAddress}
                             </p>
-                            <p className="text-sm text-gray-500">{agreement.propertyPostcode}</p>
+                            <p className="text-sm text-gray-500">{agreement.postcode}</p>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -334,31 +378,44 @@ export default function RentalAgreements() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          {agreement.managementFeePercent ? (
-                            <span>{agreement.managementFeePercent}%</span>
+                          {agreement.managementFeeValue ? (
+                            <span>
+                              {agreement.managementFeeType === 'percentage'
+                                ? `${agreement.managementFeeValue}%`
+                                : `£${agreement.managementFeeValue}`}
+                            </span>
                           ) : (
                             <span className="text-gray-400">N/A</span>
                           )}
                         </TableCell>
                         <TableCell>
                           <div className="space-y-1">
-                            {agreement.tenancyStart && (
+                            {agreement.startDate && (
                               <p className="text-sm">
-                                Start: {new Date(agreement.tenancyStart).toLocaleDateString('en-GB')}
+                                Start: {new Date(agreement.startDate).toLocaleDateString('en-GB')}
                               </p>
                             )}
-                            {agreement.tenancyEnd && (
+                            {agreement.endDate && (
                               <p className="text-sm">
-                                End: {new Date(agreement.tenancyEnd).toLocaleDateString('en-GB')}
+                                End: {new Date(agreement.endDate).toLocaleDateString('en-GB')}
                               </p>
                             )}
                             <p className="text-xs text-gray-500">
-                              {getDaysRemaining(agreement.tenancyEnd)}
+                              {getDaysRemaining(agreement.endDate)}
                             </p>
                           </div>
                         </TableCell>
                         <TableCell>
-                          {agreement.depositHeldBy || <span className="text-gray-400">Not specified</span>}
+                          {agreement.depositAmount ? (
+                            <div>
+                              <p className="font-medium">{formatCurrency(agreement.depositAmount)}</p>
+                              {agreement.depositScheme && (
+                                <p className="text-xs text-gray-500">{agreement.depositScheme}</p>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Not specified</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {getStatusBadge(agreement)}

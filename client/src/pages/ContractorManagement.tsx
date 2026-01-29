@@ -246,13 +246,17 @@ export default function ContractorManagement() {
     };
 
     const filteredContractors = contractors.filter((c: Contractor) => {
-        const matchesSearch =
-            c.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.contactName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.email?.toLowerCase().includes(searchTerm.toLowerCase());
+        const searchLower = searchTerm.toLowerCase().trim();
+        const matchesSearch = !searchLower ||
+            (c.companyName?.toLowerCase().includes(searchLower)) ||
+            (c.contactName?.toLowerCase().includes(searchLower)) ||
+            (c.email?.toLowerCase().includes(searchLower)) ||
+            (c.phone?.toLowerCase().includes(searchLower));
 
+        // Ensure specializations is an array before checking
+        const specs = Array.isArray(c.specializations) ? c.specializations : [];
         const matchesSpecialization = specializationFilter === "all" ||
-            c.specializations?.includes(specializationFilter);
+            specs.includes(specializationFilter);
 
         return matchesSearch && matchesSpecialization;
     });

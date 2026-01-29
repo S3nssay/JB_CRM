@@ -148,5 +148,12 @@ export const FEATURE_CLEARANCE = {
   property_management: 6,
   crm_dashboard: 5,
   maintenance_tickets: 5,
-  portal_dashboard: 3
+  portal_dashboard: 3,
+  // CMS Features
+  cms_view: 5,
+  cms_edit: 7,
+  cms_publish: 7,
+  cms_delete: 9,
+  cms_media: 7,
+  team_page_edit: 7
 } as const;

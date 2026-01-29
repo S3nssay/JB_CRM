@@ -1,13 +1,19 @@
 import React from 'react';
-import { 
+import { useQuery } from '@tanstack/react-query';
+import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
 
-const FAQSection = () => {
-  const faqItems = [
+interface CMSFaqItem {
+  id: number;
+  question: string;
+  answer: string;
+}
+
+const hardcodedFaqItems = [
     {
       question: "How quickly can I get an offer on my home?",
       answer: "We provide a free instant online valuation to give you an immediate estimate. For a formal, no-obligation offer, we'll conduct an in-depth phone valuation and deliver a written offer within 24 hours. No waiting, no delays – just a straightforward start to your sale."
@@ -65,6 +71,21 @@ const FAQSection = () => {
       answer: "Certainty: No chains, no fall-throughs.\n\nSpeed: Sell in days, not months.\n\nCost savings: Keep every penny of our offer.\n\nControl: Set the timeline, skip the hassle."
     }
   ];
+
+const FAQSection = () => {
+  // Fetch FAQ items from CMS, fallback to hardcoded
+  const { data: cmsFaqItems } = useQuery<CMSFaqItem[]>({
+    queryKey: ['/api/public/faq'],
+    queryFn: async () => {
+      const res = await fetch('/api/public/faq');
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.length > 0 ? data : null;
+    },
+    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+  });
+
+  const faqItems = cmsFaqItems || hardcodedFaqItems;
 
   return (
     <section id="faq" className="py-16 md:py-24 px-4 bg-white">

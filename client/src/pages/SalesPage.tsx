@@ -30,7 +30,7 @@ gsap.registerPlugin(ScrollTrigger);
 
 interface Property {
   id: number;
-  listingType: string;
+  isRental: boolean; // true = rental, false = sale
   title: string;
   description: string;
   price: number;
@@ -53,7 +53,13 @@ export default function SalesPage() {
     minBeds: '',
     maxBeds: '',
     maxPrice: '',
-    houseType: '',
+    // House type checkboxes
+    detached: false,
+    semiDetached: false,
+    terraced: false,
+    endTerrace: false,
+    townHouse: false,
+    // Feature checkboxes
     garden: false,
     driveway: false,
     garage: false,
@@ -70,7 +76,7 @@ export default function SalesPage() {
   const { data: featuredProperties = [], isLoading: featuredLoading } = useQuery<PropertyListing[]>({
     queryKey: ['/api/properties', 'featured', 'sale'],
     queryFn: async () => {
-      const response = await fetch('/api/properties?listingType=sale&featured=true&limit=6');
+      const response = await fetch('/api/properties?isRental=false&featured=true&limit=6');
       const data = await response.json();
       return data.map((prop: any) => propertyListingsService['convertToPropertyListing'](prop));
     }
@@ -81,17 +87,24 @@ export default function SalesPage() {
     queryKey: ['/api/properties', 'sale', searchForm],
     queryFn: async () => {
       const params = new URLSearchParams();
-      params.set('listingType', 'sale');
+      params.set('isRental', 'false');
       if (searchForm.location) params.set('location', searchForm.location);
       if (searchForm.propertyType) params.set('propertyType', searchForm.propertyType);
       if (searchForm.minBeds) params.set('minBedrooms', searchForm.minBeds);
       if (searchForm.maxBeds) params.set('maxBedrooms', searchForm.maxBeds);
       if (searchForm.maxPrice) params.set('maxPrice', searchForm.maxPrice);
       
-      // Advanced filters
-      if (searchForm.houseType) params.set('houseType', searchForm.houseType);
+      // Advanced filters - house types
+      const houseTypes: string[] = [];
+      if (searchForm.detached) houseTypes.push('detached');
+      if (searchForm.semiDetached) houseTypes.push('semi-detached');
+      if (searchForm.terraced) houseTypes.push('terraced');
+      if (searchForm.endTerrace) houseTypes.push('end-terrace');
+      if (searchForm.townHouse) houseTypes.push('town-house');
+      if (houseTypes.length > 0) params.set('houseType', houseTypes.join(','));
+
       if (searchForm.floorLevel) params.set('floorLevel', searchForm.floorLevel);
-      
+
       // Build comma-separated features list
       const featuresList: string[] = [];
       if (searchForm.garden) featuresList.push('garden');
@@ -145,10 +158,10 @@ export default function SalesPage() {
         if (parsed.intent === 'property_search' && parsed.filters) {
           const params = new URLSearchParams();
           
-          if (parsed.filters.listingType) {
-            params.append('listingType', parsed.filters.listingType);
+          if (parsed.filters.isRental !== undefined) {
+            params.append('isRental', String(parsed.filters.isRental));
           } else {
-            params.append('listingType', 'sale'); // Default to sale since we're on sales page
+            params.append('isRental', 'false'); // Default to sale since we're on sales page
           }
           
           if (parsed.filters.propertyType) {
@@ -219,7 +232,7 @@ export default function SalesPage() {
               </Button>
             </Link>
             <Link href="/commercial">
-              <Button className="bg-[#F8B324] hover:bg-[#d89b1f] text-black px-6 py-3 rounded-xl">
+              <Button className="bg-[#791E75] hover:bg-[#5d1759] text-white px-6 py-3 rounded-xl">
                 <Building2 className="mr-2 h-5 w-5" />
                 COMMERCIAL
               </Button>
@@ -332,33 +345,43 @@ export default function SalesPage() {
                 {/* House Features - only when house is selected */}
                 {searchForm.propertyType === 'house' && (
                   <>
-                    <div className="relative">
-                      <select
-                        value={searchForm.houseType}
-                        onChange={(e) => setSearchForm({...searchForm, houseType: e.target.value})}
-                        className="bg-white/90 border-0 rounded-full px-4 py-2 pr-8 text-sm text-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-[#791E75]/50"
-                        data-testid="select-house-type"
-                      >
-                        <option value="">House Type</option>
-                        <option value="detached">Detached</option>
-                        <option value="semi-detached">Semi-Detached</option>
-                        <option value="terraced">Terraced</option>
-                        <option value="end-terrace">End Terrace</option>
-                        <option value="town-house">Town House</option>
-                      </select>
-                      <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-500 pointer-events-none" />
-                    </div>
-                    
+                    {/* House Type Checkboxes */}
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.detached ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
+                      <input type="checkbox" checked={searchForm.detached} onChange={(e) => setSearchForm({...searchForm, detached: e.target.checked})} className="sr-only" data-testid="checkbox-detached" />
+                      Detached
+                    </label>
+
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.semiDetached ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
+                      <input type="checkbox" checked={searchForm.semiDetached} onChange={(e) => setSearchForm({...searchForm, semiDetached: e.target.checked})} className="sr-only" data-testid="checkbox-semi-detached" />
+                      Semi-Detached
+                    </label>
+
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.terraced ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
+                      <input type="checkbox" checked={searchForm.terraced} onChange={(e) => setSearchForm({...searchForm, terraced: e.target.checked})} className="sr-only" data-testid="checkbox-terraced" />
+                      Terraced
+                    </label>
+
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.endTerrace ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
+                      <input type="checkbox" checked={searchForm.endTerrace} onChange={(e) => setSearchForm({...searchForm, endTerrace: e.target.checked})} className="sr-only" data-testid="checkbox-end-terrace" />
+                      End Terrace
+                    </label>
+
+                    <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.townHouse ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
+                      <input type="checkbox" checked={searchForm.townHouse} onChange={(e) => setSearchForm({...searchForm, townHouse: e.target.checked})} className="sr-only" data-testid="checkbox-town-house" />
+                      Town House
+                    </label>
+
+                    {/* Feature Checkboxes */}
                     <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.garden ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
                       <input type="checkbox" checked={searchForm.garden} onChange={(e) => setSearchForm({...searchForm, garden: e.target.checked})} className="sr-only" data-testid="checkbox-garden" />
                       Garden
                     </label>
-                    
+
                     <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.driveway ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
                       <input type="checkbox" checked={searchForm.driveway} onChange={(e) => setSearchForm({...searchForm, driveway: e.target.checked})} className="sr-only" data-testid="checkbox-driveway" />
                       Driveway
                     </label>
-                    
+
                     <label className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm cursor-pointer transition-all ${searchForm.garage ? 'bg-[#791E75] text-white' : 'bg-white/90 text-gray-700 hover:bg-white'}`}>
                       <input type="checkbox" checked={searchForm.garage} onChange={(e) => setSearchForm({...searchForm, garage: e.target.checked})} className="sr-only" data-testid="checkbox-garage" />
                       Garage

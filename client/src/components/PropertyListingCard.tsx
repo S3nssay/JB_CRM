@@ -145,9 +145,9 @@ export const PropertyListingCard: React.FC<PropertyListingCardProps> = ({
 
           {/* Listing Type Badge */}
           <div className={`absolute top-3 left-3 px-3 py-1 rounded text-sm font-semibold text-white ${
-            property.listingType === 'sale' ? 'bg-[#791E75]' : 'bg-[#F8B324] text-black'
+            !property.isRental ? 'bg-[#791E75]' : 'bg-[#F8B324] text-black'
           }`}>
-            {property.listingType === 'sale' ? 'FOR SALE' : 'TO LET'}
+            {property.isRental ? 'TO LET' : 'FOR SALE'}
           </div>
         </div>
       </div>

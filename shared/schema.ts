@@ -26,7 +26,7 @@ export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 export type ParsedIntent = z.infer<typeof ParsedIntentSchema>;
 
 // User schema with multiple roles for CRM
-export const users = pgTable("users", {
+export const users = pgTable("user", {
   id: serial("id").primaryKey(),
   username: text("username").notNull(),
   password: text("password").notNull(),
@@ -67,7 +67,7 @@ export const session = pgTable("session", {
 });
 
 // London areas covered
-export const londonAreas = pgTable("london_areas", {
+export const londonAreas = pgTable("london_area", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   postcode: text("postcode").notNull(),
@@ -83,11 +83,10 @@ export const londonAreas = pgTable("london_areas", {
 });
 
 // Estate agent properties schema (for sales and rentals)
-export const properties = pgTable("properties", {
+export const properties = pgTable("property", {
   id: serial("id").primaryKey(),
-  // Listing type
-  listingType: text("listing_type").notNull(), // 'sale' or 'rental'
-  propertyCategory: text("property_category").notNull().default("residential"), // 'residential' or 'commercial'
+
+  // Property status
   status: text("status").notNull().default("active"), // 'active', 'under_offer', 'sold', 'let', 'withdrawn'
 
   // Basic property information
@@ -144,7 +143,19 @@ export const properties = pgTable("properties", {
   // Management and Listing fields
   isManaged: boolean("is_managed").default(false), // Is this property under John Barclay management?
   isListed: boolean("is_listed").default(false), // Is this property actively listed for sale/rent on portals?
+  isRental: boolean("is_rental").default(false), // Is this a rental property?
+  isResidential: boolean("is_residential").default(true), // Is this residential (vs commercial)?
   landlordId: integer("landlord_id"), // FK to landlords table (when property is managed)
+
+  // Additional address fields
+  address: text("address"), // Full address string
+  city: text("city"),
+
+  // Management details
+  managementFeeType: text("management_fee_type"), // 'percentage' or 'fixed'
+  managementFeeValue: decimal("management_fee_value"), // The fee value
+  managementPeriodMonths: integer("management_period_months"), // 12, 24, 36 months
+  managementStartDate: timestamp("management_start_date"),
 
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -152,7 +163,7 @@ export const properties = pgTable("properties", {
 });
 
 // Property portal listings - tracking property syndication to external portals
-export const propertyPortalListings = pgTable("property_portal_listings", {
+export const propertyPortalListings = pgTable("property_portal_listing", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   portalName: text("portal_name").notNull(), // 'zoopla', 'propertyfinder', 'rightmove', etc
@@ -178,7 +189,7 @@ export const propertyPortalListings = pgTable("property_portal_listings", {
 });
 
 // Maintenance tickets system
-export const maintenanceTickets = pgTable("maintenance_tickets", {
+export const maintenanceTickets = pgTable("maintenance_ticket", {
   id: serial("id").primaryKey(),
 
   // Property and tenant information
@@ -228,7 +239,7 @@ export const maintenanceTickets = pgTable("maintenance_tickets", {
 });
 
 // Maintenance ticket comments/updates
-export const maintenanceTicketUpdates = pgTable("maintenance_ticket_updates", {
+export const maintenanceTicketUpdates = pgTable("maintenance_ticket_update", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").notNull(),
   userId: integer("user_id").notNull(), // Who made the update
@@ -250,7 +261,7 @@ export const maintenanceTicketUpdates = pgTable("maintenance_ticket_updates", {
 });
 
 // Maintenance categories for AI routing rules
-export const maintenanceCategories = pgTable("maintenance_categories", {
+export const maintenanceCategories = pgTable("maintenance_category", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
@@ -268,7 +279,7 @@ export const maintenanceCategories = pgTable("maintenance_categories", {
 });
 
 // Staff profiles and management
-export const staffProfiles = pgTable("staff_profiles", {
+export const staffProfiles = pgTable("staff_profile", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().unique(), // Link to users table
 
@@ -440,7 +451,7 @@ export const staffTraining = pgTable("staff_training", {
 });
 
 // Property workflow management - tracks entire property journey
-export const propertyWorkflows = pgTable("property_workflows", {
+export const propertyWorkflows = pgTable("property_workflow", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id"),
 
@@ -483,7 +494,7 @@ export const propertyWorkflows = pgTable("property_workflows", {
 });
 
 // Viewing appointments management
-export const viewingAppointments = pgTable("viewing_appointments", {
+export const viewingAppointments = pgTable("viewing_appointment", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
 
@@ -521,7 +532,7 @@ export const viewingAppointments = pgTable("viewing_appointments", {
 });
 
 // Offers management
-export const propertyOffers = pgTable("property_offers", {
+export const propertyOffers = pgTable("property_offer", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   workflowId: integer("workflow_id"),
@@ -562,7 +573,7 @@ export const propertyOffers = pgTable("property_offers", {
 });
 
 // Contract and document management
-export const contractDocuments = pgTable("contract_documents", {
+export const contractDocuments = pgTable("contract_document", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   workflowId: integer("workflow_id"),
@@ -601,7 +612,7 @@ export const contractDocuments = pgTable("contract_documents", {
 });
 
 // Customer enquiry automation
-export const customerEnquiries = pgTable("customer_enquiries", {
+export const customerEnquiries = pgTable("customer_enquiry", {
   id: serial("id").primaryKey(),
 
   // Enquiry source
@@ -654,7 +665,7 @@ export const customerEnquiries = pgTable("customer_enquiries", {
 });
 
 // Automated communication templates
-export const communicationTemplates = pgTable("communication_templates", {
+export const communicationTemplates = pgTable("communication_template", {
   id: serial("id").primaryKey(),
 
   templateName: text("template_name").notNull(),
@@ -683,7 +694,7 @@ export const communicationTemplates = pgTable("communication_templates", {
 });
 
 // Property Management - Maintenance Requests
-export const maintenanceRequests = pgTable("maintenance_requests", {
+export const maintenanceRequests = pgTable("maintenance_request", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   tenantId: integer("tenant_id").notNull(),
@@ -735,7 +746,7 @@ export const maintenanceRequests = pgTable("maintenance_requests", {
 });
 
 // Work Orders for maintenance
-export const workOrders = pgTable("work_orders", {
+export const workOrders = pgTable("work_order", {
   id: serial("id").primaryKey(),
   maintenanceRequestId: integer("maintenance_request_id").notNull(),
   contractorId: integer("contractor_id").notNull(),
@@ -779,11 +790,12 @@ export const workOrders = pgTable("work_orders", {
 });
 
 // Landlords table for property management (can be company or individual)
-export const landlords = pgTable("landlords", {
+export const landlords = pgTable("landlord", {
   id: serial("id").primaryKey(),
 
   // Type: company or individual
   landlordType: text("landlord_type").notNull().default("individual"), // 'company' or 'individual'
+  isCorporate: boolean("is_corporate").default(false), // true = corporate landlord, false = individual
 
   // Landlord/Company details
   name: text("name").notNull(),
@@ -822,6 +834,10 @@ export const landlords = pgTable("landlords", {
   // KYC references - FK to separate KYC tables
   personalKycId: integer("personal_kyc_id"), // FK to personal_kyc (for individuals)
   corporateKycId: integer("corporate_kyc_id"), // FK to corporate_kyc (for companies)
+
+  // Ownership references - link to new ownership tables
+  corporateOwnerId: integer("corporate_owner_id"), // FK to corporate_owners (if landlordType = 'company')
+  beneficialOwnerId: integer("beneficial_owner_id"), // FK to beneficial_owners (if landlordType = 'individual' - self as beneficial owner)
 
   // Status
   isActive: boolean("is_active").default(true),
@@ -893,8 +909,143 @@ export const corporateKyc = pgTable("corporate_kyc", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
+// Corporate Owner - for corporate landlord entities
+// A landlord can reference a corporate_owner when landlordType = 'company'
+// Corporate landlords: Property → Landlord → Corporate Owner → Beneficial Owners
+export const corporateOwner = pgTable("corporate_owner", {
+  id: serial("id").primaryKey(),
+
+  // Link to landlord (required - each corporate owner belongs to one corporate landlord)
+  landlordId: integer("landlord_id"), // FK to landlords
+
+  // Company details
+  companyName: text("company_name").notNull(),
+  companyRegistrationNo: text("company_registration_no"),
+  companyVatNo: text("company_vat_no"),
+
+  // Registered address
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country").default("UK"),
+
+  // Contact details
+  email: text("email"),
+  phone: text("phone"),
+
+  // Company documents
+  certificateOfIncorporationUrl: text("certificate_of_incorporation_url"),
+  memorandumOfAssociationUrl: text("memorandum_of_association_url"),
+  articlesOfAssociationUrl: text("articles_of_association_url"),
+
+  // Status
+  isActive: boolean("is_active").default(true),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Beneficial Owners - individuals who ultimately own/control a corporate or are the landlord themselves
+// For individual landlords: one beneficial owner record (the landlord themselves) - links via landlordId
+// For corporate landlords: one or more beneficial owner records (the people behind the company) - links via corporateOwnerId
+// All KYC is held at this level
+// Flow: Individual: Property → Landlord → Beneficial Owner (direct via landlordId)
+//       Corporate: Property → Landlord → Corporate Owner → Beneficial Owner (via corporateOwnerId)
+export const beneficialOwner = pgTable("beneficial_owner", {
+  id: serial("id").primaryKey(),
+
+  // Link to landlord (for individual landlords - direct link)
+  landlordId: integer("landlord_id"), // FK to landlords (used when landlord.isCorporate = false)
+
+  // Link to corporate owner (for corporate landlords)
+  corporateOwnerId: integer("corporate_owner_id"), // FK to corporate_owner (used when landlord.isCorporate = true)
+
+  // Legacy field for unified contacts system (deprecated, keep for backwards compatibility)
+  companyDetailsId: integer("company_details_id"), // FK to company_details (legacy)
+
+  // Personal details
+  fullName: text("full_name"),
+  email: text("email"),
+  phone: text("phone"),
+  mobile: text("mobile"),
+
+  // Address (legacy field)
+  address: text("address"),
+
+  // Address (structured)
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country").default("UK"),
+
+  // Personal information
+  dateOfBirth: timestamp("date_of_birth"),
+  nationality: text("nationality"),
+  nationalInsuranceNo: text("national_insurance_no"),
+
+  // Ownership details (for corporate beneficial owners)
+  ownershipPercentage: decimal("ownership_percentage"), // Percentage of company owned
+  isDirector: boolean("is_director").default(false),
+  isPsc: boolean("is_psc").default(false), // Person with Significant Control
+  isTrustee: boolean("is_trustee").default(false),
+
+  // KYC - Identity Documents
+  idDocumentType: text("id_document_type"), // 'passport', 'driving_license', 'national_id'
+  idDocumentUrl: text("id_document_url"),
+  idDocumentNumber: text("id_document_number"),
+  idDocumentExpiry: timestamp("id_document_expiry"),
+
+  // Legacy passport fields
+  passportNumber: text("passport_number"),
+  passportExpiry: timestamp("passport_expiry"),
+
+  // KYC - Secondary ID
+  secondaryIdType: text("secondary_id_type"),
+  secondaryIdUrl: text("secondary_id_url"),
+  secondaryIdNumber: text("secondary_id_number"),
+  secondaryIdExpiry: timestamp("secondary_id_expiry"),
+
+  // KYC - Proof of Address
+  proofOfAddressType: text("proof_of_address_type"), // 'utility_bill', 'bank_statement', 'council_tax'
+  proofOfAddressUrl: text("proof_of_address_url"),
+  proofOfAddressDate: timestamp("proof_of_address_date"),
+
+  // KYC - Verification Status
+  kycVerified: boolean("kyc_verified").default(false),
+  kycVerifiedAt: timestamp("kyc_verified_at"),
+  kycVerifiedBy: integer("kyc_verified_by"), // User ID who verified
+  kycVerificationNotes: text("kyc_verification_notes"),
+  notes: text("notes"),
+
+  // AML Check
+  amlCheckCompleted: boolean("aml_check_completed").default(false),
+  amlCheckDate: timestamp("aml_check_date"),
+  amlCheckResult: text("aml_check_result"), // 'passed', 'failed', 'review_required'
+  amlCheckNotes: text("aml_check_notes"),
+
+  // PEP (Politically Exposed Person) Check
+  pepCheckCompleted: boolean("pep_check_completed").default(false),
+  pepCheckDate: timestamp("pep_check_date"),
+  pepCheckResult: text("pep_check_result"), // 'clear', 'flagged'
+  pepCheckNotes: text("pep_check_notes"),
+
+  // Sanctions Check
+  sanctionsCheckCompleted: boolean("sanctions_check_completed").default(false),
+  sanctionsCheckDate: timestamp("sanctions_check_date"),
+  sanctionsCheckResult: text("sanctions_check_result"), // 'clear', 'flagged'
+  sanctionsCheckNotes: text("sanctions_check_notes"),
+
+  // Status
+  isActive: boolean("is_active").default(true),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
 // Rental agreements/tenancies linking properties to landlords
-export const rentalAgreements = pgTable("rental_agreements", {
+export const rentalAgreements = pgTable("rental_agreement", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   landlordId: integer("landlord_id").notNull(),
@@ -933,12 +1084,38 @@ export const rentalAgreements = pgTable("rental_agreements", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
-// Tenants - linking users to properties they rent with due diligence tracking
-export const tenants = pgTable("tenants", {
+// Tenant - contains all basic details about a tenant with FK relationships
+export const tenant = pgTable("tenant", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(), // Reference to users table
-  propertyId: integer("property_id").notNull(), // Reference to properties table
+
+  // Foreign key relationships
+  userId: integer("user_id"), // Reference to users table (optional)
+  propertyId: integer("property_id"), // Reference to properties table
+  landlordId: integer("landlord_id"), // Reference to landlords table
+  tenancyContractId: integer("tenancy_contract_id"), // Reference to tenancy_contracts table
+  contractId: integer("contract_id"), // Reference to contracts table
   rentalAgreementId: integer("rental_agreement_id"), // Reference to rental_agreements
+
+  // Personal details
+  name: text("name"),
+  email: text("email"),
+  phone: text("phone"),
+  mobile: text("mobile"),
+
+  // Address
+  address: text("address"),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country"),
+
+  // Employment details
+  employer: text("employer"),
+  employerAddress: text("employer_address"),
+  employerPhone: text("employer_phone"),
+  jobTitle: text("job_title"),
+  annualIncome: text("annual_income"),
 
   // Tenant details
   moveInDate: timestamp("move_in_date"),
@@ -948,6 +1125,7 @@ export const tenants = pgTable("tenants", {
   preferredContactMethod: text("preferred_contact_method").default("email"), // 'email', 'phone', 'whatsapp', 'sms'
   emergencyContactName: text("emergency_contact_name"),
   emergencyContactPhone: text("emergency_contact_phone"),
+  emergencyContactRelationship: text("emergency_contact_relationship"),
 
   // Due diligence - Reference checks
   workReference: text("work_reference"), // 'pending', 'verified', 'not_required', 'failed'
@@ -966,6 +1144,9 @@ export const tenants = pgTable("tenants", {
   idVerified: boolean("id_verified").default(false),
   idDocumentUrl: text("id_document_url"),
   idVerificationDate: timestamp("id_verification_date"),
+  idVerificationStatus: text("id_verification_status"),
+  idVerificationToken: text("id_verification_token"),
+  idVerificationTokenExpiry: timestamp("id_verification_token_expiry"),
 
   // Guarantor details
   guarantorName: text("guarantor_name"),
@@ -985,7 +1166,7 @@ export const tenants = pgTable("tenants", {
 });
 
 // Managed Property Documents - checklist items and file references
-export const managedPropertyDocuments = pgTable("managed_property_documents", {
+export const managedPropertyDocuments = pgTable("managed_property_document", {
   id: serial("id").primaryKey(),
   rentalAgreementId: integer("rental_agreement_id").notNull(),
   propertyId: integer("property_id").notNull(),
@@ -1019,7 +1200,7 @@ export const managedPropertyDocuments = pgTable("managed_property_documents", {
 });
 
 // Property Inventory
-export const propertyInventories = pgTable("property_inventories", {
+export const propertyInventories = pgTable("property_inventory", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   rentalAgreementId: integer("rental_agreement_id"),
@@ -1042,7 +1223,7 @@ export const propertyInventories = pgTable("property_inventories", {
 });
 
 // Inventory Items
-export const inventoryItems = pgTable("inventory_items", {
+export const inventoryItems = pgTable("inventory_item", {
   id: serial("id").primaryKey(),
   inventoryId: integer("inventory_id").notNull(),
 
@@ -1066,7 +1247,7 @@ export const inventoryItems = pgTable("inventory_items", {
 });
 
 // Contractors/Vendors
-export const contractors = pgTable("contractors", {
+export const contractors = pgTable("contractor", {
   id: serial("id").primaryKey(),
 
   // Company details
@@ -1108,7 +1289,7 @@ export const contractors = pgTable("contractors", {
 });
 
 // Property Certifications Management
-export const propertyCertifications = pgTable("property_certifications", {
+export const propertyCertifications = pgTable("property_certification", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
 
@@ -1152,7 +1333,7 @@ export const propertyCertifications = pgTable("property_certifications", {
 });
 
 // Certification reminder schedule
-export const certificationReminders = pgTable("certification_reminders", {
+export const certificationReminders = pgTable("certification_reminder", {
   id: serial("id").primaryKey(),
   certificationId: integer("certification_id").notNull(),
   propertyId: integer("property_id").notNull(),
@@ -1183,7 +1364,7 @@ export const certificationReminders = pgTable("certification_reminders", {
 });
 
 // Property inspection reports
-export const inspectionReports = pgTable("inspection_reports", {
+export const inspectionReports = pgTable("inspection_report", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
 
@@ -1227,7 +1408,7 @@ export const inspectionReports = pgTable("inspection_reports", {
 });
 
 // Favorites Lists (for organizing saved properties)
-export const favoritesLists = pgTable("favorites_lists", {
+export const favoritesLists = pgTable("favorites_list", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
 
@@ -1244,7 +1425,7 @@ export const favoritesLists = pgTable("favorites_lists", {
 });
 
 // Saved Properties by users (now linked to favorites lists)
-export const savedProperties = pgTable("saved_properties", {
+export const savedProperties = pgTable("saved_property", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   propertyId: integer("property_id").notNull(),
@@ -1267,7 +1448,7 @@ export const savedProperties = pgTable("saved_properties", {
 });
 
 // Tenant Support Tickets
-export const supportTickets = pgTable("support_tickets", {
+export const supportTickets = pgTable("support_ticket", {
   id: serial("id").primaryKey(),
   tenantId: integer("tenant_id").notNull(),
   propertyId: integer("property_id").notNull(),
@@ -1331,7 +1512,7 @@ export const supportTickets = pgTable("support_tickets", {
 });
 
 // Ticket Comments/Conversation
-export const ticketComments = pgTable("ticket_comments", {
+export const ticketComments = pgTable("ticket_comment", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").notNull(),
   userId: integer("user_id").notNull(),
@@ -1345,7 +1526,7 @@ export const ticketComments = pgTable("ticket_comments", {
 });
 
 // Contractor Quotes for Support Tickets
-export const contractorQuotes = pgTable("contractor_quotes", {
+export const contractorQuotes = pgTable("contractor_quote", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").notNull(),
   contractorId: integer("contractor_id").notNull(),
@@ -1398,7 +1579,7 @@ export const contractorQuotes = pgTable("contractor_quotes", {
 });
 
 // Ticket Workflow Events - tracks every state change for property manager visibility
-export const ticketWorkflowEvents = pgTable("ticket_workflow_events", {
+export const ticketWorkflowEvents = pgTable("ticket_workflow_event", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").notNull(),
   quoteId: integer("quote_id"), // Link to contractor quote if applicable
@@ -1430,7 +1611,7 @@ export const ticketWorkflowEvents = pgTable("ticket_workflow_events", {
 });
 
 // Property search alerts for users
-export const propertyAlerts = pgTable("property_alerts", {
+export const propertyAlerts = pgTable("property_alert", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
 
@@ -1456,7 +1637,7 @@ export const propertyAlerts = pgTable("property_alerts", {
 });
 
 // Mailing list subscriptions
-export const mailingListSubscriptions = pgTable("mailing_list_subscriptions", {
+export const mailingListSubscriptions = pgTable("mailing_list_subscription", {
   id: serial("id").primaryKey(),
   userId: integer("user_id"),
   email: text("email").notNull(),
@@ -1483,7 +1664,7 @@ export const mailingListSubscriptions = pgTable("mailing_list_subscriptions", {
 });
 
 // User property preferences/profiles
-export const userPropertyPreferences = pgTable("user_property_preferences", {
+export const userPropertyPreferences = pgTable("user_property_preference", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
 
@@ -1524,7 +1705,7 @@ export const userPropertyPreferences = pgTable("user_property_preferences", {
 });
 
 // User activity tracking
-export const userActivities = pgTable("user_activities", {
+export const userActivities = pgTable("user_activity", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
 
@@ -1543,7 +1724,7 @@ export const userActivities = pgTable("user_activities", {
 });
 
 // Admin User Audit Logs
-export const adminUserAuditLogs = pgTable("admin_user_audit_logs", {
+export const adminUserAuditLogs = pgTable("admin_user_audit_log", {
   id: serial("id").primaryKey(),
   adminId: integer("admin_id").notNull(), // Admin who performed the action
   targetUserId: integer("target_user_id"), // User being modified
@@ -1564,7 +1745,7 @@ export const adminUserAuditLogs = pgTable("admin_user_audit_logs", {
 });
 
 // Social media posts tracking
-export const socialMediaPosts = pgTable("social_media_posts", {
+export const socialMediaPosts = pgTable("social_media_post", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   platform: text("platform").notNull(), // 'facebook', 'instagram', 'twitter', 'linkedin'
@@ -1601,7 +1782,7 @@ export const socialMediaPosts = pgTable("social_media_posts", {
 });
 
 // Social media accounts configuration
-export const socialMediaAccounts = pgTable("social_media_accounts", {
+export const socialMediaAccounts = pgTable("social_media_account", {
   id: serial("id").primaryKey(),
   platform: text("platform").notNull().unique(), // 'facebook', 'instagram', 'twitter'
 
@@ -1637,7 +1818,7 @@ export const socialMediaAccounts = pgTable("social_media_accounts", {
 // ==========================================
 
 // Unified contacts table for all stakeholder types
-export const unifiedContacts = pgTable("unified_contacts", {
+export const unifiedContacts = pgTable("unified_contact", {
   id: serial("id").primaryKey(),
   contactType: text("contact_type").notNull(), // 'tenant', 'landlord', 'buyer', 'renter', 'contractor', 'vendor'
   firstName: text("first_name"),
@@ -1689,7 +1870,7 @@ export const unifiedContacts = pgTable("unified_contacts", {
 });
 
 // Extended details for corporate entities
-export const companyDetails = pgTable("company_details", {
+export const companyDetails = pgTable("company_detail", {
   id: serial("id").primaryKey(),
   contactId: integer("contact_id").notNull(),
   companyName: text("company_name").notNull(),
@@ -1707,24 +1888,8 @@ export const companyDetails = pgTable("company_details", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
-// Beneficial owners for corporate contacts (25%+ ownership)
-export const beneficialOwners = pgTable("beneficial_owners", {
-  id: serial("id").primaryKey(),
-  companyDetailsId: integer("company_details_id").notNull(),
-  fullName: text("full_name").notNull(),
-  ownershipPercentage: decimal("ownership_percentage"),
-  isTrustee: boolean("is_trustee").default(false),
-  nationality: text("nationality"),
-  dateOfBirth: timestamp("date_of_birth"),
-  address: text("address"),
-
-  // KYC reference
-  kycVerified: boolean("kyc_verified").default(false),
-  createdAt: timestamp("created_at").notNull().defaultNow()
-});
-
 // Unified KYC document tracking
-export const kycDocuments = pgTable("kyc_documents", {
+export const kycDocuments = pgTable("kyc_document", {
   id: serial("id").primaryKey(),
   contactId: integer("contact_id"), // Optional: linked to contact
   beneficialOwnerId: integer("beneficial_owner_id"), // Optional: linked to UBO
@@ -1761,7 +1926,7 @@ export const contactStatusHistory = pgTable("contact_status_history", {
 });
 
 // Dedicated Managed Properties table
-export const managedProperties = pgTable("managed_properties", {
+export const managedProperties = pgTable("managed_property", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull().unique(),
   landlordId: integer("landlord_id").notNull(), // Unified contact ID
@@ -1795,7 +1960,7 @@ export const managedPropertyCompliance = pgTable("managed_property_compliance", 
 });
 
 // Joint Tenants support
-export const jointTenants = pgTable("joint_tenants", {
+export const jointTenants = pgTable("joint_tenant", {
   id: serial("id").primaryKey(),
   tenancyContractId: integer("tenancy_contract_id").notNull(),
   contactId: integer("contact_id").notNull(), // Unified contact ID
@@ -1836,7 +2001,7 @@ export const salesProgression = pgTable("sales_progression", {
 });
 
 // Property portal credentials (encrypted storage)
-export const portalCredentials = pgTable("portal_credentials", {
+export const portalCredentials = pgTable("portal_credential", {
   id: serial("id").primaryKey(),
   portalName: text("portal_name").notNull().unique(), // 'zoopla', 'propertyfinder', etc
 
@@ -1883,12 +2048,23 @@ export const companyDetailsRelations = relations(companyDetails, ({ one, many })
     fields: [companyDetails.contactId],
     references: [unifiedContacts.id]
   }),
-  beneficialOwners: many(beneficialOwners)
+  beneficialOwners: many(beneficialOwner)
 }));
 
-export const beneficialOwnersRelations = relations(beneficialOwners, ({ one, many }) => ({
+export const beneficialOwnerRelations = relations(beneficialOwner, ({ one, many }) => ({
+  // For individual landlords: direct link to landlord
+  landlord: one(landlords, {
+    fields: [beneficialOwner.landlordId],
+    references: [landlords.id]
+  }),
+  // For corporate landlords: link through corporate owner
+  corporateOwner: one(corporateOwner, {
+    fields: [beneficialOwner.corporateOwnerId],
+    references: [corporateOwner.id]
+  }),
+  // Legacy: link to unified contact company details (deprecated)
   company: one(companyDetails, {
-    fields: [beneficialOwners.companyDetailsId],
+    fields: [beneficialOwner.companyDetailsId],
     references: [companyDetails.id]
   }),
   kycDocuments: many(kycDocuments)
@@ -1899,9 +2075,9 @@ export const kycDocumentsRelations = relations(kycDocuments, ({ one }) => ({
     fields: [kycDocuments.contactId],
     references: [unifiedContacts.id]
   }),
-  beneficialOwner: one(beneficialOwners, {
+  beneficialOwnerRecord: one(beneficialOwner, {
     fields: [kycDocuments.beneficialOwnerId],
-    references: [beneficialOwners.id]
+    references: [beneficialOwner.id]
   })
 }));
 
@@ -2017,7 +2193,7 @@ export const maintenanceCategoriesRelations = relations(maintenanceCategories, (
 }));
 
 // Property inquiries schema (for potential buyers/renters)
-export const propertyInquiries = pgTable("property_inquiries", {
+export const propertyInquiries = pgTable("property_inquiry", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   inquiryType: text("inquiry_type").notNull(), // 'viewing_request', 'information_request', 'offer'
@@ -2039,7 +2215,7 @@ export const propertyInquiries = pgTable("property_inquiries", {
 });
 
 // General contact inquiries (valuation requests, general questions)
-export const contacts = pgTable("contacts", {
+export const contacts = pgTable("contact", {
   id: serial("id").primaryKey(),
   inquiryType: text("inquiry_type").notNull(), // 'valuation', 'selling', 'letting', 'general'
 
@@ -2070,7 +2246,7 @@ export const propertyInquiriesRelations = relations(propertyInquiries, ({ one })
 }));
 
 // Property valuations for selling services
-export const valuations = pgTable("valuations", {
+export const valuations = pgTable("valuation", {
   id: serial("id").primaryKey(),
   contactId: integer("contact_id").notNull(),
 
@@ -2116,21 +2292,33 @@ export const usersRelations = relations(users, ({ many }) => ({
   ticketUpdates: many(maintenanceTicketUpdates, { relationName: "user_updates" }),
   defaultCategories: many(maintenanceCategories, { relationName: "category_assignee" }),
   escalationCategories: many(maintenanceCategories, { relationName: "category_escalation" }),
-  tenantProfiles: many(tenants)
+  tenantProfiles: many(tenant)
 }));
 
 // Tenant relations
-export const tenantsRelations = relations(tenants, ({ one }) => ({
+export const tenantRelations = relations(tenant, ({ one }) => ({
   user: one(users, {
-    fields: [tenants.userId],
+    fields: [tenant.userId],
     references: [users.id]
   }),
   property: one(properties, {
-    fields: [tenants.propertyId],
+    fields: [tenant.propertyId],
     references: [properties.id]
   }),
+  landlord: one(landlords, {
+    fields: [tenant.landlordId],
+    references: [landlords.id]
+  }),
+  tenancyContract: one(tenancyContracts, {
+    fields: [tenant.tenancyContractId],
+    references: [tenancyContracts.id]
+  }),
+  contract: one(contracts, {
+    fields: [tenant.contractId],
+    references: [contracts.id]
+  }),
   rentalAgreement: one(rentalAgreements, {
-    fields: [tenants.rentalAgreementId],
+    fields: [tenant.rentalAgreementId],
     references: [rentalAgreements.id]
   })
 }));
@@ -2140,7 +2328,7 @@ export const tenantsRelations = relations(tenants, ({ one }) => ({
 // ============================================
 
 // Estate Agency Roles - UK property industry specific roles
-export const estateAgencyRoles = pgTable("estate_agency_roles", {
+export const estateAgencyRoles = pgTable("estate_agency_role", {
   id: serial("id").primaryKey(),
   roleCode: text("role_code").notNull().unique(),
   // Role codes: 'branch_manager', 'sales_negotiator', 'senior_sales_negotiator',
@@ -2171,7 +2359,7 @@ export const estateAgencyRoles = pgTable("estate_agency_roles", {
 });
 
 // Role permissions - what each role can access/do in the system
-export const rolePermissions = pgTable("role_permissions", {
+export const rolePermissions = pgTable("role_permission", {
   id: serial("id").primaryKey(),
   roleId: integer("role_id").notNull(),
 
@@ -2199,7 +2387,7 @@ export const rolePermissions = pgTable("role_permissions", {
 });
 
 // Staff role assignments - links users to their assigned role
-export const staffRoleAssignments = pgTable("staff_role_assignments", {
+export const staffRoleAssignments = pgTable("staff_role_assignment", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   roleId: integer("role_id").notNull(),
@@ -2486,7 +2674,7 @@ export const SECURITY_CLEARANCE_LABELS: Record<number, string> = {
 } as const;
 
 // Security Settings - feature-level access control
-export const securitySettings = pgTable("security_settings", {
+export const securitySettings = pgTable("security_setting", {
   id: serial("id").primaryKey(),
   featureKey: text("feature_key").notNull().unique(), // 'integrations', 'user_management', 'security_matrix', etc.
   featureName: text("feature_name").notNull(),
@@ -2514,7 +2702,7 @@ export const securityAuditLog = pgTable("security_audit_log", {
 });
 
 // Access Levels - defines the organizational hierarchy
-export const accessLevels = pgTable("access_levels", {
+export const accessLevels = pgTable("access_level", {
   id: serial("id").primaryKey(),
   levelCode: text("level_code").notNull().unique(), // 'owner', 'general_manager', 'sales_negotiator', etc.
   levelName: text("level_name").notNull(),
@@ -2530,7 +2718,7 @@ export const accessLevels = pgTable("access_levels", {
 });
 
 // User Custom Permissions - allows owner to override/add specific permissions per user
-export const userCustomPermissions = pgTable("user_custom_permissions", {
+export const userCustomPermissions = pgTable("user_custom_permission", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   featureKey: text("feature_key").notNull(), // Reference to security_settings.feature_key
@@ -2543,7 +2731,7 @@ export const userCustomPermissions = pgTable("user_custom_permissions", {
 });
 
 // Feature Module Groups - groups features into logical modules
-export const featureModules = pgTable("feature_modules", {
+export const featureModules = pgTable("feature_module", {
   id: serial("id").primaryKey(),
   moduleCode: text("module_code").notNull().unique(),
   moduleName: text("module_name").notNull(),
@@ -2555,7 +2743,7 @@ export const featureModules = pgTable("feature_modules", {
 });
 
 // Access Level Permissions - defines which features each access level has
-export const accessLevelPermissions = pgTable("access_level_permissions", {
+export const accessLevelPermissions = pgTable("access_level_permission", {
   id: serial("id").primaryKey(),
   accessLevelId: integer("access_level_id").notNull(),
   featureKey: text("feature_key").notNull(),
@@ -2991,7 +3179,7 @@ export const insertCompanyDetailsSchema = createInsertSchema(companyDetails).omi
   updatedAt: true
 });
 
-export const insertBeneficialOwnerSchema = createInsertSchema(beneficialOwners).omit({
+export const insertBeneficialOwnerSchema = createInsertSchema(beneficialOwner).omit({
   id: true,
   createdAt: true
 });
@@ -3271,7 +3459,7 @@ export const PROPERTY_FEATURES = [
 // ==========================================
 
 // Unified conversations (threads across all channels)
-export const conversations = pgTable("conversations", {
+export const conversations = pgTable("conversation", {
   id: serial("id").primaryKey(),
 
   // Participant info
@@ -3304,7 +3492,7 @@ export const conversations = pgTable("conversations", {
 });
 
 // Individual messages within conversations
-export const messages = pgTable("messages", {
+export const messages = pgTable("message", {
   id: serial("id").primaryKey(),
   conversationId: integer("conversation_id").notNull(),
 
@@ -3346,7 +3534,7 @@ export const messages = pgTable("messages", {
 });
 
 // Bulk messaging campaigns
-export const campaigns = pgTable("campaigns", {
+export const campaigns = pgTable("campaign", {
   id: serial("id").primaryKey(),
 
   // Campaign details
@@ -3387,7 +3575,7 @@ export const campaigns = pgTable("campaigns", {
 });
 
 // Campaign recipients tracking
-export const campaignRecipients = pgTable("campaign_recipients", {
+export const campaignRecipients = pgTable("campaign_recipient", {
   id: serial("id").primaryKey(),
   campaignId: integer("campaign_id").notNull(),
 
@@ -3418,7 +3606,7 @@ export const campaignRecipients = pgTable("campaign_recipients", {
 // ==========================================
 
 // Payments tracking (rent, deposits, fees)
-export const payments = pgTable("payments", {
+export const payments = pgTable("payment", {
   id: serial("id").primaryKey(),
 
   // Payment context
@@ -3469,7 +3657,7 @@ export const payments = pgTable("payments", {
 });
 
 // Recurring payment schedules
-export const paymentSchedules = pgTable("payment_schedules", {
+export const paymentSchedules = pgTable("payment_schedule", {
   id: serial("id").primaryKey(),
 
   // Context
@@ -3530,7 +3718,7 @@ export const analyticsCache = pgTable("analytics_cache", {
 });
 
 // Saved/scheduled reports
-export const reports = pgTable("reports", {
+export const reports = pgTable("report", {
   id: serial("id").primaryKey(),
 
   // Report details
@@ -3564,14 +3752,16 @@ export const reports = pgTable("reports", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
-// Document storage metadata
-export const documents = pgTable("documents", {
+// Document storage - unified table for all documents across entities
+// Stores documents for: properties, landlords, tenants, tenancies, beneficial owners, corporate owners
+export const document = pgTable("document", {
   id: serial("id").primaryKey(),
 
   // Document info
   name: text("name").notNull(),
   originalName: text("original_name").notNull(),
-  documentType: text("document_type").notNull(), // 'contract', 'certificate', 'invoice', 'id', 'photo', 'report', 'other'
+  documentType: text("document_type").notNull(), // 'tenancy_agreement', 'epc', 'gas_safety', 'eicr', 'id_document', 'passport', 'proof_of_address', 'bank_statement', 'reference', 'inventory', 'check_in', 'check_out', 'certificate', 'invoice', 'photo', 'report', 'other'
+  description: text("description"),
   mimeType: text("mime_type").notNull(),
   size: integer("size").notNull(), // In bytes
 
@@ -3579,16 +3769,37 @@ export const documents = pgTable("documents", {
   storageUrl: text("storage_url").notNull(),
   storageProvider: text("storage_provider").default("local"), // 'local', 's3', 'cloudinary'
 
-  // Context
-  entityType: text("entity_type"), // 'property', 'user', 'ticket', 'payment', etc
+  // Entity references - polymorphic association (for backwards compatibility)
+  entityType: text("entity_type"), // 'property', 'landlord', 'tenant', 'tenancy', 'beneficial_owner', 'corporate_owner', 'user', 'ticket', 'payment'
   entityId: integer("entity_id"),
+
+  // Direct FK references for type safety and performance
+  propertyId: integer("property_id"),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+  tenancyId: integer("tenancy_id"),
+  beneficialOwnerId: integer("beneficial_owner_id"),
+  corporateOwnerId: integer("corporate_owner_id"),
+
+  // Document dates
+  documentDate: timestamp("document_date"),
+  expiryDate: timestamp("expiry_date"),
+  referenceNumber: text("reference_number"),
+
+  // Status & verification
+  status: text("status").default("active"), // 'active', 'expired', 'superseded', 'draft'
+  isRequired: boolean("is_required").default(false),
+  isVerified: boolean("is_verified").default(false),
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at"),
 
   // Security
   isPublic: boolean("is_public").default(false),
   accessToken: text("access_token"), // For secure access
 
-  // Metadata
+  // Additional info
   metadata: json("metadata"), // Additional info like dimensions for images
+  notes: text("notes"),
 
   // Uploaded by
   uploadedBy: integer("uploaded_by"),
@@ -3597,15 +3808,62 @@ export const documents = pgTable("documents", {
   version: integer("version").default(1),
   previousVersionId: integer("previous_version_id"),
 
-  createdAt: timestamp("created_at").notNull().defaultNow()
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
 });
+
+// Relations for document table
+export const documentRelations = relations(document, ({ one }) => ({
+  property: one(properties, {
+    fields: [document.propertyId],
+    references: [properties.id]
+  }),
+  landlord: one(landlords, {
+    fields: [document.landlordId],
+    references: [landlords.id]
+  }),
+  tenant: one(tenant, {
+    fields: [document.tenantId],
+    references: [tenant.id]
+  }),
+  tenancy: one(tenancies, {
+    fields: [document.tenancyId],
+    references: [tenancies.id]
+  }),
+  beneficialOwnerRecord: one(beneficialOwner, {
+    fields: [document.beneficialOwnerId],
+    references: [beneficialOwner.id]
+  }),
+  corporateOwnerRecord: one(corporateOwner, {
+    fields: [document.corporateOwnerId],
+    references: [corporateOwner.id]
+  }),
+  verifiedByUser: one(users, {
+    fields: [document.verifiedBy],
+    references: [users.id]
+  }),
+  uploadedByUser: one(users, {
+    fields: [document.uploadedBy],
+    references: [users.id]
+  })
+}));
+
+// Insert schema for document
+export const insertDocumentSchema = createInsertSchema(document).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type Document = typeof document.$inferSelect;
+export type InsertDocument = typeof document.$inferInsert;
 
 // ==========================================
 // CALENDAR & SCHEDULING TABLES
 // ==========================================
 
 // Calendar events (viewings, valuations, meetings)
-export const calendarEvents = pgTable("calendar_events", {
+export const calendarEvents = pgTable("calendar_event", {
   id: serial("id").primaryKey(),
 
   // Event details
@@ -3655,7 +3913,7 @@ export const calendarEvents = pgTable("calendar_events", {
 });
 
 // User calendar settings and sync
-export const calendarSettings = pgTable("calendar_settings", {
+export const calendarSettings = pgTable("calendar_setting", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().unique(),
 
@@ -3692,7 +3950,7 @@ export const calendarSettings = pgTable("calendar_settings", {
 // ==========================================
 
 // Proactive leads from various monitoring sources
-export const proactiveLeads = pgTable("proactive_leads", {
+export const proactiveLeads = pgTable("proactive_lead", {
   id: serial("id").primaryKey(),
 
   // Lead source identification
@@ -3793,7 +4051,7 @@ export const proactiveLeads = pgTable("proactive_leads", {
 });
 
 // Lead monitoring configurations
-export const leadMonitoringConfigs = pgTable("lead_monitoring_configs", {
+export const leadMonitoringConfigs = pgTable("lead_monitoring_config", {
   id: serial("id").primaryKey(),
 
   // Monitor identification
@@ -3884,7 +4142,7 @@ export const leadContactHistory = pgTable("lead_contact_history", {
 });
 
 // Seasonal campaigns configuration
-export const seasonalCampaigns = pgTable("seasonal_campaigns", {
+export const seasonalCampaigns = pgTable("seasonal_campaign", {
   id: serial("id").primaryKey(),
 
   // Campaign identification
@@ -3988,7 +4246,7 @@ export const landlordCompliance = pgTable("landlord_compliance", {
 });
 
 // Propensity scoring model data
-export const propensityScores = pgTable("propensity_scores", {
+export const propensityScores = pgTable("propensity_score", {
   id: serial("id").primaryKey(),
 
   // Property identification
@@ -4044,7 +4302,7 @@ export const propensityScores = pgTable("propensity_scores", {
 });
 
 // Social media mentions for monitoring
-export const socialMediaMentions = pgTable("social_media_mentions", {
+export const socialMediaMentions = pgTable("social_media_mention", {
   id: serial("id").primaryKey(),
 
   // Platform info
@@ -4204,11 +4462,6 @@ export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit
   updatedAt: true
 });
 
-export const insertDocumentSchema = createInsertSchema(documents).omit({
-  id: true,
-  createdAt: true
-});
-
 export const insertLandlordSchema = createInsertSchema(landlords).omit({
   id: true,
   createdAt: true,
@@ -4221,7 +4474,13 @@ export const insertRentalAgreementSchema = createInsertSchema(rentalAgreements).
   updatedAt: true
 });
 
-export const insertTenantSchema = createInsertSchema(tenants).omit({
+export const insertTenantSchema = createInsertSchema(tenant).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export const insertCorporateOwnerSchema = createInsertSchema(corporateOwner).omit({
   id: true,
   createdAt: true,
   updatedAt: true
@@ -4252,9 +4511,6 @@ export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 
-export type Document = typeof documents.$inferSelect;
-export type InsertDocument = z.infer<typeof insertDocumentSchema>;
-
 export type Report = typeof reports.$inferSelect;
 export type InsertReport = z.infer<typeof insertReportSchema>;
 
@@ -4264,8 +4520,14 @@ export type InsertLandlord = z.infer<typeof insertLandlordSchema>;
 export type RentalAgreement = typeof rentalAgreements.$inferSelect;
 export type InsertRentalAgreement = z.infer<typeof insertRentalAgreementSchema>;
 
-export type Tenant = typeof tenants.$inferSelect;
+export type Tenant = typeof tenant.$inferSelect;
 export type InsertTenant = z.infer<typeof insertTenantSchema>;
+
+export type CorporateOwner = typeof corporateOwner.$inferSelect;
+export type InsertCorporateOwner = z.infer<typeof insertCorporateOwnerSchema>;
+
+export type BeneficialOwner = typeof beneficialOwner.$inferSelect;
+export type InsertBeneficialOwner = z.infer<typeof insertBeneficialOwnerSchema>;
 
 // Managed Property Documents
 export const insertManagedPropertyDocumentSchema = createInsertSchema(managedPropertyDocuments).omit({
@@ -4390,9 +4652,6 @@ export type InsertUnifiedContact = z.infer<typeof insertUnifiedContactSchema>;
 export type CompanyDetail = typeof companyDetails.$inferSelect;
 export type InsertCompanyDetail = z.infer<typeof insertCompanyDetailsSchema>;
 
-export type BeneficialOwner = typeof beneficialOwners.$inferSelect;
-export type InsertBeneficialOwner = z.infer<typeof insertBeneficialOwnerSchema>;
-
 export type KycDocument = typeof kycDocuments.$inferSelect;
 export type InsertKycDocument = z.infer<typeof insertKycDocumentSchema>;
 
@@ -4406,7 +4665,7 @@ export type SalesProgression = typeof salesProgression.$inferSelect;
 export type InsertSalesProgression = z.infer<typeof insertSalesProgressionSchema>;
 
 // Management fees - fee structures per property
-export const managementFees = pgTable("management_fees", {
+export const managementFees = pgTable("management_fee", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   feePercentage: decimal("fee_percentage").notNull(), // e.g., 10, 13, 14.4
@@ -4417,7 +4676,7 @@ export const managementFees = pgTable("management_fees", {
 });
 
 // Property certificates - compliance and safety certificates for managed properties
-export const propertyCertificates = pgTable("property_certificates", {
+export const propertyCertificates = pgTable("property_certificate", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
 
@@ -4449,8 +4708,9 @@ export const propertyCertificates = pgTable("property_certificates", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
-// Tenancy contracts - links landlords, properties, and tenants
-export const tenancyContracts = pgTable("tenancy_contracts", {
+// @deprecated - Use 'tenancies' table instead. This table is kept for backwards compatibility.
+// All tenancy agreement documents should now be stored in the 'documents' table.
+export const tenancyContracts = pgTable("tenancy_contract", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   landlordId: integer("landlord_id").notNull(),
@@ -4478,8 +4738,192 @@ export const tenancyContracts = pgTable("tenancy_contracts", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
+// Tenancies table - active tenancy records with full deposit and guarantor info
+export const tenancies = pgTable("tenancy", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  landlordId: integer("landlord_id").notNull(),
+  tenantId: integer("tenant_id"),
+
+  // Tenancy dates
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  periodMonths: integer("period_months"),
+  isPeriodic: boolean("is_periodic").default(false),
+
+  // Rent details
+  rentAmount: decimal("rent_amount").notNull(),
+  rentFrequency: text("rent_frequency").notNull().default("monthly"),
+  rentDueDay: integer("rent_due_day").default(1),
+
+  // Deposit details
+  depositAmount: decimal("deposit_amount"),
+  depositScheme: text("deposit_scheme"), // TDS, DPS
+  depositHolderType: text("deposit_holder_type"), // agency_custodial, agency_insurance, landlord
+  depositCertificateNumber: text("deposit_certificate_number"),
+  depositProtectedDate: timestamp("deposit_protected_date"),
+
+  // Guarantor details
+  guarantorName: text("guarantor_name"),
+  guarantorEmail: text("guarantor_email"),
+  guarantorPhone: text("guarantor_phone"),
+  guarantorAddress: text("guarantor_address"),
+
+  // Status
+  status: text("status").notNull().default("active"), // active, expired, terminated
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export type Tenancy = typeof tenancies.$inferSelect;
+export type InsertTenancy = typeof tenancies.$inferInsert;
+
+// ==========================================
+// TENANCY CONTRACTS/DOCUMENTS TABLE
+// Stores all paperwork associated with a tenancy
+// ==========================================
+
+// Document types for tenancy contracts
+export const contractDocumentTypes = [
+  'tenancy_agreement',
+  'ast_agreement',           // Assured Shorthold Tenancy
+  'reference_letter',
+  'bank_reference',
+  'employer_reference',
+  'previous_landlord_reference',
+  'guarantor_agreement',
+  'inventory_report',
+  'check_in_report',
+  'check_out_report',
+  'epc_certificate',
+  'gas_safety_certificate',
+  'eicr_certificate',
+  'deposit_certificate',
+  'standing_order_mandate',
+  'rent_demand',
+  'section_21_notice',
+  'section_8_notice',
+  'renewal_agreement',
+  'addendum',
+  'correspondence',
+  'other'
+] as const;
+
+export type ContractDocumentType = typeof contractDocumentTypes[number];
+
+// Human-readable labels for document types
+export const contractDocumentLabels: Record<ContractDocumentType, string> = {
+  'tenancy_agreement': 'Tenancy Agreement',
+  'ast_agreement': 'AST Agreement',
+  'reference_letter': 'Reference Letter',
+  'bank_reference': 'Bank Reference',
+  'employer_reference': 'Employer Reference',
+  'previous_landlord_reference': 'Previous Landlord Reference',
+  'guarantor_agreement': 'Guarantor Agreement',
+  'inventory_report': 'Inventory Report',
+  'check_in_report': 'Check-In Report',
+  'check_out_report': 'Check-Out Report',
+  'epc_certificate': 'EPC Certificate',
+  'gas_safety_certificate': 'Gas Safety Certificate',
+  'eicr_certificate': 'EICR Certificate',
+  'deposit_certificate': 'Deposit Protection Certificate',
+  'standing_order_mandate': 'Standing Order Mandate',
+  'rent_demand': 'Rent Demand',
+  'section_21_notice': 'Section 21 Notice',
+  'section_8_notice': 'Section 8 Notice',
+  'renewal_agreement': 'Renewal Agreement',
+  'addendum': 'Addendum',
+  'correspondence': 'Correspondence',
+  'other': 'Other Document'
+};
+
+// @deprecated - Use 'documents' table instead for all document storage.
+// This table is kept for backwards compatibility but should not be used for new code.
+export const contracts = pgTable("contract", {
+  id: serial("id").primaryKey(),
+
+  // Relationships
+  propertyId: integer("property_id").notNull(),
+  landlordId: integer("landlord_id").notNull(),
+  tenantId: integer("tenant_id"),
+  tenancyId: integer("tenancy_id"), // Links to tenancies table
+
+  // Document info
+  documentType: text("document_type").notNull(), // One of contractDocumentTypes
+  documentName: text("document_name").notNull(), // Display name
+  description: text("description"),
+
+  // File storage
+  fileUrl: text("file_url"), // URL/path to stored file
+  fileName: text("file_name"), // Original filename
+  fileSize: integer("file_size"), // Size in bytes
+  mimeType: text("mime_type"), // e.g., 'application/pdf'
+
+  // Document dates
+  documentDate: timestamp("document_date"), // Date on the document
+  expiryDate: timestamp("expiry_date"), // For certificates that expire
+
+  // Reference numbers
+  referenceNumber: text("reference_number"), // External reference (e.g., deposit certificate number)
+
+  // Status
+  status: text("status").notNull().default("active"), // active, superseded, expired, void
+  isRequired: boolean("is_required").default(false), // Is this a required document?
+  isVerified: boolean("is_verified").default(false), // Has this been verified?
+  verifiedBy: integer("verified_by"), // User ID who verified
+  verifiedAt: timestamp("verified_at"),
+
+  // Notes
+  notes: text("notes"),
+
+  // Audit
+  uploadedBy: integer("uploaded_by"), // User ID who uploaded
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Relations for contracts
+export const contractsRelations = relations(contracts, ({ one }) => ({
+  property: one(properties, {
+    fields: [contracts.propertyId],
+    references: [properties.id]
+  }),
+  landlord: one(landlords, {
+    fields: [contracts.landlordId],
+    references: [landlords.id]
+  }),
+  tenant: one(tenant, {
+    fields: [contracts.tenantId],
+    references: [tenant.id]
+  }),
+  tenancy: one(tenancies, {
+    fields: [contracts.tenancyId],
+    references: [tenancies.id]
+  }),
+  verifiedByUser: one(users, {
+    fields: [contracts.verifiedBy],
+    references: [users.id]
+  }),
+  uploadedByUser: one(users, {
+    fields: [contracts.uploadedBy],
+    references: [users.id]
+  })
+}));
+
+// Insert schema for contracts
+export const insertContractSchema = createInsertSchema(contracts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type Contract = typeof contracts.$inferSelect;
+export type InsertContract = typeof contracts.$inferInsert;
+
 // Property management checklists - compliance tracking per property/contract
-export const propertyChecklists = pgTable("property_checklists", {
+export const propertyChecklists = pgTable("property_checklist", {
   id: serial("id").primaryKey(),
   propertyId: integer("property_id").notNull(),
   contractId: integer("contract_id"),
@@ -4526,8 +4970,28 @@ export const propertyChecklists = pgTable("property_checklists", {
 // PROPERTY MANAGEMENT RELATIONS
 // ==========================================
 
-export const landlordsRelations = relations(landlords, ({ many }) => ({
-  contracts: many(tenancyContracts)
+export const landlordsRelations = relations(landlords, ({ one, many }) => ({
+  contracts: many(tenancyContracts),
+  // For corporate landlords: link to the corporate owner entity
+  corporateOwner: one(corporateOwner, {
+    fields: [landlords.corporateOwnerId],
+    references: [corporateOwner.id]
+  }),
+  // For individual landlords: direct link to beneficial owners
+  // For corporate landlords: beneficial owners are accessed via corporateOwner
+  beneficialOwners: many(beneficialOwner)
+}));
+
+// Corporate Owner Relations
+// Links: Landlord (parent) ← Corporate Owner → Beneficial Owners (children)
+export const corporateOwnerRelations = relations(corporateOwner, ({ one, many }) => ({
+  // Each corporate owner belongs to one corporate landlord
+  landlord: one(landlords, {
+    fields: [corporateOwner.landlordId],
+    references: [landlords.id]
+  }),
+  // Corporate owners have multiple beneficial owners (UBOs)
+  beneficialOwners: many(beneficialOwner)
 }));
 
 export const tenancyContractsRelations = relations(tenancyContracts, ({ one }) => ({
@@ -4535,9 +4999,9 @@ export const tenancyContractsRelations = relations(tenancyContracts, ({ one }) =
     fields: [tenancyContracts.landlordId],
     references: [landlords.id]
   }),
-  tenant: one(tenants, {
+  tenant: one(tenant, {
     fields: [tenancyContracts.tenantId],
-    references: [tenants.id]
+    references: [tenant.id]
   }),
   property: one(properties, {
     fields: [tenancyContracts.propertyId],
@@ -4647,8 +5111,36 @@ export const tenancyChecklistItemLabels: Record<TenancyChecklistItemType, string
   'spare_keys_in_office': 'Spare Keys in Office'
 };
 
+// Metadata for checklist items (category, workflow, document requirements)
+export const tenancyChecklistItemMeta: Record<TenancyChecklistItemType, {
+  category: string;
+  workflow: string;
+  requiresDocument: boolean;
+  autoCompleteOn?: string | null;
+}> = {
+  'tenancy_agreement': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'notices': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'guarantors_agreement': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'deposits_and_rent': { category: 'financial', workflow: 'onboarding', requiresDocument: false },
+  'standing_order': { category: 'financial', workflow: 'onboarding', requiresDocument: true },
+  'inventory': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'deposit_protection_dps': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'deposit_protection_tds': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'deposit_held_by_landlord': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'work_reference': { category: 'references', workflow: 'onboarding', requiresDocument: true },
+  'bank_reference': { category: 'references', workflow: 'onboarding', requiresDocument: true },
+  'previous_landlord_reference': { category: 'references', workflow: 'onboarding', requiresDocument: true },
+  'tenants_id': { category: 'identity', workflow: 'onboarding', requiresDocument: true },
+  'authorization_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'terms_and_conditions_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'information_sheet_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
+  'gas_safety_certificate': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'keys_given_to_tenant': { category: 'handover', workflow: 'general', requiresDocument: false },
+  'spare_keys_in_office': { category: 'handover', workflow: 'general', requiresDocument: false }
+};
+
 // Individual checklist items with document support
-export const tenancyChecklistItems = pgTable("tenancy_checklist_items", {
+export const tenancyChecklistItems = pgTable("tenancy_checklist_item", {
   id: serial("id").primaryKey(),
   tenancyId: integer("tenancy_id").notNull(), // References tenancyContracts.id
   itemType: text("item_type").notNull(), // One of tenancyChecklistItemTypes
@@ -4699,7 +5191,7 @@ export type TenancyChecklistItem = typeof tenancyChecklistItems.$inferSelect;
 // ==========================================
 
 // Master list of all compliance requirements
-export const complianceRequirements = pgTable("compliance_requirements", {
+export const complianceRequirements = pgTable("compliance_requirement", {
   id: serial("id").primaryKey(),
   code: text("code").notNull().unique(), // 'GAS_SAFETY', 'EICR', 'EPC', etc.
   name: text("name").notNull(),
@@ -4755,9 +5247,9 @@ export const complianceStatusRelations = relations(complianceStatus, ({ one }) =
     fields: [complianceStatus.landlordId],
     references: [landlords.id]
   }),
-  tenant: one(tenants, {
+  tenant: one(tenant, {
     fields: [complianceStatus.tenantId],
-    references: [tenants.id]
+    references: [tenant.id]
   })
 }));
 
@@ -4780,13 +5272,13 @@ export type ComplianceStatus = typeof complianceStatus.$inferSelect;
 export type InsertComplianceStatus = z.infer<typeof insertComplianceStatusSchema>;
 
 // Tenant Communications Log
-export const communications = pgTable("communications", {
+export const communications = pgTable("communication", {
   id: serial("id").primaryKey(),
   type: text("type").notNull(), // 'sms', 'email', 'phone', 'note'
   direction: text("direction").notNull(), // 'inbound', 'outbound'
   content: text("content").notNull(),
   status: text("status").notNull(), // 'sent', 'received', 'failed', 'draft'
-  tenantId: integer("tenant_id").references(() => tenants.id),
+  tenantId: integer("tenant_id").references(() => tenant.id),
   landlordId: integer("landlord_id").references(() => landlords.id),
   propertyId: integer("property_id").references(() => properties.id),
   createdAt: timestamp("created_at").defaultNow(),
@@ -4801,10 +5293,7 @@ export type InsertCommunication = typeof communications.$inferInsert;
 // PROPERTY MANAGEMENT DATA MODEL (V2)
 // ==========================================
 // This is the clean data model for property management:
-// - pm_properties: Managed properties (distinct from listed properties)
-// - pm_landlords: Property owners
-// - pm_tenants: Tenants
-// - pm_tenancies: Tenancy contracts linking property, landlord, and tenant
+// Property types for properties
 // ==========================================
 
 // Property types for all property tables
@@ -4835,566 +5324,12 @@ export const propertyTypes = [
 export type PropertyType = typeof propertyTypes[number];
 
 // ==========================================
-// PM_LANDLORDS - Property Owners
-// ==========================================
-export const pmLandlords = pgTable("pm_landlords", {
-  id: serial("id").primaryKey(),
-
-  // Type: company or individual
-  landlordType: text("landlord_type").notNull().default("individual"), // 'company' or 'individual'
-
-  // Basic details (for individuals use name, for companies use companyName)
-  name: text("name").notNull(), // Full name for individuals, director/contact name for companies
-  email: text("email"),
-  phone: text("phone"),
-  mobile: text("mobile"),
-
-  // Personal address
-  address: text("address"), // Full address as single field
-  addressLine1: text("address_line1"),
-  addressLine2: text("address_line2"),
-  city: text("city"),
-  postcode: text("postcode"),
-  country: text("country").default("United Kingdom"),
-
-  // Company details (if landlordType = 'company')
-  companyName: text("company_name"),
-  companyRegistrationNo: text("company_registration_no"),
-  companyVatNo: text("company_vat_no"),
-  companyAddress: text("company_address"),
-
-  // Bank details for rent payments
-  bankName: text("bank_name"),
-  bankAccountNumber: text("bank_account_number"),
-  bankSortCode: text("bank_sort_code"),
-  bankAccountHolderName: text("bank_account_holder_name"),
-
-  // Status
-  status: text("status").notNull().default("active"), // 'active', 'inactive', 'prospective'
-
-  // Notes
-  notes: text("notes"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_TENANTS - Tenants
-// ==========================================
-export const pmTenants = pgTable("pm_tenants", {
-  id: serial("id").primaryKey(),
-
-  // Basic details
-  name: text("name").notNull(), // Full name
-  email: text("email"),
-  phone: text("phone"),
-  mobile: text("mobile"),
-
-  // Current address (before move-in or forwarding address)
-  address: text("address"),
-  addressLine1: text("address_line1"),
-  addressLine2: text("address_line2"),
-  city: text("city"),
-  postcode: text("postcode"),
-  country: text("country").default("United Kingdom"),
-
-  // Emergency contact
-  emergencyContactName: text("emergency_contact_name"),
-  emergencyContactPhone: text("emergency_contact_phone"),
-  emergencyContactRelationship: text("emergency_contact_relationship"),
-
-  // Employment details (for referencing)
-  employer: text("employer"),
-  employerAddress: text("employer_address"),
-  employerPhone: text("employer_phone"),
-  jobTitle: text("job_title"),
-  annualIncome: decimal("annual_income"),
-
-  // Status
-  status: text("status").notNull().default("active"), // 'active', 'inactive', 'prospective'
-
-  // ID Verification
-  idVerified: boolean("id_verified").default(false),
-  idVerificationStatus: text("id_verification_status").default("unverified"), // 'unverified', 'pending', 'verified', 'failed'
-  idDocumentUrl: text("id_document_url"),
-  idVerificationDate: timestamp("id_verification_date"),
-  idVerificationToken: text("id_verification_token"), // Token for self-service verification link
-  idVerificationTokenExpiry: timestamp("id_verification_token_expiry"),
-
-  // Notes
-  notes: text("notes"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_PROPERTIES - Unified Properties Table
-// ==========================================
-// Single table for all properties with type flags:
-// - isManaged: Property is under management
-// - isListedRental: Property is listed for rental
-// - isListedSale: Property is listed for sale
-// ==========================================
-export const pmProperties = pgTable("pm_properties", {
-  id: serial("id").primaryKey(),
-
-  // PROPERTY TYPE FLAGS
-  isManaged: boolean("is_managed").default(false), // Property is under management
-  isListedRental: boolean("is_listed_rental").default(false), // Property is listed for rental
-  isListedSale: boolean("is_listed_sale").default(false), // Property is listed for sale
-
-  // Property category
-  propertyCategory: text("property_category").notNull().default("residential"), // 'residential' or 'commercial'
-  propertyType: text("property_type").notNull().default("flat"), // from propertyTypes
-
-  // Title (for listings)
-  title: text("title"),
-
-  // Property name (short name for display, e.g., "216A Walm Lane")
-  propertyName: text("property_name"),
-
-  // Address
-  address: text("address").notNull(), // Full address as single field for display
-  addressLine1: text("address_line1"),
-  addressLine2: text("address_line2"),
-  city: text("city"),
-  postcode: text("postcode").notNull(),
-  country: text("country").default("United Kingdom"),
-
-  // Geolocation (for listings)
-  latitude: decimal("latitude"),
-  longitude: decimal("longitude"),
-  areaId: integer("area_id"), // FK to london_areas
-
-  // Property details
-  bedrooms: integer("bedrooms"),
-  bathrooms: integer("bathrooms"),
-  receptions: integer("receptions"),
-  squareFootage: integer("square_footage"),
-  yearBuilt: integer("year_built"),
-
-  // Property description
-  description: text("description"),
-
-  // Images
-  images: text("images").array(),
-  floorPlan: text("floor_plan"),
-
-  // Features (for listings)
-  features: text("features").array(),
-  amenities: text("amenities").array(),
-
-  // Property characteristics
-  tenure: text("tenure"), // 'freehold', 'leasehold', 'share_of_freehold'
-  leaseLength: integer("lease_length"), // Years remaining for leasehold
-  groundRent: integer("ground_rent"), // Annual ground rent in pence
-  serviceCharge: integer("service_charge"), // Annual service charge in pence
-  councilTaxBand: text("council_tax_band"),
-  energyRating: text("energy_rating"),
-
-  // Landlord (owner) - for managed properties
-  landlordId: integer("landlord_id"), // FK to pm_landlords
-
-  // Vendor ID (for sale properties)
-  vendorId: integer("vendor_id"), // FK to unified_contacts
-
-  // MANAGEMENT FIELDS (when isManaged = true)
-  managementType: text("management_type"), // 'full', 'let_only', 'rent_collection', 'managed'
-  managementPeriodMonths: integer("management_period_months"), // 12, 24, 36 months etc.
-  managementStartDate: timestamp("management_start_date"),
-  managementEndDate: timestamp("management_end_date"),
-  managementFeeType: text("management_fee_type"), // 'percentage' or 'fixed'
-  managementFeeValue: decimal("management_fee_value"),
-
-  // RENTAL LISTING FIELDS (when isListedRental = true)
-  rentAmount: integer("rent_amount"), // in pence
-  rentPeriod: text("rent_period"), // 'per_week', 'per_month'
-  deposit: integer("deposit"), // in pence
-  furnished: text("furnished"), // 'furnished', 'unfurnished', 'part_furnished'
-  availableFrom: timestamp("available_from"),
-  minimumTenancy: integer("minimum_tenancy"), // in months
-
-  // SALE LISTING FIELDS (when isListedSale = true)
-  price: integer("price"), // in pence
-  priceQualifier: text("price_qualifier"), // 'guide_price', 'offers_over', 'poa', etc.
-
-  // Portal syndication (for listings)
-  publishedToPortals: boolean("published_to_portals").default(false),
-
-  // Property status
-  status: text("status").notNull().default("active"), // 'active', 'inactive', 'void', 'in_arrears', 'under_offer', 'let', 'sold', 'withdrawn'
-
-  // Property manager (staff member responsible)
-  propertyManagerId: integer("property_manager_id"), // FK to users.id
-  agentId: integer("agent_id"), // FK to users.id (for listings)
-
-  // Notes
-  notes: text("notes"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_TENANCIES - Tenancy Contracts
-// ==========================================
-export const pmTenancies = pgTable("pm_tenancies", {
-  id: serial("id").primaryKey(),
-
-  // Links to Property, Landlord, and Tenant
-  propertyId: integer("property_id").notNull(), // FK to pm_properties
-  landlordId: integer("landlord_id").notNull(), // FK to pm_landlords
-  tenantId: integer("tenant_id"), // FK to pm_tenants (null if property is void)
-
-  // Tenancy dates
-  startDate: timestamp("start_date").notNull(),
-  endDate: timestamp("end_date"),
-  periodMonths: integer("period_months"), // 6, 12, 24, 36 or null for periodic
-  isPeriodic: boolean("is_periodic").default(false),
-
-  // Rent details
-  rentAmount: decimal("rent_amount").notNull(),
-  rentFrequency: text("rent_frequency").notNull().default("monthly"), // 'weekly', 'monthly', 'quarterly', 'annually'
-  rentDueDay: integer("rent_due_day").default(1), // Day of month rent is due
-
-  // Deposit details
-  depositAmount: decimal("deposit_amount"),
-  depositScheme: text("deposit_scheme"), // 'dps', 'tds', 'landlord'
-  depositHolderType: text("deposit_holder_type"), // 'agency_insurance', 'agency_custodial', 'landlord'
-  depositCertificateNumber: text("deposit_certificate_number"),
-  depositProtectedDate: timestamp("deposit_protected_date"),
-
-  // Guarantor details
-  guarantorName: text("guarantor_name"),
-  guarantorEmail: text("guarantor_email"),
-  guarantorPhone: text("guarantor_phone"),
-  guarantorAddress: text("guarantor_address"),
-
-  // Status
-  status: text("status").notNull().default("active"), // 'active', 'expired', 'terminated', 'void'
-
-  // Notes
-  notes: text("notes"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_TENANCY_CHECKLIST - Checklist Items for Tenancies
-// ==========================================
-export const pmTenancyChecklist = pgTable("pm_tenancy_checklist", {
-  id: serial("id").primaryKey(),
-  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
-
-  itemType: text("item_type").notNull(), // One of tenancyChecklistItemTypes
-
-  // Status
-  isCompleted: boolean("is_completed").default(false),
-  completedAt: timestamp("completed_at"),
-  completedBy: integer("completed_by"), // User ID
-
-  // Document upload
-  documentUrl: text("document_url"),
-  documentName: text("document_name"),
-  documentUploadedAt: timestamp("document_uploaded_at"),
-  documentUploadedBy: integer("document_uploaded_by"),
-
-  // Notes
-  notes: text("notes"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_INVENTORY - Property Inventory for Tenancies
-// ==========================================
-export const pmInventory = pgTable("pm_inventory", {
-  id: serial("id").primaryKey(),
-  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
-  propertyId: integer("property_id").notNull(), // FK to pm_properties
-
-  // Inventory type
-  inventoryType: text("inventory_type").notNull().default("check_in"), // 'check_in', 'check_out', 'mid_term'
-
-  // Date and status
-  inventoryDate: timestamp("inventory_date").notNull(),
-  status: text("status").notNull().default("scheduled"), // 'scheduled', 'in_progress', 'completed', 'disputed'
-
-  // Clerk/Inspector details
-  clerkName: text("clerk_name"),
-  clerkCompany: text("clerk_company"),
-  clerkPhone: text("clerk_phone"),
-  clerkEmail: text("clerk_email"),
-
-  // Attendees
-  tenantAttended: boolean("tenant_attended").default(false),
-  landlordAttended: boolean("landlord_attended").default(false),
-  agentAttended: boolean("agent_attended").default(false),
-
-  // Document
-  inventoryDocumentUrl: text("inventory_document_url"),
-  inventoryDocumentName: text("inventory_document_name"),
-
-  // Signatures
-  tenantSignedAt: timestamp("tenant_signed_at"),
-  landlordSignedAt: timestamp("landlord_signed_at"),
-  agentSignedAt: timestamp("agent_signed_at"),
-
-  // Notes and disputes
-  notes: text("notes"),
-  disputeNotes: text("dispute_notes"),
-  disputeResolvedAt: timestamp("dispute_resolved_at"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_INVENTORY_ITEMS - Individual items in an inventory
-// ==========================================
-export const pmInventoryItems = pgTable("pm_inventory_items", {
-  id: serial("id").primaryKey(),
-  inventoryId: integer("inventory_id").notNull(), // FK to pm_inventory
-
-  // Location in property
-  room: text("room").notNull(), // 'living_room', 'bedroom_1', 'kitchen', 'bathroom', etc.
-
-  // Item details
-  itemName: text("item_name").notNull(),
-  itemDescription: text("item_description"),
-
-  // Condition
-  condition: text("condition").notNull(), // 'new', 'good', 'fair', 'poor', 'damaged'
-  conditionNotes: text("condition_notes"),
-
-  // Quantity
-  quantity: integer("quantity").default(1),
-
-  // Photos
-  photos: text("photos").array(),
-
-  // Check-out comparison (for check_out inventories)
-  checkInCondition: text("check_in_condition"), // Original condition from check-in
-  conditionChanged: boolean("condition_changed").default(false),
-  damageDescription: text("damage_description"),
-  estimatedRepairCost: decimal("estimated_repair_cost"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM RELATIONS
-// ==========================================
-
-export const pmLandlordsRelations = relations(pmLandlords, ({ many }) => ({
-  properties: many(pmProperties),
-  tenancies: many(pmTenancies)
-}));
-
-export const pmTenantsRelations = relations(pmTenants, ({ many }) => ({
-  tenancies: many(pmTenancies)
-}));
-
-export const pmPropertiesRelations = relations(pmProperties, ({ one, many }) => ({
-  landlord: one(pmLandlords, {
-    fields: [pmProperties.landlordId],
-    references: [pmLandlords.id]
-  }),
-  propertyManager: one(users, {
-    fields: [pmProperties.propertyManagerId],
-    references: [users.id]
-  }),
-  agent: one(users, {
-    fields: [pmProperties.agentId],
-    references: [users.id]
-  }),
-  area: one(londonAreas, {
-    fields: [pmProperties.areaId],
-    references: [londonAreas.id]
-  }),
-  tenancies: many(pmTenancies),
-  inventories: many(pmInventory)
-}));
-
-export const pmTenanciesRelations = relations(pmTenancies, ({ one, many }) => ({
-  property: one(pmProperties, {
-    fields: [pmTenancies.propertyId],
-    references: [pmProperties.id]
-  }),
-  landlord: one(pmLandlords, {
-    fields: [pmTenancies.landlordId],
-    references: [pmLandlords.id]
-  }),
-  tenant: one(pmTenants, {
-    fields: [pmTenancies.tenantId],
-    references: [pmTenants.id]
-  }),
-  checklist: many(pmTenancyChecklist)
-}));
-
-export const pmTenancyChecklistRelations = relations(pmTenancyChecklist, ({ one }) => ({
-  tenancy: one(pmTenancies, {
-    fields: [pmTenancyChecklist.tenancyId],
-    references: [pmTenancies.id]
-  }),
-  completedByUser: one(users, {
-    fields: [pmTenancyChecklist.completedBy],
-    references: [users.id]
-  }),
-  uploadedByUser: one(users, {
-    fields: [pmTenancyChecklist.documentUploadedBy],
-    references: [users.id]
-  })
-}));
-
-export const pmInventoryRelations = relations(pmInventory, ({ one, many }) => ({
-  tenancy: one(pmTenancies, {
-    fields: [pmInventory.tenancyId],
-    references: [pmTenancies.id]
-  }),
-  property: one(pmProperties, {
-    fields: [pmInventory.propertyId],
-    references: [pmProperties.id]
-  }),
-  items: many(pmInventoryItems)
-}));
-
-export const pmInventoryItemsRelations = relations(pmInventoryItems, ({ one }) => ({
-  inventory: one(pmInventory, {
-    fields: [pmInventoryItems.inventoryId],
-    references: [pmInventory.id]
-  })
-}));
-
-// ==========================================
-// PM_RENT_PAYMENTS - Tenant Payment History
-// ==========================================
-export const pmRentPayments = pgTable("pm_rent_payments", {
-  id: serial("id").primaryKey(),
-  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
-  tenantId: integer("tenant_id").notNull(), // FK to pm_tenants
-  propertyId: integer("property_id").notNull(), // FK to pm_properties
-
-  // Payment details
-  paymentDate: timestamp("payment_date").notNull(),
-  amount: decimal("amount").notNull(), // Amount paid
-  expectedAmount: decimal("expected_amount"), // Expected rent amount
-
-  // Payment period this covers
-  periodStart: timestamp("period_start"), // Start of rent period covered
-  periodEnd: timestamp("period_end"), // End of rent period covered
-
-  // Payment method and reference
-  paymentMethod: text("payment_method"), // 'bank_transfer', 'standing_order', 'direct_debit', 'cash', 'cheque', 'card'
-  paymentReference: text("payment_reference"), // Bank reference or receipt number
-
-  // Status
-  status: text("status").notNull().default("confirmed"), // 'pending', 'confirmed', 'cleared', 'bounced', 'refunded'
-
-  // Late payment tracking
-  isLate: boolean("is_late").default(false),
-  daysLate: integer("days_late").default(0),
-  lateFeeCharged: decimal("late_fee_charged"),
-
-  // Arrears tracking
-  balanceBefore: decimal("balance_before"), // Balance before this payment
-  balanceAfter: decimal("balance_after"), // Balance after this payment
-
-  // Notes
-  notes: text("notes"),
-
-  // Admin tracking
-  recordedBy: integer("recorded_by"), // User ID who recorded this payment
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// ==========================================
-// PM_RENT_STATEMENTS - Monthly/Periodic Statements
-// ==========================================
-export const pmRentStatements = pgTable("pm_rent_statements", {
-  id: serial("id").primaryKey(),
-  tenancyId: integer("tenancy_id").notNull(), // FK to pm_tenancies
-  landlordId: integer("landlord_id").notNull(), // FK to pm_landlords
-  propertyId: integer("property_id").notNull(), // FK to pm_properties
-
-  // Statement period
-  statementDate: timestamp("statement_date").notNull(),
-  periodStart: timestamp("period_start").notNull(),
-  periodEnd: timestamp("period_end").notNull(),
-
-  // Financial summary
-  openingBalance: decimal("opening_balance").notNull(),
-  rentDue: decimal("rent_due").notNull(),
-  rentReceived: decimal("rent_received").notNull(),
-  managementFee: decimal("management_fee"),
-  otherDeductions: decimal("other_deductions"),
-  netToLandlord: decimal("net_to_landlord"),
-  closingBalance: decimal("closing_balance").notNull(),
-
-  // Payment to landlord
-  paidToLandlord: boolean("paid_to_landlord").default(false),
-  paidToLandlordDate: timestamp("paid_to_landlord_date"),
-  paymentReference: text("payment_reference"),
-
-  // Document
-  statementUrl: text("statement_url"),
-
-  // Notes
-  notes: text("notes"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// Relations for payment tables
-export const pmRentPaymentsRelations = relations(pmRentPayments, ({ one }) => ({
-  tenancy: one(pmTenancies, {
-    fields: [pmRentPayments.tenancyId],
-    references: [pmTenancies.id]
-  }),
-  tenant: one(pmTenants, {
-    fields: [pmRentPayments.tenantId],
-    references: [pmTenants.id]
-  }),
-  property: one(pmProperties, {
-    fields: [pmRentPayments.propertyId],
-    references: [pmProperties.id]
-  }),
-  recordedByUser: one(users, {
-    fields: [pmRentPayments.recordedBy],
-    references: [users.id]
-  })
-}));
-
-export const pmRentStatementsRelations = relations(pmRentStatements, ({ one }) => ({
-  tenancy: one(pmTenancies, {
-    fields: [pmRentStatements.tenancyId],
-    references: [pmTenancies.id]
-  }),
-  landlord: one(pmLandlords, {
-    fields: [pmRentStatements.landlordId],
-    references: [pmLandlords.id]
-  }),
-  property: one(pmProperties, {
-    fields: [pmRentStatements.propertyId],
-    references: [pmProperties.id]
-  })
-}));
-
-// ==========================================
 // LEADS - Property Enquiry Tracking
 // ==========================================
 // Captures all enquiries from any channel: website registration, calls, emails, WhatsApp
 // Tracks their interest (buy/rent), property browsing, and all communications
 // ==========================================
-export const leads = pgTable("leads", {
+export const leads = pgTable("lead", {
   id: serial("id").primaryKey(),
 
   // Basic contact details
@@ -5480,7 +5415,7 @@ export const leads = pgTable("leads", {
 
   // Conversion tracking
   convertedAt: timestamp("converted_at"), // When did they become a tenant/buyer?
-  convertedToTenantId: integer("converted_to_tenant_id"), // FK to pm_tenants if they became a tenant
+  convertedToTenantId: integer("converted_to_tenant_id"), // FK to tenant if they became a tenant
   convertedToPropertyId: integer("converted_to_property_id"), // Which property did they rent/buy?
 
   // Last activity tracking
@@ -5500,10 +5435,10 @@ export const leads = pgTable("leads", {
 // ==========================================
 // Records every property a lead has viewed on the website
 // ==========================================
-export const leadPropertyViews = pgTable("lead_property_views", {
+export const leadPropertyViews = pgTable("lead_property_view", {
   id: serial("id").primaryKey(),
   leadId: integer("lead_id").notNull(), // FK to leads
-  propertyId: integer("property_id").notNull(), // FK to properties or pm_properties
+  propertyId: integer("property_id").notNull(), // FK to properties
 
   // View details
   viewedAt: timestamp("viewed_at").notNull().defaultNow(),
@@ -5524,7 +5459,7 @@ export const leadPropertyViews = pgTable("lead_property_views", {
 // ==========================================
 // Tracks ALL communications with a lead across ALL channels
 // ==========================================
-export const leadCommunications = pgTable("lead_communications", {
+export const leadCommunications = pgTable("lead_communication", {
   id: serial("id").primaryKey(),
   leadId: integer("lead_id").notNull(), // FK to leads
 
@@ -5561,7 +5496,7 @@ export const leadCommunications = pgTable("lead_communications", {
 // ==========================================
 // LEAD_VIEWINGS - Scheduled Property Viewings
 // ==========================================
-export const leadViewings = pgTable("lead_viewings", {
+export const leadViewings = pgTable("lead_viewing", {
   id: serial("id").primaryKey(),
   leadId: integer("lead_id").notNull(), // FK to leads
   propertyId: integer("property_id").notNull(), // FK to properties
@@ -5595,7 +5530,7 @@ export const leadViewings = pgTable("lead_viewings", {
 // ==========================================
 // Captures all activities for a lead's timeline (auto-generated)
 // ==========================================
-export const leadActivities = pgTable("lead_activities", {
+export const leadActivities = pgTable("lead_activity", {
   id: serial("id").primaryKey(),
   leadId: integer("lead_id").notNull(), // FK to leads
 
@@ -5629,9 +5564,9 @@ export const leadsRelations = relations(leads, ({ many, one }) => ({
     fields: [leads.assignedTo],
     references: [users.id]
   }),
-  convertedTenant: one(pmTenants, {
+  convertedTenant: one(tenant, {
     fields: [leads.convertedToTenantId],
-    references: [pmTenants.id]
+    references: [tenant.id]
   })
 }));
 
@@ -5681,17 +5616,17 @@ export const leadActivitiesRelations = relations(leadActivities, ({ one }) => ({
 // When a lead makes an offer on a property, this creates
 // a link between the lead and the property owner (landlord)
 // ==========================================
-export const offers = pgTable("offers", {
+export const offers = pgTable("offer", {
   id: serial("id").primaryKey(),
 
   // Lead making the offer
   leadId: integer("lead_id").notNull(), // FK to leads
 
   // Property being offered on
-  propertyId: integer("property_id").notNull(), // FK to properties or pm_properties
+  propertyId: integer("property_id").notNull(), // FK to properties
 
   // Landlord/Owner (auto-populated from property)
-  landlordId: integer("landlord_id"), // FK to pm_landlords - the property owner
+  landlordId: integer("landlord_id"), // FK to landlords - the property owner
 
   // Offer type
   offerType: text("offer_type").notNull(), // 'rental', 'purchase'
@@ -5748,7 +5683,7 @@ export const offers = pgTable("offers", {
   landlordNotes: text("landlord_notes"), // Notes from landlord
 
   // Conversion tracking
-  convertedToAgreementId: integer("converted_to_agreement_id"), // FK to pm_tenancies if accepted rental
+  convertedToAgreementId: integer("converted_to_agreement_id"), // FK to tenancies if accepted rental
   convertedToSaleId: integer("converted_to_sale_id"), // FK to sales_progressions if accepted purchase
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -5787,9 +5722,9 @@ export const offersRelations = relations(offers, ({ one, many }) => ({
     fields: [offers.leadId],
     references: [leads.id]
   }),
-  landlord: one(pmLandlords, {
+  landlord: one(landlords, {
     fields: [offers.landlordId],
-    references: [pmLandlords.id]
+    references: [landlords.id]
   }),
   handler: one(users, {
     fields: [offers.handledBy],
@@ -5808,82 +5743,6 @@ export const offerHistoryRelations = relations(offerHistory, ({ one }) => ({
     references: [users.id]
   })
 }));
-
-// ==========================================
-// PM INSERT SCHEMAS AND TYPES
-// ==========================================
-
-export const insertPmLandlordSchema = createInsertSchema(pmLandlords).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmLandlord = z.infer<typeof insertPmLandlordSchema>;
-export type PmLandlord = typeof pmLandlords.$inferSelect;
-
-export const insertPmTenantSchema = createInsertSchema(pmTenants).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmTenant = z.infer<typeof insertPmTenantSchema>;
-export type PmTenant = typeof pmTenants.$inferSelect;
-
-export const insertPmPropertySchema = createInsertSchema(pmProperties).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmProperty = z.infer<typeof insertPmPropertySchema>;
-export type PmProperty = typeof pmProperties.$inferSelect;
-
-export const insertPmTenancySchema = createInsertSchema(pmTenancies).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmTenancy = z.infer<typeof insertPmTenancySchema>;
-export type PmTenancy = typeof pmTenancies.$inferSelect;
-
-export const insertPmTenancyChecklistSchema = createInsertSchema(pmTenancyChecklist).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmTenancyChecklist = z.infer<typeof insertPmTenancyChecklistSchema>;
-export type PmTenancyChecklist = typeof pmTenancyChecklist.$inferSelect;
-
-export const insertPmInventorySchema = createInsertSchema(pmInventory).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmInventory = z.infer<typeof insertPmInventorySchema>;
-export type PmInventory = typeof pmInventory.$inferSelect;
-
-export const insertPmInventoryItemSchema = createInsertSchema(pmInventoryItems).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmInventoryItem = z.infer<typeof insertPmInventoryItemSchema>;
-export type PmInventoryItem = typeof pmInventoryItems.$inferSelect;
-
-export const insertPmRentPaymentSchema = createInsertSchema(pmRentPayments).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmRentPayment = z.infer<typeof insertPmRentPaymentSchema>;
-export type PmRentPayment = typeof pmRentPayments.$inferSelect;
-
-export const insertPmRentStatementSchema = createInsertSchema(pmRentStatements).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type InsertPmRentStatement = z.infer<typeof insertPmRentStatementSchema>;
-export type PmRentStatement = typeof pmRentStatements.$inferSelect;
 
 // ==========================================
 // LEADS INSERT SCHEMAS AND TYPES
@@ -5932,7 +5791,7 @@ export type LeadActivity = typeof leadActivities.$inferSelect;
 // Stores full transcripts and AI analysis for voice calls
 // Links to existing leads table for caller identification
 // ==========================================
-export const voiceCallRecords = pgTable("voice_call_records", {
+export const voiceCallRecords = pgTable("voice_call_record", {
   id: serial("id").primaryKey(),
   leadId: integer("lead_id"), // FK to leads - null if new caller not yet saved
 
@@ -6018,7 +5877,7 @@ export const voiceCallRecords = pgTable("voice_call_records", {
 // ==========================================
 // Detailed tracking of lead interest in specific properties from voice calls
 // ==========================================
-export const voiceLeadPropertyInterests = pgTable("voice_lead_property_interests", {
+export const voiceLeadPropertyInterests = pgTable("voice_lead_property_interest", {
   id: serial("id").primaryKey(),
   leadId: integer("lead_id").notNull(), // FK to leads
   propertyId: integer("property_id").notNull(), // FK to properties
@@ -6074,6 +5933,79 @@ export type InsertVoiceLeadPropertyInterest = z.infer<typeof insertVoiceLeadProp
 export type VoiceLeadPropertyInterest = typeof voiceLeadPropertyInterests.$inferSelect;
 
 // ==========================================
+// CMS TABLES
+// ==========================================
+
+// CMS Pages - for website content management
+export const cmsPages = pgTable("cms_page", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  title: text("title").notNull(),
+  metaTitle: text("meta_title"),
+  metaDescription: text("meta_description"),
+  template: text("template").default("default"),
+  status: text("status").notNull().default("draft"), // draft, published, archived
+  publishedAt: timestamp("published_at"),
+  authorId: integer("author_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// CMS Content Blocks - modular content sections
+export const cmsContentBlocks = pgTable("cms_content_block", {
+  id: serial("id").primaryKey(),
+  pageId: integer("page_id").notNull(),
+  blockType: text("block_type").notNull(), // hero, text, image, gallery, cta, etc
+  title: text("title"),
+  content: json("content"), // JSON content based on block type
+  displayOrder: integer("display_order").notNull().default(0),
+  isVisible: boolean("is_visible").notNull().default(true),
+  settings: json("settings"), // Block-specific settings
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// CMS Media - media library for uploads
+export const cmsMedia = pgTable("cms_media", {
+  id: serial("id").primaryKey(),
+  filename: text("filename").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  mimeType: text("mime_type").notNull(),
+  size: integer("size").notNull(),
+  url: text("url").notNull(),
+  altText: text("alt_text"),
+  caption: text("caption"),
+  uploadedBy: integer("uploaded_by"),
+  folder: text("folder"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertCmsPageSchema = createInsertSchema(cmsPages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertCmsPage = z.infer<typeof insertCmsPageSchema>;
+export type CmsPage = typeof cmsPages.$inferSelect;
+
+export const insertCmsContentBlockSchema = createInsertSchema(cmsContentBlocks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertCmsContentBlock = z.infer<typeof insertCmsContentBlockSchema>;
+export type CmsContentBlock = typeof cmsContentBlocks.$inferSelect;
+
+export const insertCmsMediaSchema = createInsertSchema(cmsMedia).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+export type InsertCmsMedia = z.infer<typeof insertCmsMediaSchema>;
+export type CmsMedia = typeof cmsMedia.$inferSelect;
+
+// ==========================================
 // MICROSOFT 365 EMAIL INTEGRATION TABLES
 // ==========================================
 // These tables support OAuth-based email integration with Microsoft Graph API
@@ -6081,7 +6013,7 @@ export type VoiceLeadPropertyInterest = typeof voiceLeadPropertyInterests.$infer
 // ==========================================
 
 // User email connections - stores OAuth tokens and mailbox configuration
-export const emailConnections = pgTable("email_connections", {
+export const emailConnections = pgTable("email_connection", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(), // FK to users
 
@@ -6112,7 +6044,7 @@ export const emailConnections = pgTable("email_connections", {
 });
 
 // Webhook subscriptions for Microsoft Graph change notifications
-export const emailWebhookSubscriptions = pgTable("email_webhook_subscriptions", {
+export const emailWebhookSubscriptions = pgTable("email_webhook_subscription", {
   id: serial("id").primaryKey(),
   connectionId: integer("connection_id").notNull(), // FK to email_connections
   userId: integer("user_id").notNull(), // FK to users (denormalized for quick lookup)
@@ -6173,7 +6105,7 @@ export const emailJobQueue = pgTable("email_job_queue", {
 });
 
 // Processed emails - stores structured data extracted from emails
-export const processedEmails = pgTable("processed_emails", {
+export const processedEmails = pgTable("processed_email", {
   id: serial("id").primaryKey(),
   connectionId: integer("connection_id").notNull(), // FK to email_connections
   userId: integer("user_id").notNull(), // FK to users
@@ -6238,7 +6170,7 @@ export const processedEmails = pgTable("processed_emails", {
 });
 
 // Sent emails tracking - for emails sent via Graph API
-export const sentEmails = pgTable("sent_emails", {
+export const sentEmails = pgTable("sent_email", {
   id: serial("id").primaryKey(),
   connectionId: integer("connection_id").notNull(), // FK to email_connections
   userId: integer("user_id").notNull(), // FK to users

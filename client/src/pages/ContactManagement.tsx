@@ -14,7 +14,8 @@ import {
     FileText,
     History,
     UserPlus,
-    ArrowLeft
+    ArrowLeft,
+    Wrench
 } from "lucide-react";
 import { useLocation } from "wouter";
 import {
@@ -71,11 +72,15 @@ export default function ContactManagement() {
         }
     });
 
-    const filteredContacts = contacts.filter((c: any) =>
-        c.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredContacts = contacts.filter((c: any) => {
+        const search = searchTerm.toLowerCase();
+        return (
+            (c.fullName?.toLowerCase().includes(search)) ||
+            (c.name?.toLowerCase().includes(search)) ||
+            (c.email?.toLowerCase().includes(search)) ||
+            (c.phone?.toLowerCase().includes(search))
+        );
+    });
 
     const getStatusBadge = (status: string) => {
         switch (status) {
