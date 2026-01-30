@@ -17,3 +17,4 @@ client/src/assets/*.mp4
 # Ignore all MP4 files everywhere
 *.mp4
 public/*.mp4
+"*.zip" 
