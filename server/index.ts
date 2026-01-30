@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config({ override: true });
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { log, serveStatic } from "./static";
 
 // Configure SSL handling for UK Land Registry API in development
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
@@ -56,6 +56,8 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
+    // Dynamic import - vite only loaded in development
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
     serveStatic(app);
