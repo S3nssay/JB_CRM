@@ -638,12 +638,20 @@ export default function TenantDetails() {
                                                         <Badge variant={t.status === 'active' ? 'default' : 'secondary'}>
                                                             {t.status === 'active' ? 'Current Tenancy' : t.status}
                                                         </Badge>
-                                                        <Link href={`/crm/managed-property/${t.propertyId}`}>
-                                                            <Button variant="ghost" size="sm">
-                                                                <ExternalLink className="h-4 w-4 mr-1" />
-                                                                View Property
-                                                            </Button>
-                                                        </Link>
+                                                        <div className="flex gap-2">
+                                                            <Link href={`/crm/tenancies/${t.id}`}>
+                                                                <Button variant="outline" size="sm">
+                                                                    <FileText className="h-4 w-4 mr-1" />
+                                                                    View Tenancy
+                                                                </Button>
+                                                            </Link>
+                                                            <Link href={`/crm/managed-property/${t.propertyId}`}>
+                                                                <Button variant="ghost" size="sm">
+                                                                    <ExternalLink className="h-4 w-4 mr-1" />
+                                                                    View Property
+                                                                </Button>
+                                                            </Link>
+                                                        </div>
                                                     </div>
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                         <div>

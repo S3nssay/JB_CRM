@@ -98,7 +98,7 @@ export default function CRMLogin() {
           </CardHeader>
           <CardContent>
             <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4" autoComplete="off">
                 <FormField
                   control={form.control}
                   name="username"
@@ -112,7 +112,10 @@ export default function CRMLogin() {
                             {...field}
                             placeholder="Enter your username"
                             className="pl-10"
+                            autoComplete="one-time-code"
                             data-testid="input-username"
+                            data-lpignore="true"
+                            data-form-type="other"
                           />
                         </div>
                       </FormControl>
@@ -135,7 +138,10 @@ export default function CRMLogin() {
                             type="password"
                             placeholder="Enter your password"
                             className="pl-10"
+                            autoComplete="one-time-code"
                             data-testid="input-password"
+                            data-lpignore="true"
+                            data-form-type="other"
                           />
                         </div>
                       </FormControl>

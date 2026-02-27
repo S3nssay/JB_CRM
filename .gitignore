@@ -5,6 +5,29 @@ server/public
 vite.config.ts.*
 *.tar.gz
 
+# Environment files (contain secrets)
+.env
+.env.local
+.env.production
+
+# Claude local settings (may contain tokens)
+.claude/settings.local.json
+
+# Temp files
+*.tmp.*
+nul
+
+# Logs
+server.log
+*.log
+
+# Uploaded files
+uploads/
+
+# Misc
+cookies.txt
+JB_CRM_Render_Environment_Variables.docx
+
 # Large video files are now handled by Git LFS
 # *.mp4 files are tracked by Git LFS - see .gitattributes
 

@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useParams, Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export default function LandlordDetails() {
     const { id } = useParams();
+    const [, setLocation] = useLocation();
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -240,7 +241,17 @@ export default function LandlordDetails() {
     }
 
     if (!landlord) {
-        return <div className="p-8 text-center text-red-500">Landlord not found</div>;
+        return (
+            <div className="p-8 text-center">
+                <p className="text-red-500 mb-4">Landlord not found</p>
+                <Link href="/crm/landlords">
+                    <Button variant="outline">
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Back to Landlords
+                    </Button>
+                </Link>
+            </div>
+        );
     }
 
     // Helper function for document labels
@@ -369,7 +380,7 @@ export default function LandlordDetails() {
         <div className="space-y-6 p-6">
             {/* Header */}
             <div className="flex items-center gap-4">
-                <Link href="/crm/properties">
+                <Link href="/crm/landlords">
                     <Button variant="outline" size="icon">
                         <ArrowLeft className="h-4 w-4" />
                     </Button>
@@ -388,10 +399,21 @@ export default function LandlordDetails() {
                         <Badge variant="outline">{landlord.landlordType?.toUpperCase() || 'INDIVIDUAL'}</Badge>
                     </div>
                 </div>
-                <Button onClick={() => setIsEditDialogOpen(true)} variant="outline">
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Edit Landlord
-                </Button>
+                <div className="flex items-center gap-2">
+                    {landlord.landlordType !== 'company' && landlord.landlordType !== 'corporate' && !landlord.isCorporate && (
+                        <Button
+                            variant="outline"
+                            onClick={() => setLocation(`/crm/onboarding/corporate?landlordId=${id}`)}
+                        >
+                            <Building className="h-4 w-4 mr-2" />
+                            Convert to Corporate
+                        </Button>
+                    )}
+                    <Button onClick={() => setIsEditDialogOpen(true)} variant="outline">
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Edit Landlord
+                    </Button>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -681,12 +703,20 @@ export default function LandlordDetails() {
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <Link href={`/crm/managed-property/${t.propertyId}`}>
-                                                            <Button variant="ghost" size="sm">
-                                                                <ExternalLink className="h-4 w-4 mr-1" />
-                                                                View Property
-                                                            </Button>
-                                                        </Link>
+                                                        <div className="flex gap-2">
+                                                            <Link href={`/crm/tenancies/${t.id}`}>
+                                                                <Button variant="outline" size="sm">
+                                                                    <FileText className="h-4 w-4 mr-1" />
+                                                                    View Tenancy
+                                                                </Button>
+                                                            </Link>
+                                                            <Link href={`/crm/managed-property/${t.propertyId}`}>
+                                                                <Button variant="ghost" size="sm">
+                                                                    <ExternalLink className="h-4 w-4 mr-1" />
+                                                                    View Property
+                                                                </Button>
+                                                            </Link>
+                                                        </div>
                                                     </div>
                                                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                                         <div>

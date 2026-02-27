@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -333,7 +333,9 @@ export default function LandlordManagement() {
                               {landlord.name?.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <p className="font-medium">{landlord.name}</p>
+                              <Link href={`/crm/landlords/${landlord.id}`}>
+                                <p className="font-medium text-[#791E75] hover:underline cursor-pointer">{landlord.name}</p>
+                              </Link>
                               {landlord.landlordType === 'corporate' && (
                                 <Badge variant="outline" className="text-xs">Corporate</Badge>
                               )}

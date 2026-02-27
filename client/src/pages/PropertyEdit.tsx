@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
-import { useLocation, useParams } from 'wouter';
+import { useLocation, useParams, Link } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,10 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import {
   ArrowLeft, Save, Loader2, Home, Building2, MapPin,
-  Bed, Bath, Square, Tag, Globe, Send, Share2, Upload, X, Image, FileText
+  Bed, Bath, Square, Tag, Globe, Send, Share2, Upload, X, Image, FileText,
+  Key, Download, Trash2, ExternalLink, Calendar
 } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface PropertyData {
   id: number;
@@ -63,12 +66,36 @@ export default function PropertyEdit() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImages, setIsUploadingImages] = useState(false);
   const [isUploadingFloorPlan, setIsUploadingFloorPlan] = useState(false);
+  const [isUploadingDoc, setIsUploadingDoc] = useState(false);
+  const [docType, setDocType] = useState('certificate');
 
   const { data: property, isLoading, error } = useQuery({
     queryKey: [`/api/crm/properties/${propertyId}`],
     queryFn: async () => {
       const res = await fetch(`/api/crm/properties/${propertyId}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch property');
+      return res.json();
+    },
+    enabled: !!propertyId
+  });
+
+  // Fetch tenancies for this property
+  const { data: propertyTenancies = [] } = useQuery({
+    queryKey: ['property-tenancies', propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/pm/tenancies?propertyId=${propertyId}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!propertyId
+  });
+
+  // Fetch documents for this property
+  const { data: propertyDocs = [] } = useQuery({
+    queryKey: ['property-documents', propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/documents?propertyId=${propertyId}`, { credentials: 'include' });
+      if (!res.ok) return [];
       return res.json();
     },
     enabled: !!propertyId
@@ -713,6 +740,207 @@ export default function PropertyEdit() {
                 </Label>
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Tenancy History */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Tenancy History
+            </CardTitle>
+            <CardDescription>Current and past tenancies for this property</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {propertyTenancies.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                <Key className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                <p>No tenancy records found</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {propertyTenancies.map((t: any) => (
+                  <div
+                    key={t.id}
+                    className={`p-4 rounded-lg border ${t.status === 'active' ? 'bg-green-50 border-green-200' : 'bg-white'}`}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={t.status === 'active' ? 'default' : 'secondary'}>
+                          {t.status === 'active' ? 'Active' : t.status}
+                        </Badge>
+                        {t.tenantName && <span className="text-sm font-medium">{t.tenantName}</span>}
+                      </div>
+                      <Link href={`/crm/tenancies/${t.id}`}>
+                        <Button variant="outline" size="sm">
+                          <ExternalLink className="h-4 w-4 mr-1" />
+                          View Tenancy
+                        </Button>
+                      </Link>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <span className="text-muted-foreground block">Rent</span>
+                        <span className="font-medium">{t.rentAmount ? `£${Number(t.rentAmount).toLocaleString()}/${t.rentFrequency || 'month'}` : 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Deposit</span>
+                        <span className="font-medium">{t.depositAmount ? `£${Number(t.depositAmount).toLocaleString()}` : 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Start</span>
+                        <span className="font-medium">{t.startDate ? format(new Date(t.startDate), 'dd MMM yyyy') : 'N/A'}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">End</span>
+                        <span className="font-medium">{t.endDate ? format(new Date(t.endDate), 'dd MMM yyyy') : 'Periodic'}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Property Documents */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Property Documents
+            </CardTitle>
+            <CardDescription>Certificates, EPC, gas safety and other property documents</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {/* Upload Section */}
+            <div className="flex items-center gap-3 mb-4">
+              <Select value={docType} onValueChange={setDocType}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Document type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="epc">EPC Certificate</SelectItem>
+                  <SelectItem value="gas_safety">Gas Safety Certificate</SelectItem>
+                  <SelectItem value="eicr">EICR Certificate</SelectItem>
+                  <SelectItem value="insurance">Insurance</SelectItem>
+                  <SelectItem value="floor_plan">Floor Plan</SelectItem>
+                  <SelectItem value="certificate">Certificate</SelectItem>
+                  <SelectItem value="report">Report</SelectItem>
+                  <SelectItem value="other">Other</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isUploadingDoc}
+                onClick={() => {
+                  const input = window.document.createElement('input');
+                  input.type = 'file';
+                  input.accept = '.pdf,.jpg,.jpeg,.png,.doc,.docx';
+                  input.onchange = async (e: any) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setIsUploadingDoc(true);
+                    try {
+                      // Upload file
+                      const formDataUpload = new FormData();
+                      formDataUpload.append('document', file);
+                      const uploadRes = await fetch('/api/crm/upload/document', {
+                        method: 'POST',
+                        credentials: 'include',
+                        body: formDataUpload
+                      });
+                      if (!uploadRes.ok) throw new Error('Upload failed');
+                      const uploadResult = await uploadRes.json();
+
+                      // Create document record
+                      const docRes = await fetch('/api/crm/documents', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          name: file.name,
+                          originalName: file.name,
+                          documentType: docType,
+                          storageUrl: uploadResult.url,
+                          mimeType: file.type,
+                          size: file.size,
+                          propertyId: parseInt(propertyId!),
+                          entityType: 'property',
+                          entityId: parseInt(propertyId!)
+                        })
+                      });
+                      if (!docRes.ok) throw new Error('Failed to save document record');
+
+                      queryClient.invalidateQueries({ queryKey: ['property-documents', propertyId] });
+                      toast({ title: 'Document uploaded', description: file.name });
+                    } catch (err: any) {
+                      toast({ title: 'Upload failed', description: err.message, variant: 'destructive' });
+                    } finally {
+                      setIsUploadingDoc(false);
+                    }
+                  };
+                  input.click();
+                }}
+              >
+                {isUploadingDoc ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Upload className="h-4 w-4 mr-1" />}
+                Upload Document
+              </Button>
+            </div>
+
+            {/* Documents List */}
+            {propertyDocs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                <p>No documents uploaded yet</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {propertyDocs.map((doc: any) => (
+                  <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg border bg-white">
+                    <div className="flex items-center gap-3">
+                      <FileText className="h-5 w-5 text-[#791E75]" />
+                      <div>
+                        <p className="font-medium text-sm">{doc.name || doc.originalName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {doc.documentType} {doc.createdAt && `• ${format(new Date(doc.createdAt), 'dd MMM yyyy')}`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <a href={doc.storageUrl} target="_blank" rel="noopener noreferrer">
+                        <Button type="button" variant="ghost" size="sm">
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </a>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/crm/documents/${doc.id}`, {
+                              method: 'DELETE',
+                              credentials: 'include'
+                            });
+                            if (!res.ok) throw new Error('Delete failed');
+                            queryClient.invalidateQueries({ queryKey: ['property-documents', propertyId] });
+                            toast({ title: 'Document deleted' });
+                          } catch {
+                            toast({ title: 'Delete failed', variant: 'destructive' });
+                          }
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

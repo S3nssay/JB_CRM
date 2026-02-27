@@ -24,7 +24,6 @@ import {
   insertComplianceRequirementSchema,
   insertComplianceStatusSchema,
   maintenanceTickets,
-  managedProperties,
   unifiedContacts,
   salesProgression,
   // Main tables for property management
@@ -62,10 +61,17 @@ import {
   insertCmsPageSchema,
   insertCmsContentBlockSchema,
   insertCmsMediaSchema,
-  staffProfiles
+  staffProfiles,
+  pdfImportStaging,
+  document,
+  calendarEvents,
+  processedEmails,
+  sentEmails,
+  conversations,
+  messages
 } from '@shared/schema';
 
-import { eq, desc, and, sql, or } from 'drizzle-orm';
+import { eq, desc, and, sql, or, gte, lte, inArray, count } from 'drizzle-orm';
 import {
   parsePropertyFromNaturalLanguage,
   enhancePropertyDescription,
@@ -96,6 +102,7 @@ import crypto from 'crypto';
 
 import { propertyImport } from './propertyImportService';
 import { websiteImport } from './websiteImportService';
+import { parsePdfToStaging, importFromStaging } from './pdfPropertyImportService';
 
 export const crmRouter = Router();
 
@@ -417,6 +424,93 @@ crmRouter.delete('/upload/document/:filename', requireAgent, async (req, res) =>
 });
 
 // ==========================================
+// Document CRUD (using document table)
+
+// List documents by entity
+crmRouter.get('/documents', requireAgent, async (req, res) => {
+  try {
+    const { entityType, entityId, propertyId, landlordId, tenantId, tenancyId } = req.query;
+    const conditions = [];
+
+    if (entityType && entityId) {
+      conditions.push(and(eq(document.entityType, entityType as string), eq(document.entityId, parseInt(entityId as string))));
+    }
+    if (propertyId) conditions.push(eq(document.propertyId, parseInt(propertyId as string)));
+    if (landlordId) conditions.push(eq(document.landlordId, parseInt(landlordId as string)));
+    if (tenantId) conditions.push(eq(document.tenantId, parseInt(tenantId as string)));
+    if (tenancyId) conditions.push(eq(document.tenancyId, parseInt(tenancyId as string)));
+
+    if (conditions.length === 0) {
+      return res.status(400).json({ error: 'At least one filter parameter is required' });
+    }
+
+    const docs = await db.select().from(document).where(or(...conditions)).orderBy(desc(document.createdAt));
+    res.json(docs);
+  } catch (error) {
+    console.error('Error fetching documents:', error);
+    res.status(500).json({ error: 'Failed to fetch documents' });
+  }
+});
+
+// Create document record (after file upload)
+crmRouter.post('/documents', requireAgent, async (req, res) => {
+  try {
+    const { name, originalName, documentType, storageUrl, mimeType, size,
+            propertyId, landlordId, tenantId, tenancyId, entityType, entityId,
+            description, documentDate, expiryDate } = req.body;
+
+    const [doc] = await db.insert(document).values({
+      name: name || originalName,
+      originalName,
+      documentType: documentType || 'other',
+      storageUrl,
+      mimeType,
+      size: parseInt(size),
+      propertyId: propertyId ? parseInt(propertyId) : null,
+      landlordId: landlordId ? parseInt(landlordId) : null,
+      tenantId: tenantId ? parseInt(tenantId) : null,
+      tenancyId: tenancyId ? parseInt(tenancyId) : null,
+      entityType: entityType || null,
+      entityId: entityId ? parseInt(entityId) : null,
+      description: description || null,
+      documentDate: documentDate ? new Date(documentDate) : null,
+      expiryDate: expiryDate ? new Date(expiryDate) : null,
+    }).returning();
+
+    res.status(201).json(doc);
+  } catch (error) {
+    console.error('Error creating document record:', error);
+    res.status(500).json({ error: 'Failed to create document record' });
+  }
+});
+
+// Delete document record
+crmRouter.delete('/documents/:id', requireAgent, async (req, res) => {
+  try {
+    const docId = parseInt(req.params.id);
+    const [doc] = await db.select().from(document).where(eq(document.id, docId));
+
+    if (!doc) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Delete the file if it's locally stored
+    if (doc.storageUrl && doc.storageUrl.startsWith('/uploads/')) {
+      const filePath = path.join(process.cwd(), doc.storageUrl);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    await db.delete(document).where(eq(document.id, docId));
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting document:', error);
+    res.status(500).json({ error: 'Failed to delete document' });
+  }
+});
+
+// ==========================================
 // Property CRUD operations
 
 crmRouter.get('/properties', requireAgent, async (req, res) => {
@@ -444,7 +538,7 @@ crmRouter.get('/properties', requireAgent, async (req, res) => {
       isPublishedWebsite: properties.isPublishedWebsite,
       isPublishedZoopla: properties.isPublishedZoopla,
       isPublishedRightmove: properties.isPublishedRightmove,
-      isPublishedOnTheMarket: properties.isPublishedOnTheMarket,
+      isPublishedOnTheMarket: properties.isPublishedOnthemarket,
       isPublishedSocial: properties.isPublishedSocial
     })
     .from(properties)
@@ -465,7 +559,7 @@ crmRouter.get('/rental-agreements', requireAgent, async (req, res) => {
         t.id, t.property_id as "propertyId", t.landlord_id as "landlordId", t.tenant_id as "tenantId",
         t.start_date as "startDate", t.end_date as "endDate", t.rent_amount as "rentAmount",
         t.rent_frequency as "rentFrequency", t.deposit_amount as "depositAmount",
-        t.deposit_scheme as "depositScheme", t.deposit_certificate_number as "depositReference",
+        t.deposit_scheme as "depositScheme", t.deposit_holder_type as "depositHolderType", t.deposit_certificate_number as "depositReference",
         t.status, t.notes, t.created_at as "createdAt",
         p.address_line1 as "propertyAddress", p.postcode, p.property_type as "propertyType", p.bedrooms,
         p.management_fee_type as "managementFeeType", p.management_fee_value as "managementFeeValue",
@@ -748,20 +842,16 @@ crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('fil
           landlordId: landlordId
         }).returning();
 
-        // Create managed property record
+        // Update property with management details
         const managementStartDate = row.tenancy_start_date ? new Date(row.tenancy_start_date) : new Date();
-        const [managedProp] = await db.insert(managedProperties).values({
-          propertyId: newProperty.id,
-          landlordId: landlordId,
-          managementStartDate: managementStartDate,
-          managementType: 'full',
-          status: 'active',
-          managementFeeType: 'percentage',
-          managementFeeValue: '12',
-          rentAmount: rentAmount,
-          rentFrequency: row.rent_frequency || 'monthly',
-          depositAmount: depositAmount
-        }).returning();
+        await db.update(properties)
+          .set({
+            managementStartDate: managementStartDate,
+            managementType: 'full',
+            managementFeeType: 'percentage',
+            managementFeeValue: '12',
+          })
+          .where(eq(properties.id, newProperty.id));
 
         // Create tenant contact if provided
         if (row.tenant_name && row.tenant_email) {
@@ -827,6 +917,84 @@ crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('fil
   }
 });
 
+// ============================================================
+// Import Key Data from PDF — Two-step: Parse → Staging → Import
+// ============================================================
+
+// Step 1: Parse PDF → Staging table
+crmRouter.post('/import-key-data/parse', requireAdmin, uploadDocument.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    if (req.file.mimetype !== 'application/pdf') {
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({ error: 'Invalid file type. Only PDF files are accepted.' });
+    }
+
+    console.log(`Parsing PDF to staging: ${req.file.originalname}`);
+    const result = await parsePdfToStaging(req.file.path);
+
+    // Clean up uploaded file
+    try { fs.unlinkSync(req.file.path); } catch {}
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error parsing PDF to staging:', error);
+    if (req.file?.path) {
+      try { fs.unlinkSync(req.file.path); } catch {}
+    }
+    res.status(500).json({ error: 'Failed to parse PDF', details: error.message });
+  }
+});
+
+// Step 2: Get staging data for review
+crmRouter.get('/import-key-data/staging/:batchId', requireAdmin, async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    const rows = await db.select().from(pdfImportStaging)
+      .where(eq(pdfImportStaging.batchId, batchId))
+      .orderBy(pdfImportStaging.pageNumber);
+    res.json(rows);
+  } catch (error: any) {
+    console.error('Error fetching staging data:', error);
+    res.status(500).json({ error: 'Failed to fetch staging data', details: error.message });
+  }
+});
+
+// Step 3: Import selected staging rows into real DB tables
+crmRouter.post('/import-key-data/import', requireAdmin, async (req, res) => {
+  try {
+    const { rowIds } = req.body;
+    if (!Array.isArray(rowIds) || rowIds.length === 0) {
+      return res.status(400).json({ error: 'No rows selected for import' });
+    }
+
+    console.log(`Importing ${rowIds.length} staging rows...`);
+    const result = await importFromStaging(rowIds);
+
+    res.json({
+      message: `Import completed. ${result.successCount} of ${result.totalPages} rows imported successfully.`,
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Error importing from staging:', error);
+    res.status(500).json({ error: 'Failed to import selected rows', details: error.message });
+  }
+});
+
+// Step 4: Delete staging batch (cleanup)
+crmRouter.delete('/import-key-data/staging/:batchId', requireAdmin, async (req, res) => {
+  try {
+    const { batchId } = req.params;
+    await db.delete(pdfImportStaging).where(eq(pdfImportStaging.batchId, batchId));
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error deleting staging batch:', error);
+    res.status(500).json({ error: 'Failed to delete staging batch', details: error.message });
+  }
+});
+
 // DUPLICATE ROUTE REMOVED - /properties is defined at line 310
 
 crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
@@ -836,7 +1004,6 @@ crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
     const [property] = await db.select({
       id: properties.id,
       title: properties.title,
-      propertyName: properties.propertyName,
       address: properties.address,
       addressLine1: properties.addressLine1,
       addressLine2: properties.addressLine2,
@@ -878,7 +1045,7 @@ crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
       isPublishedWebsite: properties.isPublishedWebsite,
       isPublishedZoopla: properties.isPublishedZoopla,
       isPublishedRightmove: properties.isPublishedRightmove,
-      isPublishedOnTheMarket: properties.isPublishedOnTheMarket,
+      isPublishedOnTheMarket: properties.isPublishedOnthemarket,
       isPublishedSocial: properties.isPublishedSocial,
       status: properties.status,
       notes: properties.notes,
@@ -4111,11 +4278,16 @@ crmRouter.get('/staff', requireAgent, async (req, res) => {
     // Get staff profiles for additional details
     const staffWithProfiles = await Promise.all(
       staff.map(async (s) => {
-        const profile = await storage.getStaffProfile(s.id);
+        let profile = null;
+        try {
+          profile = await storage.getStaffProfile(s.id) || null;
+        } catch (e) {
+          // staff_profile table may not exist yet - continue without profile
+        }
         return {
           ...s,
           password: undefined,
-          profile: profile || null
+          profile
         };
       })
     );
@@ -9169,10 +9341,20 @@ crmRouter.get('/contractors/:id', requireAgent, async (req, res) => {
   }
 });
 
-// Create contractor
+// Create contractor (with duplicate check)
 crmRouter.post('/contractors', requireAgent, async (req, res) => {
   try {
     const data = insertContractorSchema.parse(req.body);
+
+    // Check for duplicate by company name (case-insensitive)
+    const existing = await pool.query(
+      `SELECT id, company_name FROM contractor WHERE LOWER(company_name) = LOWER($1) LIMIT 1`,
+      [data.companyName]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: `Contractor "${existing.rows[0].company_name}" already exists` });
+    }
+
     const [contractor] = await db.insert(contractors).values(data).returning();
     res.status(201).json(contractor);
   } catch (error) {
@@ -10539,12 +10721,21 @@ crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
     const checklistItems = await db.select().from(tenancyChecklist)
       .where(eq(tenancyChecklist.tenancyId, tenancyId));
 
+    // Get all related documents (tenancy + property + tenant + landlord)
+    const conditions = [eq(document.tenancyId, tenancyId)];
+    if (tenancy.propertyId) conditions.push(eq(document.propertyId, tenancy.propertyId));
+    if (tenancy.tenantId) conditions.push(eq(document.tenantId, tenancy.tenantId));
+    if (tenancy.landlordId) conditions.push(eq(document.landlordId, tenancy.landlordId));
+
+    const documents = await db.select().from(document).where(or(...conditions));
+
     res.json({
       ...tenancy,
       property,
       landlord,
       tenant: tenantData,
-      checklist: checklistItems
+      checklist: checklistItems,
+      documents
     });
   } catch (error) {
     console.error('Error fetching tenancy:', error);
@@ -12473,5 +12664,391 @@ crmRouter.patch('/staff/:id/team-visibility', requireClearance(7), async (req, r
   } catch (error) {
     console.error('Error updating team visibility:', error);
     res.status(500).json({ error: 'Failed to update visibility' });
+  }
+});
+
+// ==========================================
+// USER OVERVIEW & DASHBOARD OVERVIEW
+// ==========================================
+
+// Helper: determine which calendar event types a user can see based on clearance
+function getAllowedEventTypes(clearance: number, accessLevelCode: string | null): string[] {
+  const allowed = ['other'];
+  if (clearance >= 4) allowed.push('meeting', 'internal_meeting');
+  if (clearance >= 5) allowed.push('viewing', 'valuation', 'inspection', 'maintenance');
+  if (clearance >= 6) allowed.push('client_meeting');
+  if (clearance >= 7 || accessLevelCode === 'property_manager') allowed.push('landlord_meeting');
+  return allowed;
+}
+
+// --- MY OVERVIEW ENDPOINTS ---
+
+// GET /my-overview/stats - Personal stats summary
+crmRouter.get('/my-overview/stats', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+    const sevenDaysOut = new Date(now);
+    sevenDaysOut.setDate(sevenDaysOut.getDate() + 7);
+
+    // Today's events
+    const todayEventsResult = await db
+      .select({ count: count(calendarEvents.id) })
+      .from(calendarEvents)
+      .where(and(
+        or(
+          eq(calendarEvents.organizerId, userId),
+          sql`${calendarEvents.attendees}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`
+        ),
+        gte(calendarEvents.startTime, startOfDay),
+        lte(calendarEvents.startTime, endOfDay)
+      ));
+
+    // Upcoming viewings (next 7 days)
+    const upcomingViewingsResult = await db
+      .select({ count: count(calendarEvents.id) })
+      .from(calendarEvents)
+      .where(and(
+        or(
+          eq(calendarEvents.organizerId, userId),
+          sql`${calendarEvents.attendees}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`
+        ),
+        eq(calendarEvents.eventType, 'viewing'),
+        gte(calendarEvents.startTime, now),
+        lte(calendarEvents.startTime, sevenDaysOut)
+      ));
+
+    // Unread emails
+    const unreadResult = await db
+      .select({ count: count(processedEmails.id) })
+      .from(processedEmails)
+      .where(and(eq(processedEmails.userId, userId), eq(processedEmails.isRead, false)));
+
+    // Open WhatsApp conversations
+    const whatsappResult = await db
+      .select({ count: count(conversations.id) })
+      .from(conversations)
+      .where(and(eq(conversations.assignedToId, userId), eq(conversations.status, 'open')));
+
+    // My properties
+    const propertiesResult = await db
+      .select({ count: count(properties.id) })
+      .from(properties)
+      .where(or(eq(properties.agentId, userId), eq(properties.propertyManagerId, userId)));
+
+    res.json({
+      todayEvents: Number(todayEventsResult[0]?.count || 0),
+      upcomingViewings: Number(upcomingViewingsResult[0]?.count || 0),
+      unreadEmails: Number(unreadResult[0]?.count || 0),
+      openWhatsappConversations: Number(whatsappResult[0]?.count || 0),
+      myProperties: Number(propertiesResult[0]?.count || 0),
+    });
+  } catch (error) {
+    console.error('Error fetching my overview stats:', error);
+    res.status(500).json({ error: 'Failed to fetch overview stats' });
+  }
+});
+
+// GET /my-overview/calendar - Personal calendar events
+crmRouter.get('/my-overview/calendar', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const clearance = req.user.securityClearance || 3;
+    const accessLevelCode = req.user.accessLevelCode || null;
+    const { startDate, endDate } = req.query;
+
+    const start = startDate ? new Date(startDate as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = endDate ? new Date(endDate as string) : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+
+    const allowedTypes = getAllowedEventTypes(clearance, accessLevelCode);
+    const events = await storage.getCalendarEventsForUser(userId, start, end, allowedTypes);
+
+    // Enrich with property addresses
+    const enriched = await Promise.all(events.map(async (event) => {
+      let propertyAddress = null;
+      if (event.propertyId) {
+        const prop = await storage.getProperty(event.propertyId);
+        propertyAddress = prop?.address || null;
+      }
+      return { ...event, propertyAddress };
+    }));
+
+    res.json({ events: enriched, totalCount: enriched.length });
+  } catch (error) {
+    console.error('Error fetching my calendar:', error);
+    res.status(500).json({ error: 'Failed to fetch calendar events' });
+  }
+});
+
+// GET /my-overview/communications - Personal emails + WhatsApp
+crmRouter.get('/my-overview/communications', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = parseInt(req.query.limit as string) || 20;
+
+    const comms = await storage.getUserCommunications(userId, limit);
+    res.json({
+      emails: {
+        received: comms.receivedEmails,
+        sent: comms.sentEmailsList,
+      },
+      whatsapp: {
+        conversations: comms.whatsappConversations,
+      },
+      totalReceived: comms.receivedEmails.length,
+      totalSent: comms.sentEmailsList.length,
+      totalWhatsappConversations: comms.whatsappConversations.length,
+    });
+  } catch (error) {
+    console.error('Error fetching my communications:', error);
+    res.status(500).json({ error: 'Failed to fetch communications' });
+  }
+});
+
+// GET /my-overview/properties - Properties assigned to current user
+crmRouter.get('/my-overview/properties', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const userProperties = await storage.getPropertiesByStaffUser(userId);
+
+    const enriched = userProperties.map((p) => ({
+      id: p.id,
+      title: p.title,
+      address: p.address,
+      addressLine1: p.addressLine1,
+      city: p.city,
+      postcode: p.postcode,
+      propertyType: p.propertyType,
+      status: p.status,
+      price: p.price,
+      rentAmount: p.rentAmount,
+      rentPeriod: p.rentPeriod,
+      isManaged: p.isManaged,
+      isListedRental: p.isListedRental,
+      isListedSale: p.isListedSale,
+      bedrooms: p.bedrooms,
+      bathrooms: p.bathrooms,
+      images: p.images,
+      role: p.agentId === userId && p.propertyManagerId === userId
+        ? 'both'
+        : p.agentId === userId
+        ? 'agent'
+        : 'property_manager',
+    }));
+
+    res.json({ properties: enriched, totalCount: enriched.length });
+  } catch (error) {
+    console.error('Error fetching my properties:', error);
+    res.status(500).json({ error: 'Failed to fetch properties' });
+  }
+});
+
+// --- DASHBOARD OVERVIEW ENDPOINTS (clearance >= 8) ---
+
+// GET /dashboard-overview/stats - Org-wide stats
+crmRouter.get('/dashboard-overview/stats', requireClearance(8), async (req: any, res) => {
+  try {
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    // Total active staff
+    const staffResult = await db
+      .select({ count: count(users.id) })
+      .from(users)
+      .where(and(
+        or(eq(users.role, 'admin'), eq(users.role, 'agent')),
+        eq(users.isActive, true)
+      ));
+
+    // Managed properties
+    const managedResult = await db
+      .select({ count: count(properties.id) })
+      .from(properties)
+      .where(eq(properties.isManaged, true));
+
+    // Listed properties
+    const listedResult = await db
+      .select({ count: count(properties.id) })
+      .from(properties)
+      .where(or(eq(properties.isListedRental, true), eq(properties.isListedSale, true)));
+
+    // Today's events (org-wide)
+    const todayEventsResult = await db
+      .select({ count: count(calendarEvents.id) })
+      .from(calendarEvents)
+      .where(and(
+        gte(calendarEvents.startTime, startOfDay),
+        lte(calendarEvents.startTime, endOfDay)
+      ));
+
+    // Open WhatsApp conversations (org-wide)
+    const whatsappResult = await db
+      .select({ count: count(conversations.id) })
+      .from(conversations)
+      .where(eq(conversations.status, 'open'));
+
+    // Unread emails (org-wide)
+    const unreadResult = await db
+      .select({ count: count(processedEmails.id) })
+      .from(processedEmails)
+      .where(eq(processedEmails.isRead, false));
+
+    // Emails sent today
+    const sentTodayResult = await db
+      .select({ count: count(sentEmails.id) })
+      .from(sentEmails)
+      .where(gte(sentEmails.createdAt, startOfDay));
+
+    res.json({
+      totalStaff: Number(staffResult[0]?.count || 0),
+      managedProperties: Number(managedResult[0]?.count || 0),
+      listedProperties: Number(listedResult[0]?.count || 0),
+      todayEvents: Number(todayEventsResult[0]?.count || 0),
+      openWhatsappConversations: Number(whatsappResult[0]?.count || 0),
+      unreadEmails: Number(unreadResult[0]?.count || 0),
+      sentToday: Number(sentTodayResult[0]?.count || 0),
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard overview stats:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard stats' });
+  }
+});
+
+// GET /dashboard-overview/calendar - Org-wide calendar
+crmRouter.get('/dashboard-overview/calendar', requireClearance(8), async (req: any, res) => {
+  try {
+    const { startDate, endDate, userId: filterUserId, eventTypes } = req.query;
+
+    const start = startDate ? new Date(startDate as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const end = endDate ? new Date(endDate as string) : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+    const parsedUserId = filterUserId ? parseInt(filterUserId as string) : undefined;
+    const parsedTypes = eventTypes ? (eventTypes as string).split(',') : undefined;
+
+    const events = await storage.getAllCalendarEventsInRange(start, end, parsedUserId, parsedTypes);
+
+    // Enrich with property addresses
+    const enriched = await Promise.all(events.map(async (event) => {
+      let propertyAddress = null;
+      if (event.propertyId) {
+        const prop = await storage.getProperty(event.propertyId);
+        propertyAddress = prop?.address || null;
+      }
+      return { ...event, propertyAddress };
+    }));
+
+    res.json({ events: enriched, totalCount: enriched.length });
+  } catch (error) {
+    console.error('Error fetching dashboard calendar:', error);
+    res.status(500).json({ error: 'Failed to fetch calendar events' });
+  }
+});
+
+// GET /dashboard-overview/communications - Org-wide email + WhatsApp stats
+crmRouter.get('/dashboard-overview/communications', requireClearance(8), async (req: any, res) => {
+  try {
+    const days = parseInt(req.query.days as string) || 7;
+    const stats = await storage.getOrgCommunicationStats(days);
+
+    // Also fetch recent messages for activity feed
+    const recentEmails = await db
+      .select({
+        id: processedEmails.id,
+        type: sql<string>`'email'`,
+        fromAddress: processedEmails.fromAddress,
+        fromName: processedEmails.fromName,
+        subject: processedEmails.subject,
+        bodyPreview: processedEmails.bodyPreview,
+        timestamp: processedEmails.receivedAt,
+        userId: processedEmails.userId,
+      })
+      .from(processedEmails)
+      .orderBy(desc(processedEmails.receivedAt))
+      .limit(10);
+
+    const recentWhatsapp = await db
+      .select({
+        id: messages.id,
+        type: sql<string>`'whatsapp'`,
+        fromAddress: messages.fromAddress,
+        content: messages.content,
+        timestamp: messages.createdAt,
+        conversationId: messages.conversationId,
+        direction: messages.direction,
+      })
+      .from(messages)
+      .where(eq(messages.channel, 'whatsapp'))
+      .orderBy(desc(messages.createdAt))
+      .limit(10);
+
+    res.json({
+      overview: stats.overview,
+      byUser: stats.byUser,
+      recentActivity: {
+        emails: recentEmails,
+        whatsapp: recentWhatsapp,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard communications:', error);
+    res.status(500).json({ error: 'Failed to fetch communication stats' });
+  }
+});
+
+// GET /dashboard-overview/properties - All managed properties with staff
+crmRouter.get('/dashboard-overview/properties', requireClearance(8), async (req: any, res) => {
+  try {
+    const managedProps = await db
+      .select({
+        id: properties.id,
+        title: properties.title,
+        address: properties.address,
+        addressLine1: properties.addressLine1,
+        city: properties.city,
+        postcode: properties.postcode,
+        propertyType: properties.propertyType,
+        status: properties.status,
+        price: properties.price,
+        rentAmount: properties.rentAmount,
+        rentPeriod: properties.rentPeriod,
+        isManaged: properties.isManaged,
+        isListedRental: properties.isListedRental,
+        isListedSale: properties.isListedSale,
+        bedrooms: properties.bedrooms,
+        bathrooms: properties.bathrooms,
+        agentId: properties.agentId,
+        propertyManagerId: properties.propertyManagerId,
+        managementType: properties.managementType,
+      })
+      .from(properties)
+      .where(eq(properties.isManaged, true))
+      .orderBy(desc(properties.createdAt));
+
+    // Fetch staff names for agent and property manager
+    const staffIds = new Set<number>();
+    managedProps.forEach((p) => {
+      if (p.agentId) staffIds.add(p.agentId);
+      if (p.propertyManagerId) staffIds.add(p.propertyManagerId);
+    });
+
+    const staffList = staffIds.size > 0
+      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, [...staffIds]))
+      : [];
+    const staffMap = new Map(staffList.map((s) => [s.id, s.fullName || `User ${s.id}`]));
+
+    const enriched = managedProps.map((p) => ({
+      ...p,
+      agentName: p.agentId ? staffMap.get(p.agentId) || null : null,
+      propertyManagerName: p.propertyManagerId ? staffMap.get(p.propertyManagerId) || null : null,
+    }));
+
+    res.json({ properties: enriched, totalCount: enriched.length });
+  } catch (error) {
+    console.error('Error fetching dashboard properties:', error);
+    res.status(500).json({ error: 'Failed to fetch properties' });
   }
 });

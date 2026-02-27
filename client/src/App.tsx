@@ -63,10 +63,12 @@ import RentalAgreements from "@/pages/RentalAgreements";
 import SupportTickets from "@/pages/SupportTickets";
 import ComplianceReference from "@/pages/ComplianceReference";
 import LandlordOnboarding from "@/pages/LandlordOnboarding";
+import CorporateOnboarding from "@/pages/CorporateOnboarding";
 import TenantOnboarding from "@/pages/TenantOnboarding";
 import PropertyOnboarding from "@/pages/PropertyOnboarding";
 import ManagedPropertyCard from "@/pages/ManagedPropertyCard";
 import LandlordDetails from "@/pages/LandlordDetails";
+import TenancyDetails from "@/pages/TenancyDetails";
 import ContactManagement from "@/pages/ContactManagement";
 import SalesProgressionPage from "@/pages/SalesProgressionPage";
 import ContractorManagement from "@/pages/ContractorManagement";
@@ -76,6 +78,8 @@ import PropertyImport from "@/pages/PropertyImport";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import SecurityMatrix from "@/pages/SecurityMatrix";
+import MyOverview from "@/pages/MyOverview";
+import DashboardOverview from "@/pages/DashboardOverview";
 import CMSManagement from "@/pages/CMSManagement";
 import CMSPageEditor from "@/pages/CMSPageEditor";
 import CMSMediaLibrary from "@/pages/CMSMediaLibrary";
@@ -211,6 +215,12 @@ function Router() {
         <Route path="/crm/analytics" component={AnalyticsDashboard} />
         <Route path="/crm/syndication" component={PropertySyndication} />
         <Route path="/crm/calendar" component={CalendarIntegration} />
+        <Route path="/crm/my-overview" component={MyOverview} />
+        <Route path="/crm/dashboard-overview">
+          <ClearanceProtectedRoute requiredClearance={8} featureKey="dashboard_overview" showAccessDenied={true}>
+            <DashboardOverview />
+          </ClearanceProtectedRoute>
+        </Route>
         <Route path="/crm/reports" component={ReportBuilder} />
         <ProtectedRoute path="/crm/staff">
           <StaffManagement />
@@ -234,9 +244,11 @@ function Router() {
         <Route path="/crm/contacts" component={ContactManagement} />
         <Route path="/crm/contacts/:id" component={ContactManagement} />
         <Route path="/crm/rental-agreements" component={RentalAgreements} />
+        <Route path="/crm/tenancies/:id" component={TenancyDetails} />
         <Route path="/crm/support-tickets" component={SupportTickets} />
         <Route path="/crm/compliance" component={ComplianceReference} />
         <Route path="/crm/onboarding/landlord" component={LandlordOnboarding} />
+        <Route path="/crm/onboarding/corporate" component={CorporateOnboarding} />
         <Route path="/crm/onboarding/tenant" component={TenantOnboarding} />
         <Route path="/crm/onboarding/property" component={PropertyOnboarding} />
         <Route path="/crm/managed-property/:id" component={ManagedPropertyCard} />

@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import {
   Building2, Users, Home, Plus, Eye, Edit, Bell,
   Search, LogOut, ArrowLeft, Loader2, Calendar,
-  FileText, PoundSterling, Building, Clock, AlertTriangle
+  FileText, PoundSterling, Building, Clock, AlertTriangle,
+  ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,7 @@ interface RentalAgreement {
   endDate: string | null;
   depositAmount?: number | null;
   depositScheme?: string | null;
+  depositHolderType?: string | null;
   depositReference?: string | null;
   status: string;
   createdAt: string;
@@ -49,6 +51,24 @@ export default function RentalAgreements() {
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'expired' | 'ending_soon'>('all');
+  const [sortColumn, setSortColumn] = useState<string>('property');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  const toggleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortColumn !== column) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
 
   // Fetch rental agreements
   const { data: agreements = [], isLoading } = useQuery({
@@ -127,6 +147,52 @@ export default function RentalAgreements() {
     if (statusFilter === 'expired') return matchesSearch && expiredAgreements.includes(a);
     if (statusFilter === 'ending_soon') return matchesSearch && endingSoonAgreements.includes(a);
     return matchesSearch;
+  }).sort((a: RentalAgreement, b: RentalAgreement) => {
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    switch (sortColumn) {
+      case 'property': {
+        const aVal = (a.propertyTitle || a.propertyAddress || '').toLowerCase();
+        const bVal = (b.propertyTitle || b.propertyAddress || '').toLowerCase();
+        return aVal.localeCompare(bVal) * dir;
+      }
+      case 'landlord': {
+        const aVal = (a.landlordName || '').toLowerCase();
+        const bVal = (b.landlordName || '').toLowerCase();
+        return aVal.localeCompare(bVal) * dir;
+      }
+      case 'rent': {
+        const aVal = parseFloat(String(a.rentAmount)) || 0;
+        const bVal = parseFloat(String(b.rentAmount)) || 0;
+        return (aVal - bVal) * dir;
+      }
+      case 'managementFee': {
+        const aVal = parseFloat(String(a.managementFeeValue)) || 0;
+        const bVal = parseFloat(String(b.managementFeeValue)) || 0;
+        return (aVal - bVal) * dir;
+      }
+      case 'tenancyPeriod': {
+        const aVal = a.startDate ? new Date(a.startDate).getTime() : 0;
+        const bVal = b.startDate ? new Date(b.startDate).getTime() : 0;
+        return (aVal - bVal) * dir;
+      }
+      case 'deposit': {
+        const aVal = parseFloat(String(a.depositAmount)) || 0;
+        const bVal = parseFloat(String(b.depositAmount)) || 0;
+        return (aVal - bVal) * dir;
+      }
+      case 'status': {
+        const getStatusOrder = (ag: RentalAgreement) => {
+          if (!ag.endDate) return 1;
+          const end = new Date(ag.endDate);
+          if (end <= now) return 3;
+          if (end <= thirtyDaysFromNow) return 2;
+          return 1;
+        };
+        return (getStatusOrder(a) - getStatusOrder(b)) * dir;
+      }
+      default:
+        return 0;
+    }
   });
 
   const formatCurrency = (amount: number | string) => {
@@ -300,7 +366,7 @@ export default function RentalAgreements() {
                 placeholder="Search by property, postcode, or landlord..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
+                className="pl-10 border-gray-300 bg-white text-gray-900 placeholder:text-gray-500"
               />
             </div>
             <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as any)}>
@@ -338,13 +404,27 @@ export default function RentalAgreements() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Property</TableHead>
-                      <TableHead>Landlord</TableHead>
-                      <TableHead>Rent</TableHead>
-                      <TableHead>Management Fee</TableHead>
-                      <TableHead>Tenancy Period</TableHead>
-                      <TableHead>Deposit</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('property')}>
+                        <div className="flex items-center">Property<SortIcon column="property" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('landlord')}>
+                        <div className="flex items-center">Landlord<SortIcon column="landlord" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('rent')}>
+                        <div className="flex items-center">Rent<SortIcon column="rent" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('managementFee')}>
+                        <div className="flex items-center">Management Fee<SortIcon column="managementFee" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('tenancyPeriod')}>
+                        <div className="flex items-center">Tenancy Period<SortIcon column="tenancyPeriod" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('deposit')}>
+                        <div className="flex items-center">Deposit<SortIcon column="deposit" /></div>
+                      </TableHead>
+                      <TableHead className="cursor-pointer select-none hover:bg-muted/50" onClick={() => toggleSort('status')}>
+                        <div className="flex items-center">Status<SortIcon column="status" /></div>
+                      </TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -409,8 +489,19 @@ export default function RentalAgreements() {
                           {agreement.depositAmount ? (
                             <div>
                               <p className="font-medium">{formatCurrency(agreement.depositAmount)}</p>
+                              {agreement.depositHolderType && (
+                                <p className="text-xs text-gray-500">
+                                  Held by: {agreement.depositHolderType === 'agency_custodial' ? 'Agency (Custodial)'
+                                    : agreement.depositHolderType === 'agency_insurance' ? 'Agency (Insurance)'
+                                    : agreement.depositHolderType === 'landlord' ? 'Landlord'
+                                    : agreement.depositHolderType}
+                                </p>
+                              )}
                               {agreement.depositScheme && (
                                 <p className="text-xs text-gray-500">{agreement.depositScheme}</p>
+                              )}
+                              {agreement.depositReference && (
+                                <p className="text-xs text-gray-500">Ref: {agreement.depositReference}</p>
                               )}
                             </div>
                           ) : (

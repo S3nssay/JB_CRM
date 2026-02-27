@@ -146,16 +146,41 @@ export const properties = pgTable("property", {
   isRental: boolean("is_rental").default(false), // Is this a rental property?
   isResidential: boolean("is_residential").default(true), // Is this residential (vs commercial)?
   landlordId: integer("landlord_id"), // FK to landlords table (when property is managed)
+  vendorId: integer("vendor_id"), // FK to users for vendor/seller
+  agentId: integer("agent_id"), // FK to users for assigned agent
 
   // Additional address fields
   address: text("address"), // Full address string
   city: text("city"),
+  country: text("country"),
+  propertyName: text("property_name"), // Optional property name/building name
 
   // Management details
+  managementType: text("management_type"), // 'full', 'let_only', 'tenant_find'
   managementFeeType: text("management_fee_type"), // 'percentage' or 'fixed'
   managementFeeValue: decimal("management_fee_value"), // The fee value
   managementPeriodMonths: integer("management_period_months"), // 12, 24, 36 months
   managementStartDate: timestamp("management_start_date"),
+  managementEndDate: timestamp("management_end_date"),
+
+  // Rental financial
+  rentAmount: integer("rent_amount"), // Monthly rent in pence
+
+  // Leasehold details
+  leaseLength: integer("lease_length"), // Remaining lease length in years
+  groundRent: integer("ground_rent"), // Annual ground rent in pence
+  serviceCharge: integer("service_charge"), // Annual service charge in pence
+
+  // Publishing flags
+  isPublishedWebsite: boolean("is_published_website").default(false),
+  isPublishedZoopla: boolean("is_published_zoopla").default(false),
+  isPublishedRightmove: boolean("is_published_rightmove").default(false),
+  isPublishedOnthemarket: boolean("is_published_onthemarket").default(false),
+  isPublishedSocial: boolean("is_published_social").default(false),
+  publishedToPortals: boolean("published_to_portals").default(false),
+
+  // Notes
+  notes: text("notes"),
 
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1165,39 +1190,7 @@ export const tenant = pgTable("tenant", {
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
 
-// Managed Property Documents - checklist items and file references
-export const managedPropertyDocuments = pgTable("managed_property_document", {
-  id: serial("id").primaryKey(),
-  rentalAgreementId: integer("rental_agreement_id").notNull(),
-  propertyId: integer("property_id").notNull(),
-
-  // Document type
-  documentType: text("document_type").notNull(),
-  // 'tenancy_agreement', 'notices', 'guarantor_agreement', 'standing_order',
-  // 'inventory', 'deposit_dps', 'deposit_tds', 'deposit_landlord',
-  // 'work_reference', 'bank_reference', 'previous_landlord_reference',
-  // 'tenant_id', 'authorization_landlord', 'terms_conditions',
-  // 'info_sheet_landlord', 'gas_safety_certificate'
-
-  // Document status
-  status: text("status").notNull().default("pending"), // 'pending', 'uploaded', 'verified', 'expired'
-
-  // File details (if uploaded)
-  fileName: text("file_name"),
-  fileUrl: text("file_url"),
-  fileSize: integer("file_size"),
-  mimeType: text("mime_type"),
-
-  // Metadata
-  notes: text("notes"),
-  expiryDate: timestamp("expiry_date"),
-  uploadedBy: integer("uploaded_by"),
-  verifiedBy: integer("verified_by"),
-  verifiedAt: timestamp("verified_at"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
+// NOTE: managed_property_document table removed - use document table with entity_type='property' instead
 
 // Property Inventory
 export const propertyInventories = pgTable("property_inventory", {
@@ -1925,39 +1918,8 @@ export const contactStatusHistory = pgTable("contact_status_history", {
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
 
-// Dedicated Managed Properties table
-export const managedProperties = pgTable("managed_property", {
-  id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull().unique(),
-  landlordId: integer("landlord_id").notNull(), // Unified contact ID
-  managementStartDate: timestamp("management_start_date").notNull(),
-  managementEndDate: timestamp("management_end_date"),
-  managementType: text("management_type").notNull(), // 'full', 'let_only', 'rent_collection'
-  status: text("status").notNull().default("active"), // 'active', 'inactive', 'prospective', 'archived'
-  managementFeeType: text("management_fee_type"), // 'percentage' or 'fixed'
-  managementFeeValue: decimal("management_fee_value"),
-
-  // Compliance Master Status
-  complianceScore: integer("compliance_score").default(0), // 0-100
-  nextCriticalComplianceDate: timestamp("next_critical_compliance_date"),
-
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
-
-// Managed Property Compliance Document Mapping
-export const managedPropertyCompliance = pgTable("managed_property_compliance", {
-  id: serial("id").primaryKey(),
-  propertyId: integer("property_id").notNull(),
-  requirementCode: text("requirement_code").notNull(), // Reference to compliance_requirements.code
-  status: text("status").notNull().default("pending"),
-  lastCompletedDate: timestamp("last_completed_date"),
-  expiryDate: timestamp("expiry_date"),
-  certificateId: integer("certificate_id"), // Reference to existing property_certificates if applicable
-  notes: text("notes"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
-});
+// NOTE: managed_property and managed_property_compliance tables removed
+// Use property table with is_managed = true instead
 
 // Joint Tenants support
 export const jointTenants = pgTable("joint_tenant", {
@@ -2039,7 +2001,6 @@ export const unifiedContactsRelations = relations(unifiedContacts, ({ one, many 
     fields: [unifiedContacts.assignedAgentId],
     references: [users.id]
   }),
-  managedProperties: many(managedProperties),
   jointTenancies: many(jointTenants)
 }));
 
@@ -2079,18 +2040,6 @@ export const kycDocumentsRelations = relations(kycDocuments, ({ one }) => ({
     fields: [kycDocuments.beneficialOwnerId],
     references: [beneficialOwner.id]
   })
-}));
-
-export const managedPropertiesRelations = relations(managedProperties, ({ one, many }) => ({
-  property: one(properties, {
-    fields: [managedProperties.propertyId],
-    references: [properties.id]
-  }),
-  landlord: one(unifiedContacts, {
-    fields: [managedProperties.landlordId],
-    references: [unifiedContacts.id]
-  }),
-  complianceItems: many(managedPropertyCompliance)
 }));
 
 export const jointTenantsRelations = relations(jointTenants, ({ one }) => ({
@@ -3195,17 +3144,6 @@ export const insertContactStatusHistorySchema = createInsertSchema(contactStatus
   createdAt: true
 });
 
-export const insertManagedPropertySchema = createInsertSchema(managedProperties).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-
-export const insertManagedPropertyComplianceSchema = createInsertSchema(managedPropertyCompliance).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
 
 export const insertJointTenantSchema = createInsertSchema(jointTenants).omit({
   id: true,
@@ -3946,6 +3884,43 @@ export const calendarSettings = pgTable("calendar_setting", {
 });
 
 // ==========================================
+// TASK MANAGEMENT
+// ==========================================
+
+export const tasks = pgTable("task", {
+  id: serial("id").primaryKey(),
+  title: text("title").notNull(),
+  description: text("description"),
+  taskType: text("task_type").notNull(), // 'viewing', 'call', 'follow_up', 'enquiry_response', 'property_assignment', 'document', 'maintenance', 'general'
+  priority: text("priority").notNull().default("normal"), // 'urgent', 'high', 'normal', 'low'
+  status: text("status").notNull().default("pending"), // 'pending', 'in_progress', 'completed', 'cancelled'
+
+  assignedToId: integer("assigned_to_id").notNull(), // FK users.id - who must do it
+  assignedById: integer("assigned_by_id"), // FK users.id - who created/delegated it
+
+  // Context links (all optional - task can relate to any entity)
+  propertyId: integer("property_id"),
+  leadId: integer("lead_id"),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+
+  dueDate: timestamp("due_date"),
+  completedAt: timestamp("completed_at"),
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertTaskSchema = createInsertSchema(tasks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type Task = typeof tasks.$inferSelect;
+
+// ==========================================
 // PROACTIVE LEAD GENERATION TABLES
 // ==========================================
 
@@ -4529,14 +4504,6 @@ export type InsertCorporateOwner = z.infer<typeof insertCorporateOwnerSchema>;
 export type BeneficialOwner = typeof beneficialOwner.$inferSelect;
 export type InsertBeneficialOwner = z.infer<typeof insertBeneficialOwnerSchema>;
 
-// Managed Property Documents
-export const insertManagedPropertyDocumentSchema = createInsertSchema(managedPropertyDocuments).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true
-});
-export type ManagedPropertyDocument = typeof managedPropertyDocuments.$inferSelect;
-export type InsertManagedPropertyDocument = z.infer<typeof insertManagedPropertyDocumentSchema>;
 
 // Property Inventory
 export const insertPropertyInventorySchema = createInsertSchema(propertyInventories).omit({
@@ -4655,8 +4622,6 @@ export type InsertCompanyDetail = z.infer<typeof insertCompanyDetailsSchema>;
 export type KycDocument = typeof kycDocuments.$inferSelect;
 export type InsertKycDocument = z.infer<typeof insertKycDocumentSchema>;
 
-export type ManagedProperty = typeof managedProperties.$inferSelect;
-export type InsertManagedProperty = z.infer<typeof insertManagedPropertySchema>;
 
 export type JointTenant = typeof jointTenants.$inferSelect;
 export type InsertJointTenant = z.infer<typeof insertJointTenantSchema>;
@@ -5185,6 +5150,57 @@ export const insertTenancyChecklistItemSchema = createInsertSchema(tenancyCheckl
 });
 export type InsertTenancyChecklistItem = z.infer<typeof insertTenancyChecklistItemSchema>;
 export type TenancyChecklistItem = typeof tenancyChecklistItems.$inferSelect;
+
+// ==========================================
+// PDF IMPORT STAGING TABLE
+// ==========================================
+
+export const pdfImportStaging = pgTable("pdf_import_staging", {
+  id: serial("id").primaryKey(),
+  batchId: text("batch_id").notNull(),
+  pageNumber: integer("page_number").notNull(),
+  status: text("status").default("pending"),
+  // Property
+  propertyAddress: text("property_address"),
+  propertyFirstLine: text("property_first_line"),
+  propertyStreet: text("property_street"),
+  postcode: text("postcode"),
+  // Management
+  managementFee: text("management_fee"),
+  managementType: text("management_type"),
+  managementPeriodMonths: text("management_period_months"),
+  // Landlord
+  landlordName: text("landlord_name"),
+  landlordAddress: text("landlord_address"),
+  landlordPhone: text("landlord_phone"),
+  landlordMobile: text("landlord_mobile"),
+  landlordEmail: text("landlord_email"),
+  bankName: text("bank_name"),
+  bankAccountNo: text("bank_account_no"),
+  sortCode: text("sort_code"),
+  // Tenant
+  tenantName: text("tenant_name"),
+  tenantPhone: text("tenant_phone"),
+  tenantMobile: text("tenant_mobile"),
+  // Tenancy
+  depositAmount: text("deposit_amount"),
+  rentAmount: text("rent_amount"),
+  rentFrequency: text("rent_frequency"),
+  tenancyStart: text("tenancy_start"),
+  tenancyEnd: text("tenancy_end"),
+  periodMonths: text("period_months"),
+  depositHeldBy: text("deposit_held_by"),
+  // Keys
+  keysGivenToTenant: text("keys_given_to_tenant"),
+  spareKeysInOffice: text("spare_keys_in_office"),
+  asAtDate: text("as_at_date"),
+  // Checklist (JSON)
+  checklistJson: text("checklist_json"),
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PdfImportStagingRow = typeof pdfImportStaging.$inferSelect;
 
 // ==========================================
 // UK LANDLORD COMPLIANCE TRACKING

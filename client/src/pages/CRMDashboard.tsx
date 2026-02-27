@@ -12,7 +12,7 @@ import {
   FileText, Clock, AlertCircle, CheckCircle, Shield,
   GitBranch, Mic, Globe, Mail, Search, MapPin, Loader2,
   Building, UserCircle, Key, ArrowLeft, User, Gavel, Lock, UserPlus,
-  LayoutGrid, List, Send, HardHat
+  LayoutGrid, List, Send, HardHat, FileUp
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -24,6 +24,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { BulkPropertyOperations } from '@/components/BulkPropertyOperations';
 import { queryClient } from '@/lib/queryClient';
 import { ScheduleViewingWizard } from '@/components/ScheduleViewingWizard';
+import { ImportKeyDataDialog } from '@/components/ImportKeyDataDialog';
 
 // Dashboard widgets - Now clickable for drill-down
 const StatsCard = ({ title, value, change, icon: Icon, color, onClick }: any) => (
@@ -71,6 +72,7 @@ export default function CRMDashboard() {
   const [showViewingWizard, setShowViewingWizard] = useState(false);
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<number>>(new Set());
   const [showBulkPublishDialog, setShowBulkPublishDialog] = useState(false);
+  const [showImportKeyDataDialog, setShowImportKeyDataDialog] = useState(false);
   const [isBulkPublishing, setIsBulkPublishing] = useState(false);
 
   // Fetch properties from API
@@ -83,7 +85,7 @@ export default function CRMDashboard() {
     }
   });
 
-  // Fetch managed properties from PM system (separate table)
+  // Fetch managed properties (property table with is_managed = true)
   const { data: pmManagedProperties = [], error: managedPropertiesError } = useQuery({
     queryKey: ['/api/crm/managed-properties'],
     queryFn: async () => {
@@ -418,6 +420,25 @@ export default function CRMDashboard() {
         <aside className="w-64 bg-white shadow-md h-[calc(100vh-4rem)]">
           <nav className="p-4 space-y-2">
             <Button
+              variant="ghost"
+              className="w-full justify-start text-[#791E75] font-semibold"
+              onClick={() => setLocation('/crm/my-overview')}
+            >
+              <UserCircle className="mr-2 h-4 w-4" />
+              My Overview
+            </Button>
+            {(user?.role === 'admin' || (user?.securityClearance && user.securityClearance >= 8)) && (
+              <Button
+                variant="ghost"
+                className="w-full justify-start text-[#791E75] font-semibold"
+                onClick={() => setLocation('/crm/dashboard-overview')}
+              >
+                <LayoutGrid className="mr-2 h-4 w-4" />
+                Management Dashboard
+              </Button>
+            )}
+            <div className="border-b my-2" />
+            <Button
               variant={activeTab === 'overview' ? 'default' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveTab('overview')}
@@ -638,6 +659,14 @@ export default function CRMDashboard() {
                   >
                     <Lock className="mr-2 h-4 w-4" />
                     Security Matrix
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start"
+                    onClick={() => setShowImportKeyDataDialog(true)}
+                  >
+                    <FileUp className="mr-2 h-4 w-4" />
+                    Import Key Data
                   </Button>
                 </div>
               </>
@@ -1508,6 +1537,12 @@ export default function CRMDashboard() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Import Key Data Dialog */}
+      <ImportKeyDataDialog
+        open={showImportKeyDataDialog}
+        onOpenChange={setShowImportKeyDataDialog}
+      />
     </div>
   );
 }

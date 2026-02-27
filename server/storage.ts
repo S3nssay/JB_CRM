@@ -31,15 +31,15 @@ import {
   CompanyDetail, InsertCompanyDetail,
   BeneficialOwner, InsertBeneficialOwner,
   KycDocument, InsertKycDocument,
-  ManagedProperty, InsertManagedProperty,
   JointTenant, InsertJointTenant,
   SalesProgression, InsertSalesProgression,
   unifiedContacts, companyDetails, beneficialOwner, kycDocuments,
-  contactStatusHistory, managedProperties, managedPropertyCompliance,
-  jointTenants, salesProgression, communications
+  contactStatusHistory,
+  jointTenants, salesProgression, communications,
+  conversations, messages, processedEmails, sentEmails
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, ilike, and, desc, sql } from "drizzle-orm";
+import { eq, ilike, and, or, desc, sql, gte, lte, inArray, count } from "drizzle-orm";
 import { PgSelect } from "drizzle-orm/pg-core";
 import session from "express-session";
 import connectPg from "connect-pg-simple";
@@ -155,7 +155,7 @@ export interface IStorage {
   updateUnifiedContact(id: number, data: Partial<InsertUnifiedContact>): Promise<UnifiedContact | undefined>;
   getCompanyDetailsByContact(contactId: number): Promise<CompanyDetail | undefined>;
   getKycDocuments(contactId?: number): Promise<KycDocument[]>;
-  getManagedPropertiesV3(): Promise<ManagedProperty[]>;
+  getManagedPropertiesV3(): Promise<any[]>;
   getSalesProgression(propertyId: number): Promise<SalesProgression | undefined>;
   checkUserPermission(userId: number, category: string, permission: string): Promise<boolean>;
   getUserPrimaryRole(userId: number): Promise<any>;
@@ -1376,8 +1376,8 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(kycDocuments);
   }
 
-  async getManagedPropertiesV3(): Promise<ManagedProperty[]> {
-    return await db.select().from(managedProperties).orderBy(desc(managedProperties.createdAt));
+  async getManagedPropertiesV3(): Promise<any[]> {
+    return await db.select().from(properties).where(eq(properties.isManaged, true)).orderBy(desc(properties.createdAt));
   }
 
   async getSalesProgression(propertyId: number): Promise<SalesProgression | undefined> {
@@ -1388,6 +1388,225 @@ export class DatabaseStorage implements IStorage {
   async createSalesProgression(data: InsertSalesProgression): Promise<SalesProgression> {
     const [progression] = await db.insert(salesProgression).values(data).returning();
     return progression;
+  }
+
+  // ==========================================
+  // USER OVERVIEW & DASHBOARD OVERVIEW METHODS
+  // ==========================================
+
+  async getCalendarEventsForUser(
+    userId: number,
+    startDate: Date,
+    endDate: Date,
+    allowedEventTypes: string[]
+  ): Promise<CalendarEvent[]> {
+    const results = await db
+      .select()
+      .from(calendarEvents)
+      .where(
+        and(
+          or(
+            eq(calendarEvents.organizerId, userId),
+            sql`${calendarEvents.attendees}::jsonb @> ${JSON.stringify([{ userId }])}::jsonb`
+          ),
+          gte(calendarEvents.startTime, startDate),
+          lte(calendarEvents.startTime, endDate),
+          allowedEventTypes.length > 0
+            ? inArray(calendarEvents.eventType, allowedEventTypes)
+            : undefined
+        )
+      )
+      .orderBy(calendarEvents.startTime);
+    return results;
+  }
+
+  async getPropertiesByStaffUser(userId: number): Promise<Property[]> {
+    return await db
+      .select()
+      .from(properties)
+      .where(
+        or(
+          eq(properties.agentId, userId),
+          eq(properties.propertyManagerId, userId)
+        )
+      )
+      .orderBy(desc(properties.createdAt));
+  }
+
+  async getUserCommunications(userId: number, limit: number = 20): Promise<{
+    receivedEmails: any[];
+    sentEmailsList: any[];
+    whatsappConversations: any[];
+  }> {
+    const receivedEmails = await db
+      .select({
+        id: processedEmails.id,
+        fromAddress: processedEmails.fromAddress,
+        fromName: processedEmails.fromName,
+        subject: processedEmails.subject,
+        bodyPreview: processedEmails.bodyPreview,
+        receivedAt: processedEmails.receivedAt,
+        isRead: processedEmails.isRead,
+        aiCategory: processedEmails.aiCategory,
+        aiPriority: processedEmails.aiPriority,
+      })
+      .from(processedEmails)
+      .where(eq(processedEmails.userId, userId))
+      .orderBy(desc(processedEmails.receivedAt))
+      .limit(limit);
+
+    const sentEmailsList = await db
+      .select({
+        id: sentEmails.id,
+        toAddresses: sentEmails.toAddresses,
+        subject: sentEmails.subject,
+        status: sentEmails.status,
+        sentAt: sentEmails.sentAt,
+        createdAt: sentEmails.createdAt,
+      })
+      .from(sentEmails)
+      .where(eq(sentEmails.userId, userId))
+      .orderBy(desc(sentEmails.createdAt))
+      .limit(limit);
+
+    const whatsappConversations = await db
+      .select({
+        id: conversations.id,
+        contactName: conversations.contactName,
+        contactPhone: conversations.contactPhone,
+        propertyId: conversations.propertyId,
+        status: conversations.status,
+        priority: conversations.priority,
+        lastMessageAt: conversations.lastMessageAt,
+        lastMessagePreview: conversations.lastMessagePreview,
+        unreadCount: conversations.unreadCount,
+      })
+      .from(conversations)
+      .where(eq(conversations.assignedToId, userId))
+      .orderBy(desc(conversations.lastMessageAt))
+      .limit(limit);
+
+    return { receivedEmails, sentEmailsList, whatsappConversations };
+  }
+
+  async getAllCalendarEventsInRange(
+    startDate: Date,
+    endDate: Date,
+    filterUserId?: number,
+    eventTypes?: string[]
+  ): Promise<any[]> {
+    const conditions = [
+      gte(calendarEvents.startTime, startDate),
+      lte(calendarEvents.startTime, endDate),
+    ];
+
+    if (filterUserId) {
+      conditions.push(
+        sql`(${calendarEvents.organizerId} = ${filterUserId} OR ${calendarEvents.attendees}::jsonb @> ${JSON.stringify([{ userId: filterUserId }])}::jsonb)` as any
+      );
+    }
+
+    if (eventTypes && eventTypes.length > 0) {
+      conditions.push(inArray(calendarEvents.eventType, eventTypes) as any);
+    }
+
+    return await db
+      .select({
+        id: calendarEvents.id,
+        title: calendarEvents.title,
+        description: calendarEvents.description,
+        eventType: calendarEvents.eventType,
+        startTime: calendarEvents.startTime,
+        endTime: calendarEvents.endTime,
+        allDay: calendarEvents.allDay,
+        location: calendarEvents.location,
+        propertyId: calendarEvents.propertyId,
+        isVirtual: calendarEvents.isVirtual,
+        virtualMeetingUrl: calendarEvents.virtualMeetingUrl,
+        organizerId: calendarEvents.organizerId,
+        attendees: calendarEvents.attendees,
+        status: calendarEvents.status,
+        notes: calendarEvents.notes,
+        organizerName: users.fullName,
+      })
+      .from(calendarEvents)
+      .leftJoin(users, eq(calendarEvents.organizerId, users.id))
+      .where(and(...conditions))
+      .orderBy(calendarEvents.startTime);
+  }
+
+  async getOrgCommunicationStats(days: number = 7): Promise<{
+    overview: { totalReceived: number; totalSent: number; totalUnread: number; openWhatsapp: number };
+    byUser: any[];
+  }> {
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+
+    const emailReceivedStats = await db
+      .select({
+        userId: processedEmails.userId,
+        count: count(processedEmails.id),
+      })
+      .from(processedEmails)
+      .where(gte(processedEmails.receivedAt, since))
+      .groupBy(processedEmails.userId);
+
+    const emailSentStats = await db
+      .select({
+        userId: sentEmails.userId,
+        count: count(sentEmails.id),
+      })
+      .from(sentEmails)
+      .where(gte(sentEmails.createdAt, since))
+      .groupBy(sentEmails.userId);
+
+    const unreadStats = await db
+      .select({
+        userId: processedEmails.userId,
+        count: count(processedEmails.id),
+      })
+      .from(processedEmails)
+      .where(and(eq(processedEmails.isRead, false), gte(processedEmails.receivedAt, since)))
+      .groupBy(processedEmails.userId);
+
+    const whatsappStats = await db
+      .select({
+        assignedToId: conversations.assignedToId,
+        count: count(conversations.id),
+      })
+      .from(conversations)
+      .where(eq(conversations.status, "open"))
+      .groupBy(conversations.assignedToId);
+
+    // Aggregate overview totals
+    const totalReceived = emailReceivedStats.reduce((sum, r) => sum + Number(r.count), 0);
+    const totalSent = emailSentStats.reduce((sum, r) => sum + Number(r.count), 0);
+    const totalUnread = unreadStats.reduce((sum, r) => sum + Number(r.count), 0);
+    const openWhatsapp = whatsappStats.reduce((sum, r) => sum + Number(r.count), 0);
+
+    // Build per-user stats
+    const userIds = new Set<number>();
+    emailReceivedStats.forEach((r) => userIds.add(r.userId));
+    emailSentStats.forEach((r) => userIds.add(r.userId));
+    whatsappStats.forEach((r) => { if (r.assignedToId) userIds.add(r.assignedToId); });
+
+    const userList = userIds.size > 0
+      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, [...userIds]))
+      : [];
+
+    const byUser = userList.map((u) => ({
+      userId: u.id,
+      userName: u.fullName || `User ${u.id}`,
+      emailsReceived: Number(emailReceivedStats.find((r) => r.userId === u.id)?.count || 0),
+      emailsSent: Number(emailSentStats.find((r) => r.userId === u.id)?.count || 0),
+      unreadEmails: Number(unreadStats.find((r) => r.userId === u.id)?.count || 0),
+      whatsappConversations: Number(whatsappStats.find((r) => r.assignedToId === u.id)?.count || 0),
+    }));
+
+    return {
+      overview: { totalReceived, totalSent, totalUnread, openWhatsapp },
+      byUser,
+    };
   }
 }
 
