@@ -78,14 +78,32 @@ import PropertyImport from "@/pages/PropertyImport";
 import TermsAndConditions from "@/pages/TermsAndConditions";
 import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import SecurityMatrix from "@/pages/SecurityMatrix";
-import MyOverview from "@/pages/MyOverview";
+import MyDesk from "@/pages/MyDesk";
 import DashboardOverview from "@/pages/DashboardOverview";
+import MaintenanceTasks from "@/pages/MaintenanceTasks";
 import CMSManagement from "@/pages/CMSManagement";
 import CMSPageEditor from "@/pages/CMSPageEditor";
 import CMSMediaLibrary from "@/pages/CMSMediaLibrary";
 import TeamPageSettings from "@/pages/TeamPageSettings";
 import TeamPage from "@/pages/TeamPage";
 import { ProtectedRoute as ClearanceProtectedRoute } from "@/components/ProtectedRoute";
+import CRMLayout from "@/components/CRMLayout";
+
+// Finance, Tenant & CRM pages
+import InvoiceManagement from "@/pages/InvoiceManagement";
+import ArrearsTracker from "@/pages/ArrearsTracker";
+import LandlordStatements from "@/pages/LandlordStatements";
+import PortfolioFinancials from "@/pages/PortfolioFinancials";
+import RentReviewManager from "@/pages/RentReviewManager";
+import TenancyRenewals from "@/pages/TenancyRenewals";
+import BulkMessaging from "@/pages/BulkMessaging";
+import TaskManager from "@/pages/TaskManager";
+import BankReconciliation from "@/pages/BankReconciliation";
+import DirectDebitManagement from "@/pages/DirectDebitManagement";
+import SalesInbox from "@/pages/SalesInbox";
+import LettingsInbox from "@/pages/LettingsInbox";
+import MaintenanceInbox from "@/pages/MaintenanceInbox";
+import AdminInbox from "@/pages/AdminInbox";
 
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
@@ -199,88 +217,122 @@ function Router() {
         {/* Public Team Page */}
         <Route path="/team" component={TeamPage} />
 
-        {/* CRM Routes */}
-        <Route path="/crm" component={CRMDashboard} />
+        {/* CRM Login - no layout */}
         <Route path="/crm/login" component={CRMLogin} />
-        <Route path="/crm/dashboard" component={CRMDashboard} />
-        <Route path="/crm/properties/create" component={PropertyCreate} />
-        <Route path="/crm/properties/import" component={PropertyImport} />
-        <Route path="/crm/properties/:id/edit" component={PropertyEdit} />
-        <Route path="/crm/properties" component={CRMDashboard} />
-        <Route path="/crm/workflows" component={WorkflowManagement} />
-        <Route path="/crm/property-management" component={PropertyManagement} />
-        <Route path="/crm/voice-agent" component={VoiceAgentDashboard} />
-        <Route path="/crm/users" component={UserManagement} />
-        <Route path="/crm/communications" component={CommunicationHub} />
-        <Route path="/crm/analytics" component={AnalyticsDashboard} />
-        <Route path="/crm/syndication" component={PropertySyndication} />
-        <Route path="/crm/calendar" component={CalendarIntegration} />
-        <Route path="/crm/my-overview" component={MyOverview} />
+
+        {/* CRM Routes - all wrapped with persistent sidebar layout */}
+        <Route path="/crm"><CRMLayout><CRMDashboard /></CRMLayout></Route>
+        <Route path="/crm/dashboard"><CRMLayout><CRMDashboard /></CRMLayout></Route>
+        <Route path="/crm/properties/create"><CRMLayout><PropertyCreate /></CRMLayout></Route>
+        <Route path="/crm/properties/import"><CRMLayout><PropertyImport /></CRMLayout></Route>
+        <Route path="/crm/properties/:id/edit">{(params: any) => <CRMLayout><PropertyEdit {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/properties/:id">{(params: any) => <CRMLayout><PropertyEdit {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/properties"><CRMLayout><CRMDashboard /></CRMLayout></Route>
+        <Route path="/crm/workflows"><CRMLayout><WorkflowManagement /></CRMLayout></Route>
+        <Route path="/crm/maintenance"><CRMLayout><MaintenanceTasks /></CRMLayout></Route>
+        <Route path="/crm/property-management"><CRMLayout><PropertyManagement /></CRMLayout></Route>
+        <Route path="/crm/voice-agent"><CRMLayout><VoiceAgentDashboard /></CRMLayout></Route>
+        <Route path="/crm/users"><CRMLayout><UserManagement /></CRMLayout></Route>
+        <Route path="/crm/communications"><CRMLayout><CommunicationHub /></CRMLayout></Route>
+        <Route path="/crm/analytics"><CRMLayout><AnalyticsDashboard /></CRMLayout></Route>
+        <Route path="/crm/syndication"><CRMLayout><PropertySyndication /></CRMLayout></Route>
+        <Route path="/crm/calendar"><CRMLayout><CalendarIntegration /></CRMLayout></Route>
+        <Route path="/crm/my-desk"><CRMLayout><MyDesk /></CRMLayout></Route>
         <Route path="/crm/dashboard-overview">
-          <ClearanceProtectedRoute requiredClearance={8} featureKey="dashboard_overview" showAccessDenied={true}>
-            <DashboardOverview />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={8} featureKey="dashboard_overview" showAccessDenied={true}>
+              <DashboardOverview />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
-        <Route path="/crm/reports" component={ReportBuilder} />
-        <ProtectedRoute path="/crm/staff">
-          <StaffManagement />
-        </ProtectedRoute>
+        <Route path="/crm/reports"><CRMLayout><ReportBuilder /></CRMLayout></Route>
+        <Route path="/crm/staff">
+          <CRMLayout>
+            <StaffManagement />
+          </CRMLayout>
+        </Route>
         <Route path="/crm/integrations">
-          <ClearanceProtectedRoute requiredClearance={9} featureKey="integrations" showAccessDenied={true}>
-            <IntegrationsSettings />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={9} featureKey="integrations" showAccessDenied={true}>
+              <IntegrationsSettings />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
-        <Route path="/crm/agents" component={AgentSettings} />
-        <Route path="/crm/lead-generation" component={LeadGeneration} />
-        <Route path="/crm/leads" component={LeadManagement} />
-        <Route path="/crm/website-leads" component={WebsiteLeads} />
-        <Route path="/crm/landlord-lead-pipeline" component={LandlordLeadPipeline} />
-        <Route path="/crm/landlord-lead/:id" component={LandlordLeadDetails} />
-        <Route path="/crm/ai-agents" component={AIAgentDashboard} />
-        <Route path="/crm/landlords" component={LandlordManagement} />
-        <Route path="/crm/landlords/:id" component={LandlordDetails} />
-        <Route path="/crm/landlords/:id/properties" component={LandlordProperties} />
-        <Route path="/crm/tenants" component={TenantManagement} />
-        <Route path="/crm/contacts" component={ContactManagement} />
-        <Route path="/crm/contacts/:id" component={ContactManagement} />
-        <Route path="/crm/rental-agreements" component={RentalAgreements} />
-        <Route path="/crm/tenancies/:id" component={TenancyDetails} />
-        <Route path="/crm/support-tickets" component={SupportTickets} />
-        <Route path="/crm/compliance" component={ComplianceReference} />
-        <Route path="/crm/onboarding/landlord" component={LandlordOnboarding} />
-        <Route path="/crm/onboarding/corporate" component={CorporateOnboarding} />
-        <Route path="/crm/onboarding/tenant" component={TenantOnboarding} />
-        <Route path="/crm/onboarding/property" component={PropertyOnboarding} />
-        <Route path="/crm/managed-property/:id" component={ManagedPropertyCard} />
-        <Route path="/crm/sales-progression" component={SalesProgressionPage} />
-        <Route path="/crm/contractors" component={ContractorManagement} />
-        <Route path="/crm/tenant/:id" component={TenantDetails} />
+        <Route path="/crm/agents"><CRMLayout><AgentSettings /></CRMLayout></Route>
+        <Route path="/crm/lead-generation"><CRMLayout><LeadGeneration /></CRMLayout></Route>
+        <Route path="/crm/leads"><CRMLayout><LeadManagement /></CRMLayout></Route>
+        <Route path="/crm/website-leads"><CRMLayout><WebsiteLeads /></CRMLayout></Route>
+        <Route path="/crm/landlord-lead-pipeline"><CRMLayout><LandlordLeadPipeline /></CRMLayout></Route>
+        <Route path="/crm/landlord-lead/:id">{(params: any) => <CRMLayout><LandlordLeadDetails {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/ai-agents"><CRMLayout><AIAgentDashboard /></CRMLayout></Route>
+        <Route path="/crm/landlords"><CRMLayout><LandlordManagement /></CRMLayout></Route>
+        <Route path="/crm/landlords/:id">{(params: any) => <CRMLayout><LandlordDetails {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/landlords/:id/properties">{(params: any) => <CRMLayout><LandlordProperties {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/tenants"><CRMLayout><TenantManagement /></CRMLayout></Route>
+        <Route path="/crm/contacts"><CRMLayout><ContactManagement /></CRMLayout></Route>
+        <Route path="/crm/contacts/:id">{(params: any) => <CRMLayout><ContactManagement {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/rental-agreements"><CRMLayout><RentalAgreements /></CRMLayout></Route>
+        <Route path="/crm/tenancies/:id">{(params: any) => <CRMLayout><TenancyDetails {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/support-tickets"><CRMLayout><SupportTickets /></CRMLayout></Route>
+        <Route path="/crm/compliance"><CRMLayout><ComplianceReference /></CRMLayout></Route>
+        <Route path="/crm/onboarding/landlord"><CRMLayout><LandlordOnboarding /></CRMLayout></Route>
+        <Route path="/crm/onboarding/corporate"><CRMLayout><CorporateOnboarding /></CRMLayout></Route>
+        <Route path="/crm/onboarding/tenant"><CRMLayout><TenantOnboarding /></CRMLayout></Route>
+        <Route path="/crm/onboarding/property"><CRMLayout><PropertyOnboarding /></CRMLayout></Route>
+        <Route path="/crm/managed-property/:id">{(params: any) => <CRMLayout><ManagedPropertyCard {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/sales-progression"><CRMLayout><SalesProgressionPage /></CRMLayout></Route>
+        <Route path="/crm/contractors"><CRMLayout><ContractorManagement /></CRMLayout></Route>
+        <Route path="/crm/invoices"><CRMLayout><InvoiceManagement /></CRMLayout></Route>
+        <Route path="/crm/arrears"><CRMLayout><ArrearsTracker /></CRMLayout></Route>
+        <Route path="/crm/statements"><CRMLayout><LandlordStatements /></CRMLayout></Route>
+        <Route path="/crm/financials"><CRMLayout><PortfolioFinancials /></CRMLayout></Route>
+        <Route path="/crm/rent-reviews"><CRMLayout><RentReviewManager /></CRMLayout></Route>
+        <Route path="/crm/tenancy-renewals"><CRMLayout><TenancyRenewals /></CRMLayout></Route>
+        <Route path="/crm/bulk-messaging"><CRMLayout><BulkMessaging /></CRMLayout></Route>
+        <Route path="/crm/task-manager"><CRMLayout><TaskManager /></CRMLayout></Route>
+        <Route path="/crm/bank-reconciliation"><CRMLayout><BankReconciliation /></CRMLayout></Route>
+        <Route path="/crm/direct-debits"><CRMLayout><DirectDebitManagement /></CRMLayout></Route>
+        <Route path="/crm/inbox/sales"><CRMLayout><SalesInbox /></CRMLayout></Route>
+        <Route path="/crm/inbox/lettings"><CRMLayout><LettingsInbox /></CRMLayout></Route>
+        <Route path="/crm/inbox/maintenance"><CRMLayout><MaintenanceInbox /></CRMLayout></Route>
+        <Route path="/crm/inbox/admin"><CRMLayout><AdminInbox /></CRMLayout></Route>
+        <Route path="/crm/tenant/:id">{(params: any) => <CRMLayout><TenantDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/security-matrix">
-          <ClearanceProtectedRoute requiredClearance={10} featureKey="security_matrix" showAccessDenied={true}>
-            <SecurityMatrix />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={10} featureKey="security_matrix" showAccessDenied={true}>
+              <SecurityMatrix />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
 
         {/* CMS Routes */}
         <Route path="/crm/cms">
-          <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
-            <CMSManagement />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
+              <CMSManagement />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
         <Route path="/crm/cms/pages/:slug">
-          <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
-            <CMSPageEditor />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
+              <CMSPageEditor />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
         <Route path="/crm/cms/media">
-          <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
-            <CMSMediaLibrary />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={5} featureKey="cms_view" showAccessDenied={true}>
+              <CMSMediaLibrary />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
         <Route path="/crm/cms/team">
-          <ClearanceProtectedRoute requiredClearance={7} featureKey="team_page_edit" showAccessDenied={true}>
-            <TeamPageSettings />
-          </ClearanceProtectedRoute>
+          <CRMLayout>
+            <ClearanceProtectedRoute requiredClearance={7} featureKey="team_page_edit" showAccessDenied={true}>
+              <TeamPageSettings />
+            </ClearanceProtectedRoute>
+          </CRMLayout>
         </Route>
 
         {/* User Account Routes */}

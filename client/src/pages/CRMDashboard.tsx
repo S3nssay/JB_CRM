@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import {
   Building2, Users, Home, Wrench, Calendar, BarChart3,
   Settings, LogOut, Plus, Eye, Edit, Trash2, Bell,
-  MessageSquare, Share2, DollarSign, TrendingUp,
+  MessageSquare, Share2, PoundSterling, TrendingUp,
   FileText, Clock, AlertCircle, CheckCircle, Shield,
   GitBranch, Mic, Globe, Mail, Search, MapPin, Loader2,
   Building, UserCircle, Key, ArrowLeft, User, Gavel, Lock, UserPlus,
@@ -24,7 +24,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { BulkPropertyOperations } from '@/components/BulkPropertyOperations';
 import { queryClient } from '@/lib/queryClient';
 import { ScheduleViewingWizard } from '@/components/ScheduleViewingWizard';
-import { ImportKeyDataDialog } from '@/components/ImportKeyDataDialog';
 
 // Dashboard widgets - Now clickable for drill-down
 const StatsCard = ({ title, value, change, icon: Icon, color, onClick }: any) => (
@@ -56,6 +55,117 @@ const StatsCard = ({ title, value, change, icon: Icon, color, onClick }: any) =>
   </Card>
 );
 
+function MaintenanceTab() {
+  const [, setLocation] = useLocation();
+  const { data: tickets = [], isLoading } = useQuery({
+    queryKey: ['/api/crm/maintenance/tickets'],
+    queryFn: async () => {
+      const res = await fetch('/api/crm/maintenance/tickets', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch tickets');
+      return res.json();
+    }
+  });
+
+  const openCount = tickets.filter((t: any) => t.status === 'new' || t.status === 'assigned').length;
+  const inProgressCount = tickets.filter((t: any) => t.status === 'in_progress' || t.status === 'awaiting_parts').length;
+  const today = new Date().toDateString();
+  const completedTodayCount = tickets.filter((t: any) =>
+    (t.status === 'completed' || t.status === 'closed') && t.resolvedAt && new Date(t.resolvedAt).toDateString() === today
+  ).length;
+
+  const urgencyColor: Record<string, string> = {
+    emergency: 'bg-red-500 text-white',
+    urgent: 'bg-orange-400 text-black',
+    routine: 'bg-gray-200 text-gray-700',
+    low: 'bg-gray-100 text-gray-500',
+  };
+  const statusColor: Record<string, string> = {
+    new: 'bg-blue-100 text-blue-800',
+    assigned: 'bg-purple-100 text-purple-800',
+    in_progress: 'bg-yellow-100 text-yellow-800',
+    awaiting_parts: 'bg-orange-100 text-orange-800',
+    completed: 'bg-green-100 text-green-800',
+    closed: 'bg-gray-100 text-gray-600',
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Maintenance Management</h2>
+        <Button onClick={() => setLocation('/crm/property-management')}>
+          <Plus className="mr-2 h-4 w-4" />
+          New Ticket
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-lg">Open Tickets</CardTitle></CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${openCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}>{openCount}</div>
+            <p className="text-sm text-gray-600">{openCount > 0 ? 'Awaiting action' : 'No open tickets'}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-lg">In Progress</CardTitle></CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${inProgressCount > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>{inProgressCount}</div>
+            <p className="text-sm text-gray-600">{inProgressCount > 0 ? 'Being worked on' : 'None in progress'}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2"><CardTitle className="text-lg">Completed Today</CardTitle></CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${completedTodayCount > 0 ? 'text-green-600' : 'text-gray-400'}`}>{completedTodayCount}</div>
+            <p className="text-sm text-gray-600">{completedTodayCount > 0 ? 'Resolved today' : 'None completed today'}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle>Recent Tickets</CardTitle></CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="py-8 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto text-gray-400" /></div>
+          ) : tickets.length === 0 ? (
+            <div className="py-8 text-center text-gray-500">
+              <Wrench className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <p>No maintenance tickets</p>
+              <p className="text-sm mt-1">Create a ticket from Property Management</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {tickets.slice(0, 20).map((ticket: any) => (
+                <div key={ticket.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium truncate">{ticket.title}</p>
+                      <Badge className={urgencyColor[ticket.urgency] || 'bg-gray-200'} variant="secondary">
+                        {(ticket.urgency || 'routine').toUpperCase()}
+                      </Badge>
+                      <Badge className={statusColor[ticket.status] || 'bg-gray-100'} variant="secondary">
+                        {(ticket.status || 'new').replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Property #{ticket.propertyId}
+                      {ticket.category && <> &middot; {ticket.category}</>}
+                      {ticket.createdAt && <> &middot; {new Date(ticket.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/crm/property-management?ticket=${ticket.id}`)}>
+                    <Eye className="h-3 w-3 mr-1" /> View
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function CRMDashboard() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -72,7 +182,6 @@ export default function CRMDashboard() {
   const [showViewingWizard, setShowViewingWizard] = useState(false);
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<number>>(new Set());
   const [showBulkPublishDialog, setShowBulkPublishDialog] = useState(false);
-  const [showImportKeyDataDialog, setShowImportKeyDataDialog] = useState(false);
   const [isBulkPublishing, setIsBulkPublishing] = useState(false);
 
   // Fetch properties from API
@@ -84,6 +193,21 @@ export default function CRMDashboard() {
       return response.json();
     }
   });
+
+  // Fetch property workflows for stage badges
+  const { data: workflows = [] } = useQuery({
+    queryKey: ['/api/crm/workflows'],
+    queryFn: async () => {
+      const response = await fetch('/api/crm/workflows', { credentials: 'include' });
+      if (!response.ok) return [];
+      return response.json();
+    }
+  });
+  // Map propertyId → workflow stage
+  const workflowByPropertyId = (workflows as any[]).reduce((acc: Record<number, any>, w: any) => {
+    if (w.propertyId) acc[w.propertyId] = w;
+    return acc;
+  }, {} as Record<number, any>);
 
   // Fetch managed properties (property table with is_managed = true)
   const { data: pmManagedProperties = [], error: managedPropertiesError } = useQuery({
@@ -129,30 +253,6 @@ export default function CRMDashboard() {
       return response.json();
     }
   });
-
-  // Fetch landlord leads (contacts with inquiry_type: valuation/selling/letting) to count unread/new ones
-  const { data: landlordLeads = [] } = useQuery({
-    queryKey: ['/api/crm/landlord-leads'],
-    queryFn: async () => {
-      const response = await fetch('/api/crm/landlord-leads', { credentials: 'include' });
-      if (!response.ok) return [];
-      return response.json();
-    }
-  });
-
-  // Fetch buyer/renter leads to count unread/new ones
-  const { data: buyerRenterLeads = [] } = useQuery({
-    queryKey: ['/api/crm/leads'],
-    queryFn: async () => {
-      const response = await fetch('/api/crm/leads', { credentials: 'include' });
-      if (!response.ok) return [];
-      return response.json();
-    }
-  });
-
-  // Count new/unread leads (landlord leads use workflow_stage)
-  const newLandlordLeadsCount = landlordLeads.filter((l: any) => l.workflow_stage === 'new' || !l.workflow_stage).length;
-  const newBuyerRenterLeadsCount = buyerRenterLeads.filter((l: any) => l.status === 'new').length;
 
   // Calculate property stats
   // Managed properties count - use the PM system data (pm_properties table)
@@ -206,13 +306,8 @@ export default function CRMDashboard() {
     setShowTicketDialog(true);
   };
 
-  const handleViewProperty = (propertyId: number, isRental?: boolean) => {
-    // For rental/managed properties, go to managed property card
-    if (isRental === true) {
-      setLocation(`/crm/managed-property/${propertyId}`);
-    } else {
-      setLocation(`/property/${propertyId}`);
-    }
+  const handleViewProperty = (propertyId: number) => {
+    setLocation(`/crm/properties/${propertyId}`);
   };
 
   const handleEditProperty = (propertyId: number) => {
@@ -361,321 +456,8 @@ export default function CRMDashboard() {
     }
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    localStorage.removeItem('authToken');
-    setLocation('/crm/login');
-  };
-
-  // Show loading state while checking auth instead of returning null
-  // This prevents the grey flash when transitioning from login
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[#791E75] mx-auto mb-4" />
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/portal">
-                <Button variant="ghost" size="icon" data-testid="button-back-to-portal">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Building2 className="h-8 w-8 text-[#F8B324]600 mr-3" />
-              <h1 className="text-xl font-semibold">John Barclay CRM</h1>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-700">{user?.fullName}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex">
-        {/* Sidebar */}
-        <aside className="w-64 bg-white shadow-md h-[calc(100vh-4rem)]">
-          <nav className="p-4 space-y-2">
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-[#791E75] font-semibold"
-              onClick={() => setLocation('/crm/my-overview')}
-            >
-              <UserCircle className="mr-2 h-4 w-4" />
-              My Overview
-            </Button>
-            {(user?.role === 'admin' || (user?.securityClearance && user.securityClearance >= 8)) && (
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-[#791E75] font-semibold"
-                onClick={() => setLocation('/crm/dashboard-overview')}
-              >
-                <LayoutGrid className="mr-2 h-4 w-4" />
-                Management Dashboard
-              </Button>
-            )}
-            <div className="border-b my-2" />
-            <Button
-              variant={activeTab === 'overview' ? 'default' : 'ghost'}
-              className="w-full justify-start"
-              onClick={() => setActiveTab('overview')}
-            >
-              <BarChart3 className="mr-2 h-4 w-4" />
-              Overview
-            </Button>
-            <Button
-              variant={activeTab === 'properties' ? 'default' : 'ghost'}
-              className="w-full justify-start"
-              onClick={() => setActiveTab('properties')}
-            >
-              <Home className="mr-2 h-4 w-4" />
-              Listed Properties
-            </Button>
-            <Button
-              variant={activeTab === 'maintenance' ? 'default' : 'ghost'}
-              className="w-full justify-start"
-              onClick={() => setActiveTab('maintenance')}
-            >
-              <Wrench className="mr-2 h-4 w-4" />
-              Maintenance
-            </Button>
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-[#791E75]"
-              onClick={() => setLocation('/crm/sales-progression')}
-            >
-              <Gavel className="mr-2 h-4 w-4" />
-              Sales Progression
-            </Button>
-            <div className="pt-2 mt-2 border-t">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
-                Property Management
-              </p>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/property-management')}
-              >
-                <Wrench className="mr-2 h-4 w-4" />
-                Managed Properties
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/landlords')}
-              >
-                <User className="mr-2 h-4 w-4" />
-                Landlords
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/tenants')}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                Tenants
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/contractors')}
-              >
-                <HardHat className="mr-2 h-4 w-4" />
-                Contractors
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/contacts')}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                Contacts (Unified)
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start"
-                onClick={() => setLocation('/crm/rental-agreements')}
-              >
-                <Key className="mr-2 h-4 w-4" />
-                Agreements
-              </Button>
-            </div>
-
-            {/* Leads Section */}
-            <div className="pt-2 mt-2 border-t">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
-                Leads
-              </p>
-              <Button
-                variant="ghost"
-                className="w-full justify-start relative"
-                onClick={() => setLocation('/crm/landlord-lead-pipeline')}
-              >
-                <GitBranch className="mr-2 h-4 w-4" />
-                Landlord Pipeline
-                {newLandlordLeadsCount > 0 && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
-                    {newLandlordLeadsCount > 99 ? '99+' : newLandlordLeadsCount}
-                  </span>
-                )}
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start relative"
-                onClick={() => setLocation('/crm/leads')}
-              >
-                <Users className="mr-2 h-4 w-4" />
-                Buyer/Renter Leads
-                {newBuyerRenterLeadsCount > 0 && (
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 bg-red-500 text-white text-xs font-bold rounded-full min-w-[20px] h-5 flex items-center justify-center px-1">
-                    {newBuyerRenterLeadsCount > 99 ? '99+' : newBuyerRenterLeadsCount}
-                  </span>
-                )}
-              </Button>
-            </div>
-
-            {/* Application Links - Split by Category */}
-            <div className="pt-2 mt-2 border-t">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
-                Listings
-              </p>
-              <Button
-                variant={activeTab === 'res_sales' ? 'default' : 'ghost'}
-                className="w-full justify-start text-sm"
-                onClick={() => { setPropertyFilter('sale'); setActiveTab('properties'); }}
-              >
-                <Home className="mr-2 h-4 w-4" />
-                Residential Sales
-              </Button>
-              <Button
-                variant={activeTab === 'res_let' ? 'default' : 'ghost'}
-                className="w-full justify-start text-sm"
-                onClick={() => { setPropertyFilter('rental'); setActiveTab('properties'); }}
-              >
-                <Key className="mr-2 h-4 w-4" />
-                Residential Lettings
-              </Button>
-              <Button
-                variant={activeTab === 'com_sales' ? 'default' : 'ghost'}
-                className="w-full justify-start text-sm"
-                onClick={() => { setPropertyFilter('commercial_sale'); setActiveTab('properties'); }}
-              >
-                <Building className="mr-2 h-4 w-4" />
-                Commercial Sales
-              </Button>
-              <Button
-                variant={activeTab === 'com_let' ? 'default' : 'ghost'}
-                className="w-full justify-start text-sm"
-                onClick={() => { setPropertyFilter('commercial_rental'); setActiveTab('properties'); }}
-              >
-                <Building2 className="mr-2 h-4 w-4" />
-                Commercial Lettings
-              </Button>
-            </div>
-
-            <Button
-              variant="ghost"
-              className="w-full justify-start"
-              onClick={() => setLocation('/crm/integrations')}
-            >
-              <Settings className="mr-2 h-4 w-4" />
-              Settings
-            </Button>
-
-            {/* Admin Tools - Only show for admin users */}
-            {user?.role === 'admin' && (
-              <>
-                <div className="pt-4 mt-4 border-t">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
-                    Admin Tools
-                  </p>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setLocation('/crm/users')}
-                  >
-                    <Shield className="mr-2 h-4 w-4" />
-                    User Management
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setLocation('/crm/workflows')}
-                  >
-                    <GitBranch className="mr-2 h-4 w-4" />
-                    Workflow Management
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setLocation('/crm/staff')}
-                  >
-                    <Users className="mr-2 h-4 w-4" />
-                    Staff Management
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setLocation('/crm/voice-agent')}
-                  >
-                    <Mic className="mr-2 h-4 w-4" />
-                    Voice Agent
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setLocation('/crm/integrations')}
-                  >
-                    <Key className="mr-2 h-4 w-4" />
-                    Integrations
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setLocation('/crm/security-matrix')}
-                  >
-                    <Lock className="mr-2 h-4 w-4" />
-                    Security Matrix
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start"
-                    onClick={() => setShowImportKeyDataDialog(true)}
-                  >
-                    <FileUp className="mr-2 h-4 w-4" />
-                    Import Key Data
-                  </Button>
-                </div>
-              </>
-            )}
-          </nav>
-        </aside>
-
-        {/* Main Content */}
-        <main className="flex-1 p-6 relative">
+    <div className="p-6 relative">
           <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
             <DialogContent>
               <DialogHeader>
@@ -714,10 +496,6 @@ export default function CRMDashboard() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Dashboard Overview</h2>
-                <Button onClick={() => setLocation('/crm/properties/create')}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Property
-                </Button>
               </div>
 
               {/* Stats Grid - Managed Properties */}
@@ -726,7 +504,7 @@ export default function CRMDashboard() {
                   <Shield className="h-5 w-5 text-purple-600" />
                   Managed Portfolio
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
                   <StatsCard
                     title="Managed Properties"
                     value={String(managedPropertiesCount)}
@@ -759,6 +537,17 @@ export default function CRMDashboard() {
                     color="bg-teal-600 text-white"
                     onClick={() => setLocation('/crm/tenants')}
                   />
+                  <Card
+                    className="cursor-pointer hover:shadow-lg transition-shadow hover:ring-2 hover:ring-[#791E75]/20 border-dashed border-2"
+                    onClick={() => setLocation('/crm/properties/create?type=managed')}
+                  >
+                    <CardContent className="p-6 flex flex-col items-center justify-center h-full text-center">
+                      <div className="p-3 rounded-full bg-[#791E75]/10 mb-2">
+                        <Plus className="h-6 w-6 text-[#791E75]" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-600">Add Managed Property</p>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
 
@@ -768,12 +557,12 @@ export default function CRMDashboard() {
                   <Home className="h-5 w-5 text-emerald-600" />
                   Residential Listings
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <StatsCard
                     title="Residential Sales"
                     value={String(resSalesProperties.length)}
                     change={null}
-                    icon={DollarSign}
+                    icon={PoundSterling}
                     color="bg-emerald-600 text-white"
                     onClick={() => { setPropertyFilter('sale'); setActiveTab('properties'); }}
                   />
@@ -785,6 +574,17 @@ export default function CRMDashboard() {
                     color="bg-[#F8B324] text-black"
                     onClick={() => { setPropertyFilter('rental'); setActiveTab('properties'); }}
                   />
+                  <Card
+                    className="cursor-pointer hover:shadow-lg transition-shadow hover:ring-2 hover:ring-emerald-500/20 border-dashed border-2"
+                    onClick={() => setLocation('/crm/properties/create?type=res_sale')}
+                  >
+                    <CardContent className="p-6 flex flex-col items-center justify-center h-full text-center">
+                      <div className="p-3 rounded-full bg-emerald-50 mb-2">
+                        <Plus className="h-6 w-6 text-emerald-600" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-600">Add Residential Property</p>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
 
@@ -794,7 +594,7 @@ export default function CRMDashboard() {
                   <Building className="h-5 w-5 text-indigo-600" />
                   Commercial Listings
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <StatsCard
                     title="Commercial Sales"
                     value={String(comSalesProperties.length)}
@@ -811,39 +611,19 @@ export default function CRMDashboard() {
                     color="bg-indigo-400 text-white"
                     onClick={() => { setPropertyFilter('commercial_rental'); setActiveTab('properties'); }}
                   />
+                  <Card
+                    className="cursor-pointer hover:shadow-lg transition-shadow hover:ring-2 hover:ring-indigo-500/20 border-dashed border-2"
+                    onClick={() => setLocation('/crm/properties/create?type=com_sale')}
+                  >
+                    <CardContent className="p-6 flex flex-col items-center justify-center h-full text-center">
+                      <div className="p-3 rounded-full bg-indigo-50 mb-2">
+                        <Plus className="h-6 w-6 text-indigo-600" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-600">Add Commercial Property</p>
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
-
-              {/* Recent Activities - From database */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        <Mail className="h-5 w-5" />
-                        Communications
-                      </CardTitle>
-                      <CardDescription>Email and messages with clients</CardDescription>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => setLocation('/crm/communications')}>
-                      View All
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="py-6 text-center text-gray-500">
-                      <MessageSquare className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                      <p>No recent messages</p>
-                      <p className="text-sm mt-1">Emails and messages will appear here</p>
-                      <Button variant="outline" className="mt-4" onClick={() => setLocation('/crm/communications')}>
-                        <Mail className="mr-2 h-4 w-4" />
-                        Send Message
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
 
               {/* Quick Actions */}
               <Card>
@@ -851,15 +631,7 @@ export default function CRMDashboard() {
                   <CardTitle>Quick Actions</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <Button
-                      className="h-20 flex flex-col"
-                      variant="outline"
-                      onClick={() => setLocation('/crm/properties/create')}
-                    >
-                      <Plus className="h-6 w-6 mb-2" />
-                      <span className="text-xs">Add Property</span>
-                    </Button>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     <Button
                       className="h-20 flex flex-col"
                       variant="outline"
@@ -880,7 +652,7 @@ export default function CRMDashboard() {
                     <Button
                       className="h-20 flex flex-col"
                       variant="outline"
-                      onClick={() => setActiveTab('reports')}
+                      onClick={() => setLocation('/crm/reports')}
                     >
                       <FileText className="h-6 w-6 mb-2" />
                       <span className="text-xs">Generate Report</span>
@@ -894,7 +666,7 @@ export default function CRMDashboard() {
           {activeTab === 'properties' && (
             <div className="space-y-6">
               <div className="flex justify-between items-center flex-wrap gap-4">
-                <h2 className="text-2xl font-bold">Property Management</h2>
+                <h2 className="text-2xl font-bold">Listed Properties</h2>
                 <div className="flex gap-2">
                   <Button variant="outline" onClick={() => setShowImportDialog(true)}>
                     <Globe className="mr-2 h-4 w-4" />
@@ -1049,8 +821,8 @@ export default function CRMDashboard() {
                           </TableHeader>
                           <TableBody>
                             {filteredProperties.map((property: any) => (
-                              <TableRow key={property.id} className={selectedPropertyIds.has(property.id) ? 'bg-purple-50' : ''}>
-                                <TableCell>
+                              <TableRow key={property.id} className={`cursor-pointer hover:bg-gray-50 ${selectedPropertyIds.has(property.id) ? 'bg-purple-50' : ''}`} onClick={() => handleViewProperty(property.id, property.isRental)}>
+                                <TableCell onClick={(e) => e.stopPropagation()}>
                                   <Checkbox
                                     checked={selectedPropertyIds.has(property.id)}
                                     onCheckedChange={() => togglePropertySelection(property.id)}
@@ -1148,7 +920,7 @@ export default function CRMDashboard() {
                                   </Tooltip>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-right">
+                              <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                                 <div className="flex items-center justify-end gap-1">
                                   <Button variant="ghost" size="sm" onClick={() => handleViewProperty(property.id, property.isRental)}>
                                     <Eye className="h-4 w-4" />
@@ -1277,60 +1049,7 @@ export default function CRMDashboard() {
           )}
 
           {activeTab === 'maintenance' && (
-            <div className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-2xl font-bold">Maintenance Management</h2>
-                <Button onClick={() => setShowTicketDialog(true)}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  New Ticket
-                </Button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Open Tickets</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-gray-400">0</div>
-                    <p className="text-sm text-gray-600">No data in database</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">In Progress</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-gray-400">0</div>
-                    <p className="text-sm text-gray-600">No data in database</p>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-lg">Completed Today</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-gray-400">0</div>
-                    <p className="text-sm text-gray-600">No data in database</p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Recent Tickets</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="py-8 text-center text-gray-500">
-                    <Wrench className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                    <p>No maintenance tickets</p>
-                    <p className="text-sm mt-1">Ticket data will appear here once available in the database</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <MaintenanceTab />
           )}
 
           {activeTab === 'staff' && (
@@ -1418,9 +1137,6 @@ export default function CRMDashboard() {
               </Card>
             </div>
           )}
-        </main>
-      </div>
-
       {/* Ticket Details Dialog */}
       <Dialog open={showTicketDialog} onOpenChange={setShowTicketDialog}>
         <DialogContent className="max-w-lg">
@@ -1538,11 +1254,6 @@ export default function CRMDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* Import Key Data Dialog */}
-      <ImportKeyDataDialog
-        open={showImportKeyDataDialog}
-        onOpenChange={setShowImportKeyDataDialog}
-      />
     </div>
   );
 }

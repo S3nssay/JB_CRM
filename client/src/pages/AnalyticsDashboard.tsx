@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  BarChart3, TrendingUp, TrendingDown, Home, Users, DollarSign,
+  BarChart3, TrendingUp, TrendingDown, Home, Users, PoundSterling,
   Calendar, Clock, CheckCircle, Eye, Phone, Mail, ArrowUpRight,
   ArrowDownRight, Building2, Wrench, FileText, Download, RefreshCw, ArrowLeft,
   MessageSquare, Activity
@@ -372,7 +372,7 @@ export default function AnalyticsDashboard() {
           <KPICard
             title="Total Revenue"
             value={formatCurrency(kpis?.revenue?.estimatedCommission || 0)}
-            icon={DollarSign}
+            icon={PoundSterling}
             subtitle="Estimated Commission"
             isLoading={kpisLoading}
           />

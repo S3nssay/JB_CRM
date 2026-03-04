@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { db } from './db';
 import { payments, paymentSchedules } from '@shared/schema';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 
 // Initialize Stripe with secret key
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -10,7 +10,7 @@ let stripe: Stripe | null = null;
 
 if (stripeSecretKey && stripeSecretKey.startsWith('sk_')) {
   stripe = new Stripe(stripeSecretKey, {
-    apiVersion: '2023-10-16',
+    apiVersion: '2025-11-17.clover' as any,
   });
 } else {
   console.log('Stripe not configured - Payment features disabled');
@@ -22,7 +22,7 @@ if (stripeSecretKey && stripeSecretKey.startsWith('sk_')) {
 export interface CreatePaymentIntentParams {
   amount: number; // in pence
   currency?: string;
-  customerId?: number;
+  tenantId?: number;
   description?: string;
   metadata?: Record<string, string>;
 }
@@ -66,26 +66,34 @@ export async function createPaymentIntent(params: CreatePaymentIntentParams): Pr
  * Record a payment in the database
  */
 export async function recordPayment(paymentData: {
-  customerId: number;
+  tenantId: number;
   propertyId?: number;
-  amount: number;
+  landlordId?: number;
+  amount: number; // integer pence
   currency?: string;
   paymentType: string;
+  paymentMethod?: string;
   status: string;
-  stripePaymentIntentId?: string;
+  stripePaymentId?: string;
   description?: string;
+  reference?: string;
+  invoiceNumber?: string;
 }): Promise<number | null> {
   try {
     const [payment] = await db.insert(payments).values({
-      customerId: paymentData.customerId,
+      tenantId: paymentData.tenantId,
       propertyId: paymentData.propertyId,
-      amount: paymentData.amount.toString(),
+      landlordId: paymentData.landlordId,
+      amount: paymentData.amount,
       currency: paymentData.currency || 'GBP',
       paymentType: paymentData.paymentType,
+      paymentMethod: paymentData.paymentMethod,
       status: paymentData.status,
-      stripePaymentIntentId: paymentData.stripePaymentIntentId,
+      stripePaymentId: paymentData.stripePaymentId,
       description: paymentData.description,
-      paymentDate: new Date(),
+      reference: paymentData.reference,
+      invoiceNumber: paymentData.invoiceNumber,
+      paidAt: paymentData.status === 'completed' ? new Date() : null,
     }).returning({ id: payments.id });
 
     console.log(`Payment recorded with ID: ${payment.id}`);
@@ -97,21 +105,30 @@ export async function recordPayment(paymentData: {
 }
 
 /**
- * Update payment status
+ * Update payment status by Stripe payment ID
  */
 export async function updatePaymentStatus(
-  paymentIntentId: string,
+  stripePaymentId: string,
   status: string
 ): Promise<boolean> {
   try {
-    await db.update(payments)
-      .set({
-        status,
-        updatedAt: new Date()
-      })
-      .where(eq(payments.stripePaymentIntentId, paymentIntentId));
+    const updateData: Record<string, any> = {
+      status,
+      updatedAt: new Date(),
+    };
+    if (status === 'completed') {
+      updateData.paidAt = new Date();
+    } else if (status === 'failed') {
+      updateData.failedAt = new Date();
+    } else if (status === 'refunded') {
+      updateData.refundedAt = new Date();
+    }
 
-    console.log(`Payment ${paymentIntentId} status updated to: ${status}`);
+    await db.update(payments)
+      .set(updateData)
+      .where(eq(payments.stripePaymentId, stripePaymentId));
+
+    console.log(`Payment ${stripePaymentId} status updated to: ${status}`);
     return true;
   } catch (error) {
     console.error('Error updating payment status:', error);
@@ -120,29 +137,29 @@ export async function updatePaymentStatus(
 }
 
 /**
- * Get payments for a customer
+ * Get payments for a tenant
  */
-export async function getCustomerPayments(customerId: number) {
+export async function getPaymentsByTenant(tenantId: number) {
   try {
     return await db.select()
       .from(payments)
-      .where(eq(payments.customerId, customerId))
-      .orderBy(payments.paymentDate);
+      .where(eq(payments.tenantId, tenantId))
+      .orderBy(desc(payments.createdAt));
   } catch (error) {
-    console.error('Error fetching customer payments:', error);
+    console.error('Error fetching tenant payments:', error);
     return [];
   }
 }
 
 /**
- * Get payment schedules for a customer
+ * Get payment schedules for a tenant
  */
-export async function getPaymentSchedules(customerId: number) {
+export async function getSchedulesByTenant(tenantId: number) {
   try {
     return await db.select()
       .from(paymentSchedules)
-      .where(eq(paymentSchedules.customerId, customerId))
-      .orderBy(paymentSchedules.dueDate);
+      .where(eq(paymentSchedules.tenantId, tenantId))
+      .orderBy(paymentSchedules.nextDueDate);
   } catch (error) {
     console.error('Error fetching payment schedules:', error);
     return [];
@@ -153,26 +170,30 @@ export async function getPaymentSchedules(customerId: number) {
  * Create a payment schedule
  */
 export async function createPaymentSchedule(scheduleData: {
-  customerId: number;
-  propertyId?: number;
-  amount: number;
-  currency?: string;
-  scheduleType: string;
+  tenantId: number;
+  propertyId: number;
+  amount: number; // integer pence
+  paymentType: string;
   frequency: string;
-  dueDate: Date;
-  description?: string;
+  startDate: Date;
+  endDate?: Date;
+  nextDueDate?: Date;
+  dayOfMonth?: number;
+  paymentMethod?: string;
 }): Promise<number | null> {
   try {
     const [schedule] = await db.insert(paymentSchedules).values({
-      customerId: scheduleData.customerId,
+      tenantId: scheduleData.tenantId,
       propertyId: scheduleData.propertyId,
-      amount: scheduleData.amount.toString(),
-      currency: scheduleData.currency || 'GBP',
-      scheduleType: scheduleData.scheduleType,
+      amount: scheduleData.amount,
+      paymentType: scheduleData.paymentType,
       frequency: scheduleData.frequency,
-      dueDate: scheduleData.dueDate,
-      description: scheduleData.description,
-      status: 'pending',
+      startDate: scheduleData.startDate,
+      endDate: scheduleData.endDate,
+      nextDueDate: scheduleData.nextDueDate || scheduleData.startDate,
+      dayOfMonth: scheduleData.dayOfMonth,
+      paymentMethod: scheduleData.paymentMethod,
+      status: 'active',
     }).returning({ id: paymentSchedules.id });
 
     console.log(`Payment schedule created with ID: ${schedule.id}`);

@@ -528,8 +528,8 @@ async function findOrCreateLandlord(
     addressLine1: row.landlordAddress?.split(/\d{1,2}\s/)?.[0]?.trim() || null,
     postcode: landlordPostcode || null,
     bankName: row.bankName || null,
-    bankAccountNo: row.bankAccountNo || null,
-    sortCode: row.sortCode || null,
+    bankAccountNumber: row.bankAccountNo || null,
+    bankSortCode: row.sortCode || null,
     isActive: true,
   }).returning({ id: landlords.id });
 

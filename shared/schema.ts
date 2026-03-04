@@ -851,10 +851,10 @@ export const landlords = pgTable("landlord", {
   nationalInsuranceNo: text("national_insurance_no"),
 
   // Bank details for rent payments
-  bankAccountNo: text("bank_account_no"),
-  sortCode: text("sort_code"),
+  bankAccountNumber: text("bank_account_number"),
+  bankSortCode: text("bank_sort_code"),
   bankName: text("bank_name"),
-  accountHolderName: text("account_holder_name"),
+  bankAccountHolderName: text("bank_account_holder_name"),
 
   // KYC references - FK to separate KYC tables
   personalKycId: integer("personal_kyc_id"), // FK to personal_kyc (for individuals)
@@ -1242,6 +1242,9 @@ export const inventoryItems = pgTable("inventory_item", {
 // Contractors/Vendors
 export const contractors = pgTable("contractor", {
   id: serial("id").primaryKey(),
+
+  // Contractor type: trade (plumber, electrician etc), valuer, surveyor, solicitor
+  contractorType: text("contractor_type").notNull().default("trade"),
 
   // Company details
   companyName: text("company_name").notNull(),
@@ -3332,7 +3335,7 @@ export type MaintenanceTicketFormData = z.infer<typeof maintenanceTicketFormSche
 
 // Portal credentials form
 export const portalCredentialsFormSchema = z.object({
-  portalName: z.enum(["zoopla", "propertyfinder", "rightmove"]),
+  portalName: z.enum(["zoopla", "rightmove", "onthemarket", "propertyfinder"]),
   apiKey: z.string().optional(),
   apiSecret: z.string().optional(),
   username: z.string().min(1, "Username is required"),
@@ -3346,7 +3349,7 @@ export type PortalCredentialsFormData = z.infer<typeof portalCredentialsFormSche
 // Property portal listing form  
 export const propertyPortalListingFormSchema = z.object({
   propertyId: z.number(),
-  portalName: z.enum(["zoopla", "propertyfinder", "rightmove"]),
+  portalName: z.enum(["zoopla", "rightmove", "onthemarket", "propertyfinder"]),
   publishImmediately: z.boolean().default(true),
   expiresAt: z.string().optional() // Will be converted to date
 });
@@ -3624,6 +3627,9 @@ export const paymentSchedules = pgTable("payment_schedule", {
   totalPaid: integer("total_paid").default(0),
   totalPayments: integer("total_payments").default(0),
   missedPayments: integer("missed_payments").default(0),
+
+  // GoCardless
+  gocardlessMandateId: integer("gocardless_mandate_id"),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -4738,6 +4744,13 @@ export const tenancies = pgTable("tenancy", {
   status: text("status").notNull().default("active"), // active, expired, terminated
   notes: text("notes"),
 
+  // Break clause details
+  breakClauseDate: timestamp("break_clause_date"),
+  breakClauseNoticePeriod: integer("break_clause_notice_period"), // days
+  breakClauseNotes: text("break_clause_notes"),
+  tenancyType: text("tenancy_type").default("ast"), // ast, periodic, contractual_periodic, company_let
+  specialTerms: text("special_terms"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
@@ -5432,6 +5445,7 @@ export const leads = pgTable("lead", {
   // Conversion tracking
   convertedAt: timestamp("converted_at"), // When did they become a tenant/buyer?
   convertedToTenantId: integer("converted_to_tenant_id"), // FK to tenant if they became a tenant
+  convertedToBuyerId: integer("converted_to_buyer_id"), // FK — buyer stays as lead, linked to sales progression
   convertedToPropertyId: integer("converted_to_property_id"), // Which property did they rent/buy?
 
   // Last activity tracking
@@ -6033,17 +6047,32 @@ export const emailConnections = pgTable("email_connection", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(), // FK to users
 
-  // Microsoft identity
-  provider: text("provider").notNull().default("microsoft"), // 'microsoft' (extensible for future providers)
-  tenantId: text("tenant_id").notNull(), // Microsoft tenant ID
-  mailboxUpn: text("mailbox_upn").notNull(), // User principal name (email address)
+  // Provider type
+  provider: text("provider").notNull().default("microsoft"), // 'microsoft' or 'smtp'
+
+  // Microsoft identity (nullable for SMTP connections)
+  tenantId: text("tenant_id"), // Microsoft tenant ID
+  mailboxUpn: text("mailbox_upn").notNull(), // User principal name / email address
   microsoftUserId: text("microsoft_user_id"), // Microsoft Graph user ID
 
-  // OAuth tokens (encrypted at rest)
-  accessToken: text("access_token").notNull(), // Encrypted access token
-  refreshToken: text("refresh_token").notNull(), // Encrypted refresh token
-  tokenExpiresAt: timestamp("token_expires_at").notNull(),
+  // OAuth tokens (encrypted at rest, nullable for SMTP connections)
+  accessToken: text("access_token"), // Encrypted access token
+  refreshToken: text("refresh_token"), // Encrypted refresh token
+  tokenExpiresAt: timestamp("token_expires_at"),
   scopes: text("scopes").array(), // Granted scopes ['Mail.Read', 'Mail.Send', etc.]
+
+  // SMTP/IMAP credentials (encrypted at rest, nullable for M365 connections)
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpUser: text("smtp_user"),
+  smtpPassword: text("smtp_password"), // Encrypted via encryptToken
+  smtpSecure: boolean("smtp_secure").default(false), // true for port 465 (SSL)
+  imapHost: text("imap_host"),
+  imapPort: integer("imap_port"),
+  imapUser: text("imap_user"),
+  imapPassword: text("imap_password"), // Encrypted via encryptToken
+  imapTls: boolean("imap_tls").default(true),
+  lastImapUid: text("last_imap_uid"), // Track highest UID for incremental IMAP fetch
 
   // Connection status
   status: text("status").notNull().default("active"), // 'active', 'expired', 'revoked', 'error'
@@ -6054,6 +6083,11 @@ export const emailConnections = pgTable("email_connection", {
   // Settings
   syncEnabled: boolean("sync_enabled").notNull().default(true),
   syncFolders: text("sync_folders").array().default(["inbox"]), // Which folders to monitor
+
+  // System/department mailbox fields
+  isSystemMailbox: boolean("is_system_mailbox").notNull().default(false),
+  mailboxCategory: text("mailbox_category"), // 'sales' | 'lettings' | 'maintenance'
+  mailboxDisplayName: text("mailbox_display_name"), // Human-readable name for UI
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -6126,8 +6160,8 @@ export const processedEmails = pgTable("processed_email", {
   connectionId: integer("connection_id").notNull(), // FK to email_connections
   userId: integer("user_id").notNull(), // FK to users
 
-  // Microsoft Graph identifiers
-  graphMessageId: text("graph_message_id").notNull(), // Microsoft Graph message ID
+  // Message identifiers (graphMessageId nullable for SMTP; uses synthetic imap:// ID)
+  graphMessageId: text("graph_message_id"), // Microsoft Graph message ID or synthetic IMAP ID
   graphConversationId: text("graph_conversation_id"), // Thread/conversation ID
   internetMessageId: text("internet_message_id"), // RFC 822 message ID
 
@@ -6176,6 +6210,12 @@ export const processedEmails = pgTable("processed_email", {
   linkedContactId: integer("linked_contact_id"), // FK to contacts/leads
   linkedPropertyId: integer("linked_property_id"), // FK to properties
   linkedEnquiryId: integer("linked_enquiry_id"), // FK to customerEnquiries
+  linkedTicketId: integer("linked_ticket_id"), // FK to support_ticket (created by AI agent)
+
+  // AI Agent action tracking
+  aiAgentActionType: text("ai_agent_action_type"), // action taken: support_ticket_created, ticket_comment_added, enquiry_created, contractor_response_processed, routed_to_pm, ignored, failed
+  aiAgentActionDetails: json("ai_agent_action_details"), // JSON metadata about the action
+  aiAgentProcessedAt: timestamp("ai_agent_processed_at"), // when action was executed
 
   // Processing status
   processingStatus: text("processing_status").notNull().default("pending"), // 'pending', 'processed', 'failed', 'skipped'
@@ -6274,3 +6314,369 @@ export const insertSentEmailSchema = createInsertSchema(sentEmails).omit({
 });
 export type InsertSentEmail = z.infer<typeof insertSentEmailSchema>;
 export type SentEmail = typeof sentEmails.$inferSelect;
+
+// ==========================================
+// FINANCE: INVOICES
+// ==========================================
+
+export const invoices = pgTable("invoice", {
+  id: serial("id").primaryKey(),
+  invoiceNumber: text("invoice_number").notNull().unique(),
+  propertyId: integer("property_id"),
+  tenantId: integer("tenant_id"),
+  landlordId: integer("landlord_id"),
+  tenancyId: integer("tenancy_id"),
+  paymentScheduleId: integer("payment_schedule_id"),
+  invoiceType: text("invoice_type").notNull(), // rent, service_charge, management_fee, deposit, maintenance, other
+  amount: integer("amount").notNull(), // pence
+  vatAmount: integer("vat_amount").default(0),
+  totalAmount: integer("total_amount").notNull(), // pence
+  lineItems: json("line_items"), // [{description, quantity, unitAmount, totalAmount, vatRate}]
+  dueDate: timestamp("due_date").notNull(),
+  paidDate: timestamp("paid_date"),
+  status: text("status").notNull().default("draft"), // draft, sent, paid, overdue, cancelled, credited
+  paymentId: integer("payment_id"),
+  pdfUrl: text("pdf_url"),
+  notes: text("notes"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertInvoiceSchema = createInsertSchema(invoices).omit({ id: true, createdAt: true, updatedAt: true });
+export type Invoice = typeof invoices.$inferSelect;
+export type InsertInvoice = z.infer<typeof insertInvoiceSchema>;
+
+// ==========================================
+// FINANCE: ARREARS TRACKING
+// ==========================================
+
+export const arrears = pgTable("arrears", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  tenancyId: integer("tenancy_id"),
+  invoiceId: integer("invoice_id"),
+  amount: integer("amount").notNull(), // outstanding amount in pence
+  daysOverdue: integer("days_overdue").notNull().default(0),
+  status: text("status").notNull().default("active"), // active, partially_paid, cleared, written_off
+  dunningLevel: integer("dunning_level").notNull().default(1), // 1-5 escalation
+  lastReminderSent: timestamp("last_reminder_sent"),
+  nextReminderDue: timestamp("next_reminder_due"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertArrearsSchema = createInsertSchema(arrears).omit({ id: true, createdAt: true, updatedAt: true });
+export type Arrears = typeof arrears.$inferSelect;
+export type InsertArrears = z.infer<typeof insertArrearsSchema>;
+
+// ==========================================
+// FINANCE: DUNNING ACTIONS
+// ==========================================
+
+export const dunningActions = pgTable("dunning_action", {
+  id: serial("id").primaryKey(),
+  arrearsId: integer("arrears_id").notNull(),
+  actionType: text("action_type").notNull(), // email, sms, letter, phone_call, legal_notice
+  templateId: integer("template_id"),
+  sentAt: timestamp("sent_at"),
+  channel: text("channel"), // email, sms, whatsapp, post
+  status: text("status").notNull().default("pending"), // pending, sent, delivered, failed
+  response: text("response"),
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const insertDunningActionSchema = createInsertSchema(dunningActions).omit({ id: true, createdAt: true });
+export type DunningAction = typeof dunningActions.$inferSelect;
+export type InsertDunningAction = z.infer<typeof insertDunningActionSchema>;
+
+// ==========================================
+// FINANCE: LANDLORD STATEMENTS
+// ==========================================
+
+export const landlordStatements = pgTable("landlord_statement", {
+  id: serial("id").primaryKey(),
+  landlordId: integer("landlord_id").notNull(),
+  statementPeriodStart: timestamp("statement_period_start").notNull(),
+  statementPeriodEnd: timestamp("statement_period_end").notNull(),
+  totalRentCollected: integer("total_rent_collected").notNull().default(0),
+  managementFees: integer("management_fees").notNull().default(0),
+  maintenanceDeductions: integer("maintenance_deductions").notNull().default(0),
+  otherDeductions: integer("other_deductions").notNull().default(0),
+  vatOnFees: integer("vat_on_fees").notNull().default(0),
+  netPayable: integer("net_payable").notNull().default(0),
+  status: text("status").notNull().default("draft"), // draft, approved, sent, paid
+  pdfUrl: text("pdf_url"),
+  sentAt: timestamp("sent_at"),
+  paidAt: timestamp("paid_at"),
+  paymentReference: text("payment_reference"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertLandlordStatementSchema = createInsertSchema(landlordStatements).omit({ id: true, createdAt: true, updatedAt: true });
+export type LandlordStatement = typeof landlordStatements.$inferSelect;
+export type InsertLandlordStatement = z.infer<typeof insertLandlordStatementSchema>;
+
+// ==========================================
+// FINANCE: STATEMENT LINE ITEMS
+// ==========================================
+
+export const statementLineItems = pgTable("statement_line_item", {
+  id: serial("id").primaryKey(),
+  statementId: integer("statement_id").notNull(),
+  propertyId: integer("property_id"),
+  lineType: text("line_type").notNull(), // rent_collected, management_fee, maintenance, other_deduction, adjustment
+  description: text("description").notNull(),
+  amount: integer("amount").notNull(), // pence, positive = income, negative = deduction
+  transactionDate: timestamp("transaction_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const insertStatementLineItemSchema = createInsertSchema(statementLineItems).omit({ id: true, createdAt: true });
+export type StatementLineItem = typeof statementLineItems.$inferSelect;
+export type InsertStatementLineItem = z.infer<typeof insertStatementLineItemSchema>;
+
+// ==========================================
+// FINANCE: PROPERTY TRANSACTIONS (P&L)
+// ==========================================
+
+export const propertyTransactions = pgTable("property_transaction", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  landlordId: integer("landlord_id"),
+  transactionType: text("transaction_type").notNull(), // income, expense
+  category: text("category").notNull(), // rent, management_fee, maintenance, insurance, utilities, legal, other
+  description: text("description").notNull(),
+  amount: integer("amount").notNull(), // pence, always positive
+  transactionDate: timestamp("transaction_date").notNull(),
+  invoiceId: integer("invoice_id"),
+  paymentId: integer("payment_id"),
+  maintenanceTicketId: integer("maintenance_ticket_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const insertPropertyTransactionSchema = createInsertSchema(propertyTransactions).omit({ id: true, createdAt: true });
+export type PropertyTransaction = typeof propertyTransactions.$inferSelect;
+export type InsertPropertyTransaction = z.infer<typeof insertPropertyTransactionSchema>;
+
+// ==========================================
+// FINANCE: RENT REVIEWS
+// ==========================================
+
+export const rentReviews = pgTable("rent_review", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+  currentRent: integer("current_rent").notNull(), // pence
+  proposedRent: integer("proposed_rent").notNull(), // pence
+  reviewDate: timestamp("review_date").notNull(),
+  effectiveDate: timestamp("effective_date"),
+  noticePeriodDays: integer("notice_period_days").default(30),
+  noticeServedDate: timestamp("notice_served_date"),
+  status: text("status").notNull().default("scheduled"), // scheduled, notice_sent, accepted, rejected, implemented, cancelled
+  approvedBy: integer("approved_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertRentReviewSchema = createInsertSchema(rentReviews).omit({ id: true, createdAt: true, updatedAt: true });
+export type RentReview = typeof rentReviews.$inferSelect;
+export type InsertRentReview = z.infer<typeof insertRentReviewSchema>;
+
+// ==========================================
+// TENANT & LEASE: RENEWAL REMINDERS
+// ==========================================
+
+export const renewalReminders = pgTable("renewal_reminder", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+  expiryDate: timestamp("expiry_date").notNull(),
+  reminderType: text("reminder_type").notNull(), // 90_day, 60_day, 30_day, 14_day, expired
+  status: text("status").notNull().default("pending"), // pending, sent, acknowledged
+  sentAt: timestamp("sent_at"),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  response: text("response"), // renew, vacate, undecided
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const insertRenewalReminderSchema = createInsertSchema(renewalReminders).omit({ id: true, createdAt: true });
+export type RenewalReminder = typeof renewalReminders.$inferSelect;
+export type InsertRenewalReminder = z.infer<typeof insertRenewalReminderSchema>;
+
+// ==========================================
+// TENANT & LEASE: SCREENING REQUESTS
+// ==========================================
+
+export const screeningRequests = pgTable("screening_request", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  tenancyId: integer("tenancy_id"),
+  screeningType: text("screening_type").notNull(), // credit_check, employment, previous_landlord, right_to_rent
+  provider: text("provider"), // homelet, openrent, manual
+  externalReference: text("external_reference"),
+  status: text("status").notNull().default("requested"), // requested, in_progress, passed, failed, referred
+  result: json("result"),
+  requestedAt: timestamp("requested_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertScreeningRequestSchema = createInsertSchema(screeningRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export type ScreeningRequest = typeof screeningRequests.$inferSelect;
+export type InsertScreeningRequest = z.infer<typeof insertScreeningRequestSchema>;
+
+// ==========================================
+// CRM: CONTACT TAGS
+// ==========================================
+
+export const contactTags = pgTable("contact_tag", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  color: text("color").default("default"), // default, red, orange, yellow, green, blue, purple, pink
+  category: text("category"), // property_type, area, status, custom
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const insertContactTagSchema = createInsertSchema(contactTags).omit({ id: true, createdAt: true });
+export type ContactTag = typeof contactTags.$inferSelect;
+export type InsertContactTag = z.infer<typeof insertContactTagSchema>;
+
+// ==========================================
+// CRM: CONTACT TAG ASSIGNMENTS
+// ==========================================
+
+export const contactTagAssignments = pgTable("contact_tag_assignment", {
+  id: serial("id").primaryKey(),
+  tagId: integer("tag_id").notNull(),
+  entityType: text("entity_type").notNull(), // tenant, landlord, lead, contact
+  entityId: integer("entity_id").notNull(),
+  assignedAt: timestamp("assigned_at").notNull().defaultNow(),
+  assignedBy: integer("assigned_by")
+});
+
+export const insertContactTagAssignmentSchema = createInsertSchema(contactTagAssignments).omit({ id: true, assignedAt: true });
+export type ContactTagAssignment = typeof contactTagAssignments.$inferSelect;
+export type InsertContactTagAssignment = z.infer<typeof insertContactTagAssignmentSchema>;
+
+// ==========================================
+// FINANCE: BANK TRANSACTIONS (CSV IMPORT & RECONCILIATION)
+// ==========================================
+
+export const bankTransactions = pgTable("bank_transaction", {
+  id: serial("id").primaryKey(),
+
+  // Bank details
+  bankName: text("bank_name").notNull(),
+  accountNumber: text("account_number"), // last 4 digits only
+
+  // Transaction details
+  transactionDate: timestamp("transaction_date").notNull(),
+  description: text("description"),
+  reference: text("reference"),
+  amount: integer("amount").notNull(), // In pence (positive = credit, negative = debit)
+  balance: integer("balance"), // In pence
+  transactionType: text("transaction_type").notNull(), // 'credit', 'debit'
+
+  // Reconciliation
+  matchStatus: text("match_status").notNull().default("unmatched"), // 'unmatched', 'auto_matched', 'manually_matched', 'excluded'
+  matchedPaymentId: integer("matched_payment_id"),
+  matchedInvoiceId: integer("matched_invoice_id"),
+  matchedAt: timestamp("matched_at"),
+  matchedBy: text("matched_by"), // 'system' or user identifier
+
+  // Import tracking
+  importBatchId: text("import_batch_id"),
+  rawData: json("raw_data"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export const insertBankTransactionSchema = createInsertSchema(bankTransactions).omit({ id: true, createdAt: true });
+export type BankTransaction = typeof bankTransactions.$inferSelect;
+export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
+
+// ==========================================
+// FINANCE: GOCARDLESS MANDATES
+// ==========================================
+
+export const gocardlessMandates = pgTable("gocardless_mandate", {
+  id: serial("id").primaryKey(),
+
+  // Links
+  tenantId: integer("tenant_id").notNull(),
+  tenancyId: integer("tenancy_id"),
+  propertyId: integer("property_id"),
+
+  // GoCardless identifiers
+  gocardlessMandateId: text("gocardless_mandate_id").unique(),
+  gocardlessCustomerId: text("gocardless_customer_id"),
+
+  // Status
+  status: text("status").notNull().default("pending_submission"), // pending_submission, submitted, active, failed, cancelled, expired
+
+  // Bank details
+  reference: text("reference"),
+  bankName: text("bank_name"),
+  accountHolderName: text("account_holder_name"),
+  accountNumberEnding: text("account_number_ending"),
+
+  // Redirect flow (for setup)
+  redirectFlowId: text("redirect_flow_id"),
+  redirectFlowUrl: text("redirect_flow_url"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertGocardlessMandateSchema = createInsertSchema(gocardlessMandates).omit({ id: true, createdAt: true, updatedAt: true });
+export type GocardlessMandate = typeof gocardlessMandates.$inferSelect;
+export type InsertGocardlessMandate = z.infer<typeof insertGocardlessMandateSchema>;
+
+// ==========================================
+// FINANCE: GOCARDLESS PAYMENTS
+// ==========================================
+
+export const gocardlessPayments = pgTable("gocardless_payment", {
+  id: serial("id").primaryKey(),
+
+  // Links
+  mandateId: integer("mandate_id").notNull(),
+  invoiceId: integer("invoice_id"),
+  paymentId: integer("payment_id"), // links to payments table once recorded
+
+  // GoCardless identifiers
+  gocardlessPaymentId: text("gocardless_payment_id").unique(),
+
+  // Payment details
+  amount: integer("amount").notNull(), // In pence
+  currency: text("currency").notNull().default("GBP"),
+  description: text("description"),
+  chargeDate: timestamp("charge_date"),
+
+  // Status
+  status: text("status").notNull().default("pending_submission"), // pending_submission, submitted, confirmed, paid_out, failed, cancelled
+  failureReason: text("failure_reason"),
+  paidOutAt: timestamp("paid_out_at"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertGocardlessPaymentSchema = createInsertSchema(gocardlessPayments).omit({ id: true, createdAt: true, updatedAt: true });
+export type GocardlessPayment = typeof gocardlessPayments.$inferSelect;
+export type InsertGocardlessPayment = z.infer<typeof insertGocardlessPaymentSchema>;

@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Phone, Mail, MapPin, Calendar, DollarSign,
+  ArrowLeft, Phone, Mail, MapPin, Calendar, PoundSterling,
   User, Home, FileText, CheckCircle, Loader2, Building2,
   Clock, Edit, MessageSquare, Send, ChevronRight
 } from 'lucide-react';
@@ -390,7 +390,7 @@ export default function LandlordLeadDetails() {
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
-                    <DollarSign className="h-5 w-5" />
+                    <PoundSterling className="h-5 w-5" />
                     Valuation Information
                   </CardTitle>
                 </CardHeader>

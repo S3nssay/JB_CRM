@@ -28,7 +28,7 @@ import {
   Home,
   FileText,
   Calendar,
-  DollarSign,
+  PoundSterling,
   Wrench,
   Phone,
   Mail,
@@ -233,7 +233,7 @@ export default function TenantPortal() {
       case "maintenance":
         return <Wrench className="h-4 w-4" />;
       case "billing":
-        return <DollarSign className="h-4 w-4" />;
+        return <PoundSterling className="h-4 w-4" />;
       case "complaint":
         return <AlertCircle className="h-4 w-4" />;
       case "emergency":
@@ -656,7 +656,7 @@ export default function TenantPortal() {
             {/* Tenant Fees */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-[#791E75]" />
+                <PoundSterling className="h-4 w-4 text-[#791E75]" />
                 Tenant Fees
               </h4>
               <div className="space-y-2">

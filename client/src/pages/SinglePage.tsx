@@ -85,111 +85,32 @@ const SinglePage = () => {
     try {
       console.log("Form data submitted:", data);
       
-      // Use our new contact form endpoint
-      const response = await apiRequest('/api/contact-form', 'POST', {
-        addressLine1: data.addressLine1,
-        postcode: data.postcode,
-        propertyType: data.propertyType,
-        bedrooms: data.bedrooms,
+      // Create a seller lead for valuation enquiries
+      const leadResponse = await apiRequest('/api/public/leads', 'POST', {
+        fullName: data.fullName || data.name || 'Property Valuation Enquiry',
         email: data.email,
         phone: data.phone,
-        name: 'Potential Customer' // Default name
+        leadType: 'seller',
+        sourceDetail: 'valuation_form',
+        preferredPropertyType: data.propertyType || undefined,
+        preferredBedrooms: data.bedrooms ? parseInt(data.bedrooms) : undefined,
+        requirements: `Property at ${data.addressLine1 || ''}, ${data.postcode || ''}. Type: ${data.propertyType || 'unknown'}, Bedrooms: ${data.bedrooms || 'unknown'}`,
       });
-      
-      if (!response || !response.success) {
-        throw new Error('Failed to process valuation');
+
+      if (!leadResponse || !leadResponse.id) {
+        throw new Error('Failed to submit valuation request');
       }
-      
+
       toast({
-        title: "Valuation sent!",
+        title: "Valuation request submitted!",
         description: "Our team of professional valuers will be in touch with the best market value of your property within 24 hours.",
         variant: "default",
         duration: 7000,
       });
-      
+
       // Reset form after successful submission
       setIsSubmitting(false);
       return;
-      
-      // The following code is left in place but won't execute (we're returning early)
-      // This preserves your existing logic in case you want to revert back
-      
-      // Original code:
-      const { priceInfo, offerDetails } = { 
-        priceInfo: response.priceInfo, 
-        offerDetails: response.offerDetails 
-      };
-      
-      if (!priceInfo) {
-        throw new Error('Could not get property valuation estimate');
-      }
-      
-      // Create property
-      const property = await apiRequest('/api/properties', 'POST', {
-        postcode: data.postcode,
-        addressLine1: data.addressLine1,
-        town: data.town,
-        propertyType: data.propertyType,
-        bedrooms: parseInt(data.bedrooms),
-        condition: data.condition,
-        hasExtensions: data.hasExtensions,
-        extensionDetails: data.extensionDetails || null,
-        hasAlterations: data.hasAlterations,
-        alterationDetails: data.alterationDetails || null,
-        exchangeTimeframe: data.exchangeTimeframe
-      });
-      
-      // Create contact
-      const contact = await apiRequest('/api/contacts', 'POST', {
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        timeframe: data.timeframe,
-        propertyId: property.id
-      });
-      
-      // Use the API-provided values
-      const estimatedValue = priceInfo.averagePrice;
-      // Use the exact offer price if available, otherwise use the minOffer as a fallback
-      const offerValue = offerDetails?.offerPrice || priceInfo.minOffer;
-      
-      const valuation = await apiRequest('/api/valuations', 'POST', {
-        propertyId: property.id,
-        contactId: contact.id,
-        estimatedValue,
-        offerValue,
-        status: 'pending'
-      });
-      
-      // Send SMS notification with the valuation result instead of showing it on the page
-      await apiRequest('/api/valuation-request', 'POST', {
-        propertyId: property.id,
-        contactId: contact.id,
-        address: `${data.addressLine1}, ${data.town}, ${data.postcode}`,
-        marketValue: estimatedValue,
-        offerPrice: offerValue,
-        discountAmount: estimatedValue - offerValue,
-        discountPercentage: 15,
-        phoneNumber: data.phone,
-        customerName: data.fullName
-      });
-      
-      // Invalidate queries
-      queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/valuations'] });
-      
-      // Show success message
-      toast({
-        title: "Valuation request submitted",
-        description: "Thank you! We've sent your property valuation details via SMS. One of our property specialists will call you within 24 hours to discuss your valuation and answer any questions.",
-      });
-      
-      // No need to reset form since we'll reload the page
-      
-      // Scroll to the top of the page
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      
     } catch (error) {
       toast({
         title: "Error",

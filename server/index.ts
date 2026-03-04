@@ -67,6 +67,14 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = 5000;
+  // Start daily scheduler for arrears detection and renewal reminders
+  const { startScheduler } = await import('./schedulerService');
+  startScheduler();
+
+  // Start IMAP polling for SMTP email connections (every 5 minutes)
+  const { imapPollingService } = await import('./services/email/imapPollingService');
+  imapPollingService.start(5 * 60 * 1000); // Poll every 5 minutes
+
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });

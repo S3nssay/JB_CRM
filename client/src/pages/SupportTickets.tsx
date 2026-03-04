@@ -30,13 +30,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
 import {
   Ticket, MessageSquare, Phone, Mail, AlertCircle, Clock,
   CheckCircle, XCircle, User, Building, Wrench, Send,
   Filter, Search, MoreVertical, RefreshCw, ArrowLeft,
   MessageCircle, Image, Paperclip, Zap, TrendingUp,
   Users, Home, Loader2, ChevronRight, Star, CircleDot,
-  ArrowRight, Hammer, Calendar, DollarSign, FileCheck, ThumbsUp, ThumbsDown
+  ArrowRight, Hammer, Calendar, PoundSterling, FileCheck, ThumbsUp, ThumbsDown,
+  Plus
 } from 'lucide-react';
 
 // Channel icons
@@ -130,6 +132,18 @@ export default function SupportTickets() {
   const [approvalNotes, setApprovalNotes] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
 
+  // Create ticket state
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createSearch, setCreateSearch] = useState('');
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
+  const [selectedTenantName, setSelectedTenantName] = useState('');
+  const [selectedPropertyAddress, setSelectedPropertyAddress] = useState('');
+  const [createCategory, setCreateCategory] = useState('');
+  const [createPriority, setCreatePriority] = useState('medium');
+  const [createSubject, setCreateSubject] = useState('');
+  const [createDescription, setCreateDescription] = useState('');
+
   // Fetch tickets
   const { data: ticketsData, isLoading: loadingTickets, refetch: refetchTickets } = useQuery({
     queryKey: ['/api/crm/support-tickets', filterStatus, filterPriority, filterCategory],
@@ -164,6 +178,29 @@ export default function SupportTickets() {
     }
   });
 
+  // Fetch tenants with property info (for create ticket)
+  const { data: tenantsData } = useQuery({
+    queryKey: ['/api/crm/tenants'],
+    queryFn: async () => {
+      const res = await fetch('/api/crm/tenants');
+      if (!res.ok) throw new Error('Failed to fetch tenants');
+      return res.json();
+    },
+    enabled: isCreateOpen
+  });
+
+  // Filter tenants/properties for the create dialog search
+  const tenantSearchResults = (tenantsData || []).filter((t: any) => {
+    if (!createSearch || createSearch.length < 2) return false;
+    const q = createSearch.toLowerCase();
+    return (
+      t.fullName?.toLowerCase().includes(q) ||
+      t.email?.toLowerCase().includes(q) ||
+      t.propertyAddress?.toLowerCase().includes(q) ||
+      t.propertyPostcode?.toLowerCase().includes(q)
+    );
+  }).slice(0, 10);
+
   // Fetch quotes for selected ticket
   const { data: quotes, refetch: refetchQuotes } = useQuery({
     queryKey: ['/api/crm/support-tickets/quotes', selectedTicket?.id],
@@ -187,6 +224,53 @@ export default function SupportTickets() {
     },
     enabled: !!selectedTicket?.id
   });
+
+  // Create ticket mutation
+  const createTicketMutation = useMutation({
+    mutationFn: async (data: { tenantId: number; propertyId: number; category: string; subject: string; description: string; priority: string }) => {
+      const res = await fetch('/api/crm/support-tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!res.ok) throw new Error('Failed to create ticket');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/support-tickets/stats/overview'] });
+      toast({ title: 'Ticket created', description: 'Support ticket has been created successfully.' });
+      setIsCreateOpen(false);
+      resetCreateForm();
+    }
+  });
+
+  const resetCreateForm = () => {
+    setCreateSearch('');
+    setSelectedTenantId(null);
+    setSelectedPropertyId(null);
+    setSelectedTenantName('');
+    setSelectedPropertyAddress('');
+    setCreateCategory('');
+    setCreatePriority('medium');
+    setCreateSubject('');
+    setCreateDescription('');
+  };
+
+  const handleCreateTicket = () => {
+    if (!selectedTenantId || !selectedPropertyId || !createCategory || !createSubject || !createDescription) {
+      toast({ title: 'Missing fields', description: 'Please fill in all required fields.', variant: 'destructive' });
+      return;
+    }
+    createTicketMutation.mutate({
+      tenantId: selectedTenantId,
+      propertyId: selectedPropertyId,
+      category: createCategory,
+      subject: createSubject,
+      description: createDescription,
+      priority: createPriority
+    });
+  };
 
   // Update ticket mutation
   const updateTicketMutation = useMutation({
@@ -374,6 +458,10 @@ export default function SupportTickets() {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <Button size="sm" className="bg-[#791E75] hover:bg-[#691a66]" onClick={() => setIsCreateOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create Ticket
+              </Button>
               <Button variant="outline" size="sm" onClick={() => refetchTickets()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
                 Refresh
@@ -691,7 +779,7 @@ export default function SupportTickets() {
                         {quotes && quotes.length > 0 && (
                           <div className="bg-gray-50 rounded-lg p-4">
                             <h4 className="font-medium mb-3 flex items-center gap-2">
-                              <DollarSign className="h-4 w-4" />
+                              <PoundSterling className="h-4 w-4" />
                               Contractor Quotes
                             </h4>
                             <div className="space-y-3">
@@ -1040,6 +1128,143 @@ export default function SupportTickets() {
                 </Tabs>
               </>
             )}
+          </DialogContent>
+        </Dialog>
+        {/* Create Ticket Dialog */}
+        <Dialog open={isCreateOpen} onOpenChange={(open) => { setIsCreateOpen(open); if (!open) resetCreateForm(); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Create Support Ticket</DialogTitle>
+              <DialogDescription>Raise a ticket on behalf of a tenant</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4 mt-2">
+              {/* Tenant / Property Search */}
+              <div>
+                <Label className="mb-1.5 block font-medium">Tenant / Property</Label>
+                {selectedTenantId ? (
+                  <div className="border rounded-lg p-3 bg-gray-50 flex items-center justify-between">
+                    <div>
+                      <p className="font-medium flex items-center gap-2"><User className="h-4 w-4" />{selectedTenantName}</p>
+                      {selectedPropertyAddress && (
+                        <p className="text-sm text-gray-500 flex items-center gap-2 mt-1"><Building className="h-4 w-4" />{selectedPropertyAddress}</p>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={() => { setSelectedTenantId(null); setSelectedPropertyId(null); setSelectedTenantName(''); setSelectedPropertyAddress(''); setCreateSearch(''); }}>
+                      Change
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search by tenant name or property address..."
+                      value={createSearch}
+                      onChange={(e) => setCreateSearch(e.target.value)}
+                      className="pl-10"
+                    />
+                    {tenantSearchResults.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        {tenantSearchResults.map((t: any) => (
+                          <div
+                            key={t.id}
+                            className="p-3 hover:bg-gray-50 cursor-pointer border-b last:border-b-0"
+                            onClick={() => {
+                              setSelectedTenantId(t.id);
+                              setSelectedPropertyId(t.propertyId);
+                              setSelectedTenantName(t.fullName);
+                              setSelectedPropertyAddress(t.propertyAddress ? `${t.propertyAddress}${t.propertyPostcode ? ', ' + t.propertyPostcode : ''}` : '');
+                              setCreateSearch('');
+                            }}
+                          >
+                            <p className="font-medium text-sm">{t.fullName}</p>
+                            {t.propertyAddress && (
+                              <p className="text-xs text-gray-500">{t.propertyAddress}{t.propertyPostcode ? `, ${t.propertyPostcode}` : ''}</p>
+                            )}
+                            {t.email && <p className="text-xs text-gray-400">{t.email}</p>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {createSearch.length >= 2 && tenantSearchResults.length === 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white border rounded-lg shadow-lg p-3 text-sm text-gray-500">
+                        No tenants found matching "{createSearch}"
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Category & Priority */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="mb-1.5 block font-medium">Category</Label>
+                  <Select value={createCategory} onValueChange={setCreateCategory}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plumbing">Plumbing</SelectItem>
+                      <SelectItem value="electrical">Electrical</SelectItem>
+                      <SelectItem value="heating">Heating</SelectItem>
+                      <SelectItem value="appliances">Appliances</SelectItem>
+                      <SelectItem value="structural">Structural</SelectItem>
+                      <SelectItem value="pest">Pest Control</SelectItem>
+                      <SelectItem value="exterior">Exterior</SelectItem>
+                      <SelectItem value="billing">Billing</SelectItem>
+                      <SelectItem value="general">General</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="mb-1.5 block font-medium">Priority</Label>
+                  <Select value={createPriority} onValueChange={setCreatePriority}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                      <SelectItem value="urgent">Urgent</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Subject */}
+              <div>
+                <Label className="mb-1.5 block font-medium">Subject</Label>
+                <Input
+                  placeholder="Brief description of the issue"
+                  value={createSubject}
+                  onChange={(e) => setCreateSubject(e.target.value)}
+                />
+              </div>
+
+              {/* Description */}
+              <div>
+                <Label className="mb-1.5 block font-medium">Description</Label>
+                <Textarea
+                  placeholder="Full details of the issue..."
+                  value={createDescription}
+                  onChange={(e) => setCreateDescription(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            </div>
+
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => { setIsCreateOpen(false); resetCreateForm(); }}>Cancel</Button>
+              <Button
+                className="bg-[#791E75] hover:bg-[#691a66]"
+                onClick={handleCreateTicket}
+                disabled={createTicketMutation.isPending || !selectedTenantId || !createCategory || !createSubject || !createDescription}
+              >
+                {createTicketMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                Create Ticket
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </main>

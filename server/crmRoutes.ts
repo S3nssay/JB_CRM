@@ -15,7 +15,6 @@ import {
   insertPropertyCertificateSchema,
   managementFees,
   insertManagementFeeSchema,
-  tenancyContracts,
   landlords,
   tenant,
   properties,
@@ -68,10 +67,16 @@ import {
   processedEmails,
   sentEmails,
   conversations,
-  messages
+  messages,
+  tasks,
+  customerEnquiries,
+  propertyInquiries,
+  payments,
+  renewalReminders,
+  propertyWorkflows
 } from '@shared/schema';
 
-import { eq, desc, and, sql, or, gte, lte, inArray, count } from 'drizzle-orm';
+import { eq, desc, and, sql, or, gte, lte, inArray, count, isNull } from 'drizzle-orm';
 import {
   parsePropertyFromNaturalLanguage,
   enhancePropertyDescription,
@@ -82,13 +87,14 @@ import { z } from 'zod';
 import {
   createPaymentIntent,
   recordPayment,
-  getCustomerPayments,
-  getPaymentSchedules,
+  getPaymentsByTenant,
+  getSchedulesByTenant,
   createPaymentSchedule,
   getPublishableKey,
   isStripeConfigured
 } from './paymentService';
-import { portalSyndication } from './portalSyndicationService';
+import { portalSyndication, PortalSyndicationService } from './portalSyndicationService';
+import { isGoCardlessConfigured } from './gocardlessService';
 import { aiPhone } from './aiPhoneService';
 import { collaborationHub } from './collaborationHubService';
 import { emailService } from './emailService';
@@ -312,6 +318,48 @@ const requireRole = (...roleCodes: string[]) => {
     }
   };
 };
+
+// ==========================================
+// PROPERTY UPDATE FIELD SANITIZATION
+// ==========================================
+
+// Valid property table column names (Drizzle camelCase)
+const VALID_PROPERTY_FIELDS = new Set([
+  'status', 'title', 'description', 'price', 'priceQualifier',
+  'propertyType', 'bedrooms', 'bathrooms', 'receptions', 'squareFootage',
+  'addressLine1', 'addressLine2', 'postcode', 'areaId',
+  'latitude', 'longitude',
+  'tenure', 'councilTaxBand', 'energyRating', 'yearBuilt',
+  'features', 'amenities', 'images', 'floorPlan',
+  'viewingArrangements', 'agentContact', 'propertyManagerId',
+  'rentPeriod', 'furnished', 'availableFrom', 'minimumTenancy', 'deposit',
+  'isManaged', 'isListed', 'isRental', 'isResidential',
+  'landlordId', 'vendorId', 'agentId',
+  'address', 'city', 'country', 'propertyName',
+  'managementType', 'managementFeeType', 'managementFeeValue',
+  'managementPeriodMonths', 'managementStartDate', 'managementEndDate',
+  'rentAmount', 'leaseLength', 'groundRent', 'serviceCharge',
+  'isPublishedWebsite', 'isPublishedZoopla', 'isPublishedRightmove',
+  'isPublishedOnthemarket', 'isPublishedSocial', 'publishedToPortals',
+  'notes', 'isListedRental', 'isListedSale'
+]);
+
+// Field name mappings: frontend alias -> schema column name
+const PROPERTY_FIELD_ALIASES: Record<string, string> = {
+  'isPublishedOnTheMarket': 'isPublishedOnthemarket',
+};
+
+function sanitizePropertyUpdates(body: Record<string, any>): Record<string, any> {
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(body)) {
+    // Map aliased field names to their schema names
+    const mappedKey = PROPERTY_FIELD_ALIASES[key] || key;
+    if (VALID_PROPERTY_FIELDS.has(mappedKey)) {
+      sanitized[mappedKey] = value;
+    }
+  }
+  return sanitized;
+}
 
 // ==========================================
 // IMAGE UPLOAD ROUTES
@@ -997,6 +1045,65 @@ crmRouter.delete('/import-key-data/staging/:batchId', requireAdmin, async (req, 
 
 // DUPLICATE ROUTE REMOVED - /properties is defined at line 310
 
+// Get properties without a landlord assigned (for assignment dropdown)
+crmRouter.get('/properties/unassigned', requireAgent, async (req, res) => {
+  try {
+    const unassignedProperties = await db.select({
+      id: properties.id,
+      addressLine1: properties.addressLine1,
+      addressLine2: properties.addressLine2,
+      postcode: properties.postcode,
+      propertyType: properties.propertyType,
+      bedrooms: properties.bedrooms,
+      isManaged: properties.isManaged,
+      status: properties.status,
+    })
+    .from(properties)
+    .where(isNull(properties.landlordId))
+    .orderBy(properties.addressLine1);
+
+    res.json(unassignedProperties);
+  } catch (error) {
+    console.error('Error fetching unassigned properties:', error);
+    res.status(500).json({ error: 'Failed to fetch unassigned properties' });
+  }
+});
+
+// Assign a landlord to a property
+crmRouter.patch('/properties/:id/assign-landlord', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const { landlordId: newLandlordId } = req.body;
+
+    if (!newLandlordId) {
+      return res.status(400).json({ error: 'landlordId is required' });
+    }
+
+    const [landlord] = await db.select().from(landlords).where(eq(landlords.id, newLandlordId)).limit(1);
+    if (!landlord) {
+      return res.status(404).json({ error: 'Landlord not found' });
+    }
+
+    const [updated] = await db.update(properties)
+      .set({
+        landlordId: newLandlordId,
+        isManaged: true,
+        updatedAt: new Date()
+      })
+      .where(eq(properties.id, propertyId))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error assigning landlord:', error);
+    res.status(500).json({ error: 'Failed to assign landlord' });
+  }
+});
+
 crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
@@ -1210,7 +1317,7 @@ crmRouter.post('/properties', requireAgent, async (req, res) => {
 crmRouter.put('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const updates = req.body;
+    const updates = sanitizePropertyUpdates(req.body);
 
     // Convert price to pence if provided in pounds (values under 1,000,000 are assumed to be pounds)
     if (updates.price && typeof updates.price === 'number' && updates.price < 1000000) {
@@ -1243,7 +1350,7 @@ crmRouter.put('/properties/:id', requireAgent, async (req, res) => {
 crmRouter.patch('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const updates = req.body;
+    const updates = sanitizePropertyUpdates(req.body);
 
     // Convert price to pence if provided
     if (updates.price && typeof updates.price === 'number' && updates.price < 1000000) {
@@ -2038,7 +2145,7 @@ crmRouter.get('/leads/:id', requireAgent, async (req, res) => {
              COALESCE(p.title, pp.title, pp.address) as "propertyTitle",
              COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress",
              COALESCE(p.price, pp.price, pp.rent_amount) as "propertyPrice"
-      FROM lead_property_views lpv
+      FROM lead_property_view lpv
       LEFT JOIN property p ON lpv.property_id = p.id
       LEFT JOIN property pp ON lpv.property_id = pp.id
       WHERE lpv.lead_id = $1
@@ -2255,7 +2362,7 @@ crmRouter.delete('/leads/:id', requireAgent, async (req, res) => {
     await pool.query('DELETE FROM lead_activity WHERE lead_id = $1', [id]);
     await pool.query('DELETE FROM lead_viewing WHERE lead_id = $1', [id]);
     await pool.query('DELETE FROM lead_communication WHERE lead_id = $1', [id]);
-    await pool.query('DELETE FROM lead_property_views WHERE lead_id = $1', [id]);
+    await pool.query('DELETE FROM lead_property_view WHERE lead_id = $1', [id]);
     await pool.query('DELETE FROM lead WHERE id = $1', [id]);
 
     res.json({ success: true });
@@ -2272,7 +2379,7 @@ crmRouter.post('/leads/:id/property-views', requireAgent, async (req, res) => {
     const { propertyId, viewSource, viewDuration, savedToFavorites, requestedViewing, requestedMoreInfo } = req.body;
 
     const result = await pool.query(`
-      INSERT INTO lead_property_views (lead_id, property_id, view_source, view_duration, saved_to_favorites, requested_viewing, requested_more_info)
+      INSERT INTO lead_property_view (lead_id, property_id, view_source, view_duration, saved_to_favorites, requested_viewing, requested_more_info)
       VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `, [leadId, propertyId, viewSource || 'website', viewDuration || null, savedToFavorites || false, requestedViewing || false, requestedMoreInfo || false]);
@@ -2304,7 +2411,7 @@ crmRouter.get('/leads/:id/property-views', requireAgent, async (req, res) => {
              COALESCE(p.address_line1, pp.address_line1, pp.address) as "propertyAddress",
              COALESCE(p.price, pp.price, pp.rent_amount) as "propertyPrice",
              COALESCE(p.images, pp.images) as "propertyImages"
-      FROM lead_property_views lpv
+      FROM lead_property_view lpv
       LEFT JOIN property p ON lpv.property_id = p.id
       LEFT JOIN property pp ON lpv.property_id = pp.id
       WHERE lpv.lead_id = $1
@@ -2531,13 +2638,12 @@ crmRouter.post('/leads/:id/notes', requireAgent, async (req, res) => {
   }
 });
 
-// Convert lead to tenant
+// Convert lead to tenant OR buyer
 crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
   try {
     const leadId = parseInt(req.params.id);
-    const { propertyId } = req.body;
+    const { propertyId, convertAs } = req.body; // convertAs: 'tenant' | 'buyer'
 
-    // Get lead details
     const leadResult = await pool.query('SELECT * FROM lead WHERE id = $1', [leadId]);
     if (leadResult.rows.length === 0) {
       return res.status(404).json({ error: 'Lead not found' });
@@ -2545,33 +2651,69 @@ crmRouter.post('/leads/:id/convert', requireAgent, async (req, res) => {
 
     const lead = leadResult.rows[0];
 
-    // Create tenant from lead
-    const tenantResult = await pool.query(`
-      INSERT INTO tenant (name, email, phone, mobile, status, id_verification_status)
-      VALUES ($1, $2, $3, $4, 'active', 'unverified')
-      RETURNING *
-    `, [lead.full_name, lead.email, lead.phone, lead.mobile]);
+    if (convertAs === 'buyer') {
+      // Convert to buyer — lead record stays as the buyer contact
+      await pool.query(`
+        UPDATE lead SET
+          status = 'converted',
+          converted_at = NOW(),
+          converted_to_buyer_id = $1,
+          converted_to_property_id = $2,
+          last_activity_at = NOW()
+        WHERE id = $1
+      `, [leadId, propertyId || null]);
 
-    const tenant = tenantResult.rows[0];
+      // If property provided, create/update sales progression
+      if (propertyId) {
+        const existingProg = await pool.query(
+          'SELECT id FROM sales_progression WHERE property_id = $1', [propertyId]
+        );
+        if (existingProg.rows.length > 0) {
+          await pool.query(`
+            UPDATE sales_progression SET buyer_name = $1, buyer_email = $2, updated_at = NOW()
+            WHERE property_id = $3
+          `, [lead.full_name, lead.email, propertyId]);
+        } else {
+          await pool.query(`
+            INSERT INTO sales_progression (property_id, buyer_name, buyer_email, current_stage, status)
+            VALUES ($1, $2, $3, 'offer_accepted', 'active')
+          `, [propertyId, lead.full_name, lead.email]);
+        }
+      }
 
-    // Update lead as converted
-    await pool.query(`
-      UPDATE lead SET
-        status = 'converted',
-        converted_at = NOW(),
-        converted_to_tenant_id = $2,
-        converted_to_property_id = $3,
-        last_activity_at = NOW()
-      WHERE id = $1
-    `, [leadId, tenant.id, propertyId || null]);
+      await pool.query(`
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
+        VALUES ($1, 'converted', 'Lead converted to buyer', $2, $3)
+      `, [leadId, propertyId || null, req.user?.id || null]);
 
-    // Create activity
-    await pool.query(`
-      INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
-      VALUES ($1, 'converted', 'Lead converted to tenant', $2, $3)
-    `, [leadId, propertyId || null, req.user?.id || null]);
+      res.json({ lead: { ...lead, status: 'converted', converted_to_buyer_id: leadId }, convertedAs: 'buyer' });
+    } else {
+      // Convert to tenant (existing logic)
+      const tenantResult = await pool.query(`
+        INSERT INTO tenant (name, email, phone, mobile, status, id_verification_status)
+        VALUES ($1, $2, $3, $4, 'active', 'unverified')
+        RETURNING *
+      `, [lead.full_name, lead.email, lead.phone, lead.mobile]);
 
-    res.json({ lead: { ...lead, status: 'converted', converted_to_tenant_id: tenant.id }, tenant });
+      const tenantRecord = tenantResult.rows[0];
+
+      await pool.query(`
+        UPDATE lead SET
+          status = 'converted',
+          converted_at = NOW(),
+          converted_to_tenant_id = $2,
+          converted_to_property_id = $3,
+          last_activity_at = NOW()
+        WHERE id = $1
+      `, [leadId, tenantRecord.id, propertyId || null]);
+
+      await pool.query(`
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
+        VALUES ($1, 'converted', 'Lead converted to tenant', $2, $3)
+      `, [leadId, propertyId || null, req.user?.id || null]);
+
+      res.json({ lead: { ...lead, status: 'converted', converted_to_tenant_id: tenantRecord.id }, tenant: tenantRecord, convertedAs: 'tenant' });
+    }
   } catch (error) {
     console.error('Error converting lead:', error);
     res.status(500).json({ error: 'Failed to convert lead' });
@@ -3460,6 +3602,119 @@ crmRouter.get('/maintenance/tickets', async (req, res) => {
   }
 });
 
+// Get unassigned maintenance tickets (no contractor assigned)
+crmRouter.get('/maintenance/tickets/unassigned', requireAgent, async (req, res) => {
+  try {
+    const rows = await db.select({
+      ticket: maintenanceTickets,
+      addressLine1: properties.addressLine1,
+      addressLine2: properties.addressLine2,
+      postcode: properties.postcode,
+    })
+      .from(maintenanceTickets)
+      .leftJoin(properties, eq(maintenanceTickets.propertyId, properties.id))
+      .where(and(
+        isNull(maintenanceTickets.assignedContractorId),
+        eq(maintenanceTickets.status, 'new')
+      ))
+      .orderBy(desc(maintenanceTickets.createdAt));
+
+    const enriched = rows.map(row => ({
+      ...row.ticket,
+      propertyAddress: row.addressLine1
+        ? `${row.addressLine1}${row.addressLine2 ? ', ' + row.addressLine2 : ''}, ${row.postcode || ''}`
+        : 'Unknown'
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching unassigned tickets:', error);
+    res.status(500).json({ error: 'Failed to fetch unassigned tickets' });
+  }
+});
+
+// Create a maintenance ticket and immediately assign to contractor
+crmRouter.post('/maintenance/tickets/create-and-assign', requireAgent, async (req, res) => {
+  try {
+    const { propertyId, title, description, category, urgency, contractorId, notify } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    if (!propertyId || !title || !description || !category || !urgency || !contractorId) {
+      return res.status(400).json({ error: 'Missing required fields: propertyId, title, description, category, urgency, contractorId' });
+    }
+
+    const property = await storage.getProperty(propertyId);
+    if (!property) return res.status(404).json({ error: 'Property not found' });
+
+    const contractor = await storage.getContractor(contractorId);
+    if (!contractor) return res.status(404).json({ error: 'Contractor not found' });
+
+    // Look up active tenant for this property (tenantId is NOT NULL in schema)
+    let tenantId = userId; // fallback to creating user
+    const activeTenancies = await db.select()
+      .from(tenancies)
+      .where(and(eq(tenancies.propertyId, propertyId), eq(tenancies.status, 'active')))
+      .limit(1);
+    if (activeTenancies.length > 0 && activeTenancies[0].tenantId) {
+      tenantId = activeTenancies[0].tenantId;
+    }
+
+    const ticket = await storage.createMaintenanceTicket({
+      propertyId,
+      tenantId,
+      title,
+      description,
+      category,
+      urgency,
+      assignedContractorId: contractorId,
+      assignedAt: new Date(),
+      status: 'assigned',
+    });
+
+    // Audit trail
+    await storage.createTicketUpdate({
+      ticketId: ticket.id,
+      userId,
+      updateType: 'assignment',
+      message: `Ticket created and assigned to ${contractor.companyName}`,
+      previousStatus: 'new',
+      newStatus: 'assigned',
+      isInternal: false,
+    });
+
+    // Send email
+    let emailSent = false;
+    if (notify !== false && contractor.email) {
+      try {
+        const propertyAddress = `${property.addressLine1 || ''}${property.addressLine2 ? ', ' + property.addressLine2 : ''}, ${property.postcode || ''}`;
+        const emailHtml = generateContractorAssignmentEmail(
+          contractor.contactName || contractor.companyName,
+          { title, description, category, urgency },
+          propertyAddress
+        );
+        const result = await emailService.sendEmail(
+          contractor.email,
+          `Maintenance Job Assignment - ${title}`,
+          emailHtml
+        );
+        emailSent = result.success;
+        if (result.success) {
+          console.log(`[CreateAndAssign] Email sent to ${contractor.email} for ticket ${ticket.id}`);
+        } else {
+          console.error('[CreateAndAssign] Email failed:', result.error);
+        }
+      } catch (emailError) {
+        console.error('[CreateAndAssign] Email error:', emailError);
+      }
+    }
+
+    res.json({ ticket, contractor, notified: emailSent });
+  } catch (error) {
+    console.error('Error creating and assigning ticket:', error);
+    res.status(500).json({ error: 'Failed to create and assign ticket' });
+  }
+});
+
 // Update maintenance ticket status with audit trail
 crmRouter.patch('/maintenance/tickets/:id/status', async (req, res) => {
   try {
@@ -3519,6 +3774,40 @@ crmRouter.patch('/maintenance/tickets/:id/status', async (req, res) => {
   }
 });
 
+// Helper: Generate contractor assignment email HTML
+function generateContractorAssignmentEmail(
+  contractorName: string,
+  ticket: { title: string; description: string; category: string; urgency: string },
+  propertyAddress: string
+): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #791E75; color: white; padding: 20px; text-align: center;">
+        <h1 style="margin: 0; font-size: 20px;">Maintenance Job Assignment</h1>
+        <p style="margin: 5px 0 0; font-size: 14px;">John Barclay Property Management</p>
+      </div>
+      <div style="padding: 30px; background: #f8f9fa;">
+        <p>Dear ${contractorName},</p>
+        <p>You have been assigned a new maintenance job. Please find the details below:</p>
+        <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
+          <p style="margin: 0 0 8px;"><strong>Job:</strong> ${ticket.title}</p>
+          <p style="margin: 0 0 8px;"><strong>Category:</strong> ${ticket.category}</p>
+          <p style="margin: 0 0 8px;"><strong>Urgency:</strong> ${(ticket.urgency || 'routine').toUpperCase()}</p>
+          <p style="margin: 0 0 8px;"><strong>Property:</strong> ${propertyAddress}</p>
+          <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 12px 0;">
+          <p style="margin: 0;"><strong>Description:</strong></p>
+          <p style="margin: 4px 0 0; color: #374151;">${ticket.description}</p>
+        </div>
+        <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #fbbf24;">
+          <strong>Important:</strong> Please contact our office before visiting the property. Do NOT contact the tenant directly.
+        </div>
+        <p>Please respond to this email to confirm you can attend to this job.</p>
+        <p style="margin-top: 30px;">Best regards,<br><strong>John Barclay Property Management</strong><br>020 7244 4482<br>maintenance@johnbarclay.uk</p>
+      </div>
+    </div>
+  `;
+}
+
 // Assign contractor to maintenance ticket
 crmRouter.post('/maintenance/tickets/:id/assign-contractor', async (req, res) => {
   try {
@@ -3566,13 +3855,41 @@ crmRouter.post('/maintenance/tickets/:id/assign-contractor', async (req, res) =>
       isInternal: false
     });
 
-    // TODO: Send notification to contractor if notify=true
-    // This would integrate with email/SMS service
+    // Send email notification to contractor
+    let emailSent = false;
+    if (notify && contractor.email) {
+      try {
+        const property = await storage.getProperty(currentTicket.propertyId);
+        const propertyAddress = property
+          ? `${property.addressLine1 || ''}${property.addressLine2 ? ', ' + property.addressLine2 : ''}, ${property.postcode || ''}`
+          : 'Address not available';
+
+        const emailHtml = generateContractorAssignmentEmail(
+          contractor.contactName || contractor.companyName,
+          { title: currentTicket.title, description: currentTicket.description, category: currentTicket.category, urgency: currentTicket.urgency },
+          propertyAddress
+        );
+
+        const result = await emailService.sendEmail(
+          contractor.email,
+          `Maintenance Job Assignment - ${currentTicket.title}`,
+          emailHtml
+        );
+        emailSent = result.success;
+        if (!result.success) {
+          console.error('[AssignContractor] Email failed:', result.error);
+        } else {
+          console.log(`[AssignContractor] Email sent to ${contractor.email} for ticket ${ticketId}`);
+        }
+      } catch (emailError) {
+        console.error('[AssignContractor] Email error:', emailError);
+      }
+    }
 
     res.json({
       ticket: updatedTicket,
       contractor,
-      notified: notify || false
+      notified: emailSent
     });
   } catch (error) {
     console.error('Error assigning contractor:', error);
@@ -3603,6 +3920,489 @@ crmRouter.get('/maintenance/tickets/:id/history', async (req, res) => {
   } catch (error) {
     console.error('Error fetching ticket history:', error);
     res.status(500).json({ error: 'Failed to fetch ticket history' });
+  }
+});
+
+// ==========================================
+// MAINTENANCE TICKET QUOTES & WORKFLOW
+// ==========================================
+
+// Get all quotes for a ticket
+crmRouter.get('/maintenance/tickets/:id/quotes', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const quotes = await storage.getQuotesForTicket(ticketId);
+
+    const enrichedQuotes = await Promise.all(quotes.map(async (quote: any) => {
+      const contractor = await storage.getContractor(quote.contractorId);
+      return {
+        ...quote,
+        contractor: contractor ? {
+          id: contractor.id,
+          companyName: contractor.companyName,
+          contactName: contractor.contactName,
+          phone: contractor.phone,
+          email: contractor.email,
+          emergencyPhone: contractor.emergencyPhone
+        } : null
+      };
+    }));
+
+    res.json(enrichedQuotes);
+  } catch (error) {
+    console.error('Error fetching maintenance ticket quotes:', error);
+    res.status(500).json({ error: 'Failed to fetch quotes' });
+  }
+});
+
+// Request quotes from contractors
+crmRouter.post('/maintenance/tickets/:id/request-quotes', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const { contractorIds } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    if (!contractorIds || !Array.isArray(contractorIds) || contractorIds.length === 0) {
+      return res.status(400).json({ error: 'At least one contractor ID required' });
+    }
+
+    const ticket = await storage.getMaintenanceTicket(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const createdQuotes = [];
+    for (const contractorId of contractorIds) {
+      const contractor = await storage.getContractor(contractorId);
+      if (!contractor) continue;
+
+      const quote = await storage.createContractorQuote({
+        ticketId,
+        contractorId,
+        status: 'pending',
+        sentAt: new Date()
+      });
+      createdQuotes.push({ ...quote, contractor });
+
+      await storage.createWorkflowEvent({
+        ticketId,
+        quoteId: quote.id,
+        eventType: 'contractor_notified',
+        triggeredBy: 'property_manager',
+        userId,
+        title: `Quote requested from ${contractor.companyName}`,
+        description: `Quote request sent to ${contractor.contactName} at ${contractor.companyName}`
+      });
+    }
+
+    if (ticket.status === 'new') {
+      await storage.updateMaintenanceTicket(ticketId, { status: 'assigned' });
+    }
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'status_change',
+      message: `Quotes requested from ${createdQuotes.length} contractor(s)`,
+      previousStatus: ticket.status,
+      newStatus: 'assigned',
+      isInternal: false
+    });
+
+    res.json({ success: true, quotes: createdQuotes });
+  } catch (error) {
+    console.error('Error requesting quotes:', error);
+    res.status(500).json({ error: 'Failed to request quotes' });
+  }
+});
+
+// Approve a quote
+crmRouter.post('/maintenance/tickets/:id/quotes/:quoteId/approve', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const quoteId = parseInt(req.params.quoteId);
+    const { approvalNotes, scheduledDate, scheduledTimeSlot } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    const newStatus = scheduledDate ? 'scheduled' : 'approved';
+    await storage.updateContractorQuote(quoteId, {
+      status: newStatus,
+      approvedById: userId,
+      approvedAt: new Date(),
+      approvalNotes,
+      scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+      scheduledTimeSlot: scheduledTimeSlot || undefined
+    });
+
+    const ticketStatus = scheduledDate ? 'in_progress' : 'assigned';
+    await storage.updateMaintenanceTicket(ticketId, { status: ticketStatus });
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      quoteId,
+      eventType: scheduledDate ? 'work_scheduled' : 'quote_approved',
+      triggeredBy: 'property_manager',
+      userId,
+      title: scheduledDate ? 'Work scheduled' : 'Quote approved',
+      description: scheduledDate
+        ? `Work scheduled for ${new Date(scheduledDate).toLocaleDateString('en-GB')} (${scheduledTimeSlot || 'TBC'})`
+        : 'Quote has been approved'
+    });
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'status_change',
+      message: scheduledDate
+        ? `Quote approved and work scheduled for ${new Date(scheduledDate).toLocaleDateString('en-GB')}`
+        : `Quote #${quoteId} approved`,
+      previousStatus: 'assigned',
+      newStatus: ticketStatus,
+      isInternal: false
+    });
+
+    res.json({ success: true, message: 'Quote approved' });
+  } catch (error) {
+    console.error('Error approving quote:', error);
+    res.status(500).json({ error: 'Failed to approve quote' });
+  }
+});
+
+// Reject a quote
+crmRouter.post('/maintenance/tickets/:id/quotes/:quoteId/reject', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const quoteId = parseInt(req.params.quoteId);
+    const { rejectionReason } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    await storage.updateContractorQuote(quoteId, {
+      status: 'rejected',
+      approvalNotes: rejectionReason
+    });
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      quoteId,
+      eventType: 'quote_rejected',
+      triggeredBy: 'property_manager',
+      userId,
+      title: 'Quote rejected',
+      description: rejectionReason || 'Quote has been rejected'
+    });
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'status_change',
+      message: `Quote #${quoteId} rejected${rejectionReason ? ': ' + rejectionReason : ''}`,
+      isInternal: false
+    });
+
+    res.json({ success: true, message: 'Quote rejected' });
+  } catch (error) {
+    console.error('Error rejecting quote:', error);
+    res.status(500).json({ error: 'Failed to reject quote' });
+  }
+});
+
+// Start work on a quote
+crmRouter.post('/maintenance/tickets/:id/quotes/:quoteId/start-work', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const quoteId = parseInt(req.params.quoteId);
+    const userId = (req as any).user?.id || 1;
+
+    await storage.updateContractorQuote(quoteId, { status: 'in_progress' });
+    await storage.updateMaintenanceTicket(ticketId, { status: 'in_progress' });
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      quoteId,
+      eventType: 'work_started',
+      triggeredBy: 'property_manager',
+      userId,
+      title: 'Work started',
+      description: 'Contractor has started the work'
+    });
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'status_change',
+      message: 'Work has started',
+      previousStatus: 'assigned',
+      newStatus: 'in_progress',
+      isInternal: false
+    });
+
+    res.json({ success: true, message: 'Work started' });
+  } catch (error) {
+    console.error('Error starting work:', error);
+    res.status(500).json({ error: 'Failed to start work' });
+  }
+});
+
+// Complete work on a quote
+crmRouter.post('/maintenance/tickets/:id/quotes/:quoteId/complete', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const quoteId = parseInt(req.params.quoteId);
+    const { completionNotes, finalAmount } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    await storage.updateContractorQuote(quoteId, {
+      status: 'completed',
+      completedAt: new Date(),
+      completionNotes,
+      finalAmount: finalAmount ? parseInt(finalAmount) : undefined
+    });
+
+    await storage.updateMaintenanceTicket(ticketId, {
+      status: 'completed',
+      resolvedAt: new Date()
+    });
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      quoteId,
+      eventType: 'work_completed',
+      triggeredBy: 'property_manager',
+      userId,
+      title: 'Work completed',
+      description: completionNotes || 'Maintenance work has been completed'
+    });
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'status_change',
+      message: `Work completed${completionNotes ? ': ' + completionNotes : ''}`,
+      previousStatus: 'in_progress',
+      newStatus: 'completed',
+      isInternal: false
+    });
+
+    res.json({ success: true, message: 'Work completed' });
+  } catch (error) {
+    console.error('Error completing work:', error);
+    res.status(500).json({ error: 'Failed to complete work' });
+  }
+});
+
+// Get workflow timeline events
+crmRouter.get('/maintenance/tickets/:id/workflow', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const events = await storage.getWorkflowEvents(ticketId);
+    res.json(events);
+  } catch (error) {
+    console.error('Error fetching workflow:', error);
+    res.status(500).json({ error: 'Failed to fetch workflow' });
+  }
+});
+
+// Get communications for a ticket
+crmRouter.get('/maintenance/tickets/:id/communications', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const comms = await storage.getTicketCommunications(ticketId);
+    res.json(comms);
+  } catch (error) {
+    console.error('Error fetching communications:', error);
+    res.status(500).json({ error: 'Failed to fetch communications' });
+  }
+});
+
+// Send quote to landlord for approval
+crmRouter.post('/maintenance/tickets/:id/send-to-landlord', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const { quoteId, message } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    const ticket = await storage.getMaintenanceTicket(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const quote = quoteId ? await storage.getContractorQuote(quoteId) : null;
+
+    // Look up property to find landlord
+    const property = await storage.getProperty(ticket.propertyId);
+    if (!property?.landlordId) {
+      return res.status(400).json({ error: 'No landlord associated with this property' });
+    }
+
+    const landlord = await storage.getLandlord(property.landlordId);
+    if (!landlord) return res.status(404).json({ error: 'Landlord not found' });
+
+    const quoteAmount = quote?.quoteAmount ? `£${(quote.quoteAmount / 100).toFixed(2)}` : 'TBC';
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      quoteId: quoteId || undefined,
+      eventType: 'tenant_notified', // reusing event type for landlord notification
+      triggeredBy: 'property_manager',
+      userId,
+      title: 'Quote sent to landlord',
+      description: `Quote of ${quoteAmount} sent to ${landlord.name} for approval`
+    });
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'comment',
+      message: `Quote of ${quoteAmount} sent to landlord ${landlord.name} for approval`,
+      isInternal: false
+    });
+
+    res.json({
+      success: true,
+      message: `Quote sent to ${landlord.name}`,
+      landlord: { name: landlord.name, email: landlord.email, phone: landlord.phone }
+    });
+  } catch (error) {
+    console.error('Error sending to landlord:', error);
+    res.status(500).json({ error: 'Failed to send quote to landlord' });
+  }
+});
+
+// Create payment for an approved quote
+crmRouter.post('/maintenance/tickets/:id/create-payment', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const { quoteId } = req.body;
+
+    const ticket = await storage.getMaintenanceTicket(ticketId);
+    if (!ticket) return res.status(404).json({ error: 'Ticket not found' });
+
+    const quote = await storage.getContractorQuote(quoteId);
+    if (!quote || !quote.quoteAmount) {
+      return res.status(400).json({ error: 'Quote not found or amount missing' });
+    }
+
+    const property = await storage.getProperty(ticket.propertyId);
+
+    // Try to create Stripe payment if configured
+    let stripeResult = null;
+    if (isStripeConfigured()) {
+      stripeResult = await createPaymentIntent({
+        amount: quote.quoteAmount,
+        currency: 'gbp',
+        description: `Maintenance: ${ticket.title} - Ticket #${ticketId}`,
+        metadata: {
+          ticketId: String(ticketId),
+          quoteId: String(quoteId),
+          paymentType: 'maintenance'
+        }
+      });
+    }
+
+    // Record payment in DB
+    const [payment] = await db.insert(payments).values({
+      paymentType: 'maintenance',
+      propertyId: ticket.propertyId,
+      tenantId: ticket.tenantId,
+      landlordId: property?.landlordId || null,
+      amount: quote.quoteAmount,
+      currency: 'GBP',
+      description: `Maintenance: ${ticket.title}`,
+      reference: `MT-${ticketId}-Q${quoteId}`,
+      status: 'pending',
+      stripePaymentId: stripeResult?.id || null,
+      paymentMethod: 'card'
+    }).returning();
+
+    const userId = (req as any).user?.id || 1;
+    await storage.createWorkflowEvent({
+      ticketId,
+      quoteId,
+      eventType: 'quote_approved', // payment created
+      triggeredBy: 'property_manager',
+      userId,
+      title: 'Payment created',
+      description: `Payment of £${(quote.quoteAmount / 100).toFixed(2)} created`
+    });
+
+    res.json({
+      success: true,
+      paymentId: payment.id,
+      clientSecret: stripeResult?.client_secret || null,
+      amount: quote.quoteAmount
+    });
+  } catch (error) {
+    console.error('Error creating payment:', error);
+    res.status(500).json({ error: 'Failed to create payment' });
+  }
+});
+
+// Record completed payment
+crmRouter.post('/maintenance/tickets/:id/record-payment', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const { paymentId } = req.body;
+    const userId = (req as any).user?.id || 1;
+
+    await db.update(payments)
+      .set({ status: 'completed', paidAt: new Date(), updatedAt: new Date() })
+      .where(eq(payments.id, paymentId));
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      eventType: 'ticket_closed', // payment completed
+      triggeredBy: 'system',
+      userId,
+      title: 'Payment received',
+      description: 'Payment has been completed successfully'
+    });
+
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'cost_update',
+      message: 'Payment received and recorded',
+      isInternal: false
+    });
+
+    res.json({ success: true, message: 'Payment recorded' });
+  } catch (error) {
+    console.error('Error recording payment:', error);
+    res.status(500).json({ error: 'Failed to record payment' });
+  }
+});
+
+// Send WhatsApp for maintenance ticket
+crmRouter.post('/maintenance/tickets/:id/send-whatsapp', requireAgent, async (req, res) => {
+  try {
+    const ticketId = parseInt(req.params.id);
+    const { phoneNumber, message } = req.body;
+
+    if (!phoneNumber || !message) {
+      return res.status(400).json({ error: 'Phone number and message required' });
+    }
+
+    // Log as ticket update
+    const userId = (req as any).user?.id || 1;
+    await storage.createTicketUpdate({
+      ticketId,
+      userId,
+      updateType: 'comment',
+      message: `WhatsApp sent to ${phoneNumber}: ${message}`,
+      isInternal: false
+    });
+
+    await storage.createWorkflowEvent({
+      ticketId,
+      eventType: 'tenant_notified',
+      triggeredBy: 'property_manager',
+      userId,
+      title: 'WhatsApp message sent',
+      description: `Message sent to ${phoneNumber}`,
+      notificationSent: true,
+      notificationChannels: ['whatsapp']
+    });
+
+    res.json({ success: true, message: 'WhatsApp message logged' });
+  } catch (error) {
+    console.error('Error sending WhatsApp:', error);
+    res.status(500).json({ error: 'Failed to send WhatsApp' });
   }
 });
 
@@ -3866,46 +4666,33 @@ crmRouter.get('/analytics/dashboard', requireAgent, async (req, res) => {
 });
 
 // Get agent performance
-crmRouter.get('/analytics/agents', requireAgent, async (req, res) => {
-  try {
-    const agents = [
-      { name: 'Sarah Mitchell', sales: 8, lettings: 12, revenue: 45200, rating: 4.8 },
-      { name: 'James Carter', sales: 6, lettings: 15, revenue: 38500, rating: 4.6 },
-      { name: 'Emily Watson', sales: 5, lettings: 18, revenue: 35800, rating: 4.7 }
-    ];
-
-    res.json(agents);
-  } catch (error) {
-    console.error('Error fetching agent performance:', error);
-    res.status(500).json({ error: 'Failed to fetch agent performance' });
-  }
-});
-
 // ==========================================
 // CALENDAR ROUTES
 // ==========================================
 
 // Get calendar events
-crmRouter.get('/calendar/events', requireAgent, async (req, res) => {
+crmRouter.get('/calendar/events', requireAgent, async (req: any, res) => {
   try {
     const { start, end, type } = req.query;
+    const userId = req.user.id;
 
-    // Mock events
-    const events = [
-      {
-        id: 1,
-        title: 'Property Viewing',
-        description: 'Viewing for 3 Bed House in Queens Park',
-        eventType: 'viewing',
-        startTime: new Date(Date.now() + 1000 * 60 * 60 * 2),
-        endTime: new Date(Date.now() + 1000 * 60 * 60 * 2.5),
-        location: '15 Queens Park Gardens, NW6',
-        propertyId: 1,
-        status: 'confirmed'
+    const startDate = start ? new Date(start as string) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const endDate = end ? new Date(end as string) : new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59);
+    const eventTypes = type ? (type as string).split(',') : [];
+
+    const events = await storage.getCalendarEventsForUser(userId, startDate, endDate, eventTypes);
+
+    // Enrich with property addresses
+    const enriched = await Promise.all(events.map(async (event) => {
+      let propertyAddress = null;
+      if (event.propertyId) {
+        const prop = await storage.getProperty(event.propertyId);
+        propertyAddress = prop?.address || null;
       }
-    ];
+      return { ...event, propertyAddress };
+    }));
 
-    res.json(events);
+    res.json(enriched);
   } catch (error) {
     console.error('Error fetching events:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
@@ -4095,7 +4882,7 @@ crmRouter.get('/payments/config', async (req, res) => {
 // Create payment intent
 crmRouter.post('/payments/create-intent', async (req, res) => {
   try {
-    const { amount, description, customerId, metadata } = req.body;
+    const { amount, description, tenantId, metadata } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ error: 'Invalid amount' });
@@ -4104,7 +4891,7 @@ crmRouter.post('/payments/create-intent', async (req, res) => {
     const result = await createPaymentIntent({
       amount: Math.round(amount * 100), // Convert to pence
       description,
-      customerId,
+      tenantId,
       metadata
     });
 
@@ -4122,20 +4909,24 @@ crmRouter.post('/payments/create-intent', async (req, res) => {
 // Record a completed payment
 crmRouter.post('/payments/record', async (req, res) => {
   try {
-    const { customerId, propertyId, amount, paymentType, status, stripePaymentIntentId, description } = req.body;
+    const { tenantId, propertyId, landlordId, amount, paymentType, paymentMethod, status, stripePaymentId, description, reference, invoiceNumber } = req.body;
 
-    if (!customerId || !amount || !paymentType) {
+    if (!tenantId || !amount || !paymentType) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const paymentId = await recordPayment({
-      customerId,
+      tenantId,
       propertyId,
+      landlordId,
       amount,
       paymentType,
+      paymentMethod,
       status: status || 'completed',
-      stripePaymentIntentId,
-      description
+      stripePaymentId,
+      description,
+      reference,
+      invoiceNumber
     });
 
     if (!paymentId) {
@@ -4157,8 +4948,8 @@ crmRouter.get('/payments/my-payments', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const payments = await getCustomerPayments(userId);
-    res.json(payments);
+    const userPayments = await getPaymentsByTenant(userId);
+    res.json(userPayments);
   } catch (error) {
     console.error('Error fetching payments:', error);
     res.status(500).json({ error: 'Failed to fetch payments' });
@@ -4173,7 +4964,7 @@ crmRouter.get('/payments/schedules', async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const schedules = await getPaymentSchedules(userId);
+    const schedules = await getSchedulesByTenant(userId);
     res.json(schedules);
   } catch (error) {
     console.error('Error fetching payment schedules:', error);
@@ -4184,20 +4975,22 @@ crmRouter.get('/payments/schedules', async (req, res) => {
 // Create a payment schedule
 crmRouter.post('/payments/schedules', requireAgent, async (req, res) => {
   try {
-    const { customerId, propertyId, amount, scheduleType, frequency, dueDate, description } = req.body;
+    const { tenantId, propertyId, amount, paymentType, frequency, startDate, endDate, dayOfMonth, paymentMethod } = req.body;
 
-    if (!customerId || !amount || !scheduleType || !frequency || !dueDate) {
+    if (!tenantId || !propertyId || !amount || !paymentType || !frequency || !startDate) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
     const scheduleId = await createPaymentSchedule({
-      customerId,
+      tenantId,
       propertyId,
       amount,
-      scheduleType,
+      paymentType,
       frequency,
-      dueDate: new Date(dueDate),
-      description
+      startDate: new Date(startDate),
+      endDate: endDate ? new Date(endDate) : undefined,
+      dayOfMonth,
+      paymentMethod
     });
 
     if (!scheduleId) {
@@ -4861,12 +5654,13 @@ crmRouter.get('/portals', requireAgent, async (req, res) => {
 crmRouter.post('/portals/:portalName/syndicate/:propertyId', requireAgent, async (req, res) => {
   try {
     const { portalName, propertyId } = req.params;
+    const normalized = portalName.toLowerCase();
 
-    if (portalName.toLowerCase() !== 'zoopla') {
-      return res.status(400).json({ error: 'Currently only Zoopla is supported' });
+    if (!PortalSyndicationService.supportedPortals.includes(normalized)) {
+      return res.status(400).json({ error: `Portal ${portalName} not supported. Supported: ${PortalSyndicationService.supportedPortals.join(', ')}` });
     }
 
-    const result = await portalSyndication.syndicateToZoopla(parseInt(propertyId));
+    const result = await portalSyndication.syndicateToPortal(normalized, parseInt(propertyId));
     res.json(result);
   } catch (error) {
     console.error('Error syndicating to portal:', error);
@@ -4878,12 +5672,13 @@ crmRouter.post('/portals/:portalName/syndicate/:propertyId', requireAgent, async
 crmRouter.put('/portals/:portalName/listing/:propertyId', requireAgent, async (req, res) => {
   try {
     const { portalName, propertyId } = req.params;
+    const normalized = portalName.toLowerCase();
 
-    if (portalName.toLowerCase() !== 'zoopla') {
-      return res.status(400).json({ error: 'Currently only Zoopla is supported' });
+    if (!PortalSyndicationService.supportedPortals.includes(normalized)) {
+      return res.status(400).json({ error: `Portal ${portalName} not supported. Supported: ${PortalSyndicationService.supportedPortals.join(', ')}` });
     }
 
-    const result = await portalSyndication.updateZooplaListing(parseInt(propertyId));
+    const result = await portalSyndication.updatePortalListing(normalized, parseInt(propertyId));
     res.json(result);
   } catch (error) {
     console.error('Error updating portal listing:', error);
@@ -4895,12 +5690,13 @@ crmRouter.put('/portals/:portalName/listing/:propertyId', requireAgent, async (r
 crmRouter.delete('/portals/:portalName/listing/:propertyId', requireAgent, async (req, res) => {
   try {
     const { portalName, propertyId } = req.params;
+    const normalized = portalName.toLowerCase();
 
-    if (portalName.toLowerCase() !== 'zoopla') {
-      return res.status(400).json({ error: 'Currently only Zoopla is supported' });
+    if (!PortalSyndicationService.supportedPortals.includes(normalized)) {
+      return res.status(400).json({ error: `Portal ${portalName} not supported. Supported: ${PortalSyndicationService.supportedPortals.join(', ')}` });
     }
 
-    const result = await portalSyndication.removeZooplaListing(parseInt(propertyId));
+    const result = await portalSyndication.removePortalListing(normalized, parseInt(propertyId));
     res.json(result);
   } catch (error) {
     console.error('Error removing portal listing:', error);
@@ -4912,12 +5708,13 @@ crmRouter.delete('/portals/:portalName/listing/:propertyId', requireAgent, async
 crmRouter.post('/portals/:portalName/sync-stats/:propertyId', requireAgent, async (req, res) => {
   try {
     const { portalName, propertyId } = req.params;
+    const normalized = portalName.toLowerCase();
 
-    if (portalName.toLowerCase() !== 'zoopla') {
-      return res.status(400).json({ error: 'Currently only Zoopla is supported' });
+    if (!PortalSyndicationService.supportedPortals.includes(normalized)) {
+      return res.status(400).json({ error: `Portal ${portalName} not supported. Supported: ${PortalSyndicationService.supportedPortals.join(', ')}` });
     }
 
-    const result = await portalSyndication.syncZooplaStats(parseInt(propertyId));
+    const result = await portalSyndication.syncPortalStats(normalized, parseInt(propertyId));
     res.json(result);
   } catch (error) {
     console.error('Error syncing portal stats:', error);
@@ -4942,16 +5739,17 @@ crmRouter.post('/portals/:portalName/bulk-syndicate', requireAgent, async (req, 
   try {
     const { portalName } = req.params;
     const { propertyIds } = req.body;
+    const normalized = portalName.toLowerCase();
 
     if (!Array.isArray(propertyIds) || propertyIds.length === 0) {
       return res.status(400).json({ error: 'Property IDs array is required' });
     }
 
-    if (portalName.toLowerCase() !== 'zoopla') {
-      return res.status(400).json({ error: 'Currently only Zoopla is supported' });
+    if (!PortalSyndicationService.supportedPortals.includes(normalized)) {
+      return res.status(400).json({ error: `Portal ${portalName} not supported. Supported: ${PortalSyndicationService.supportedPortals.join(', ')}` });
     }
 
-    const result = await portalSyndication.bulkSyndicateToZoopla(propertyIds);
+    const result = await portalSyndication.bulkSyndicateToPortal(normalized, propertyIds);
     res.json(result);
   } catch (error) {
     console.error('Error bulk syndicating:', error);
@@ -5390,9 +6188,9 @@ crmRouter.get('/analytics/kpis', requireAgent, async (req, res) => {
         conversionRate: callAnalytics?.conversionRate || 0
       },
       performance: {
-        averageDaysOnMarket: 45, // Would calculate from actual data
-        viewingsPerProperty: 8.5,
-        offersPerListing: 2.3
+        averageDaysOnMarket: 0,
+        viewingsPerProperty: 0,
+        offersPerListing: 0
       }
     };
 
@@ -5492,11 +6290,11 @@ crmRouter.get('/analytics/agents', requireAgent, async (req, res) => {
         metrics: {
           propertiesListed: agentShare,
           propertiesSold: agentSoldShare + (letProperties.length > 0 ? Math.floor(letProperties.length / agents.length) : 0),
-          viewingsConducted: ticketsHandled * 2, // Estimate
+          viewingsConducted: 0,
           enquiriesHandled: ticketsHandled,
           revenue: agentRevenueShare,
           avgResponseTime,
-          customerRating: '4.5'
+          customerRating: 0
         }
       };
     });
@@ -5520,23 +6318,28 @@ crmRouter.get('/analytics/communications', requireAgent, async (req, res) => {
     const whatsappMetrics = await collaborationHub.getConversationMetrics(periodStr);
     const emailStatus = emailService.getStatus();
 
+    // Get real email counts from the database
+    const [emailCounts] = await db.select({ count: count(processedEmails.id) }).from(processedEmails);
+    const emailTotal = emailCounts?.count || 0;
+
+    const totalCalls = callAnalytics?.totalCalls || 0;
+    const totalMessages = whatsappMetrics?.totalMessages || 0;
+
     res.json({
       period: periodStr,
       phone: callAnalytics,
       whatsapp: whatsappMetrics,
       email: {
         configured: emailStatus.configured,
-        // Would add actual email metrics here
-        sent: 156,
-        delivered: 152,
-        opened: 89,
-        clicked: 34
+        sent: emailTotal,
+        delivered: 0,
+        opened: 0,
+        clicked: 0
       },
       totals: {
-        totalInteractions: (callAnalytics?.totalCalls || 0) +
-          (whatsappMetrics?.totalMessages || 0) + 156,
-        responseRate: 94,
-        avgResponseTime: '12 minutes'
+        totalInteractions: totalCalls + totalMessages + emailTotal,
+        responseRate: 0,
+        avgResponseTime: '—'
       }
     });
   } catch (error) {
@@ -5555,10 +6358,10 @@ crmRouter.get('/analytics/portals', requireAgent, async (req, res) => {
       isActive: portal.isActive,
       lastSync: portal.lastTestAt,
       metrics: {
-        totalListings: Math.floor(Math.random() * 50) + 10,
-        totalViews: Math.floor(Math.random() * 5000) + 1000,
-        totalEnquiries: Math.floor(Math.random() * 100) + 20,
-        conversionRate: (Math.random() * 5 + 1).toFixed(1) // 1% - 6%
+        totalListings: 0,
+        totalViews: 0,
+        totalEnquiries: 0,
+        conversionRate: '0'
       }
     }));
 
@@ -6151,6 +6954,14 @@ const ENV_SECTIONS = {
       { key: 'STRIPE_WEBHOOK_SECRET', label: 'Stripe Webhook Secret', secret: true },
     ]
   },
+  gocardless: {
+    title: 'GoCardless Direct Debit',
+    variables: [
+      { key: 'GOCARDLESS_ACCESS_TOKEN', label: 'Access Token', secret: true },
+      { key: 'GOCARDLESS_ENVIRONMENT', label: 'Environment (sandbox/live)', secret: false },
+      { key: 'GOCARDLESS_WEBHOOK_SECRET', label: 'Webhook Secret', secret: true },
+    ]
+  },
   documents: {
     title: 'Document Signing',
     variables: [
@@ -6404,13 +7215,34 @@ crmRouter.post('/env-settings/test/:section', requireAdmin, async (req, res) => 
           message: hasSocial ? 'Social media credentials configured' : 'No social media credentials configured'
         };
         break;
-      case 'portals':
-        const hasPortals = process.env.ZOOPLA_USERNAME || process.env.RIGHTMOVE_USERNAME;
+      case 'portals': {
+        const portalNames: string[] = [];
+        // Sync env var credentials to DB for each portal that has credentials
+        const portalEnvMap: Record<string, { userKey: string; passKey: string }> = {
+          zoopla: { userKey: 'ZOOPLA_USERNAME', passKey: 'ZOOPLA_PASSWORD' },
+          rightmove: { userKey: 'RIGHTMOVE_USERNAME', passKey: 'RIGHTMOVE_PASSWORD' },
+          onthemarket: { userKey: 'ONTHEMARKET_USERNAME', passKey: 'ONTHEMARKET_PASSWORD' },
+          primelocation: { userKey: 'PRIMELOCATION_USERNAME', passKey: 'PRIMELOCATION_PASSWORD' },
+        };
+        for (const [portal, keys] of Object.entries(portalEnvMap)) {
+          if (process.env[keys.userKey] && process.env[keys.passKey]) {
+            portalNames.push(portal);
+            // Save to portal_credentials DB table so portalSyndicationService can use them
+            try {
+              await portalSyndication.savePortalCredentials(portal, process.env[keys.userKey]!, process.env[keys.passKey]!);
+            } catch (e) {
+              console.error(`Failed to sync ${portal} credentials to DB:`, e);
+            }
+          }
+        }
         testResult = {
-          success: !!hasPortals,
-          message: hasPortals ? 'Property portal credentials configured' : 'No portal credentials configured'
+          success: portalNames.length > 0,
+          message: portalNames.length > 0
+            ? `Credentials configured for: ${portalNames.join(', ')}`
+            : 'No portal credentials configured — enter username & password, then save'
         };
         break;
+      }
       case 'advertisers':
         const hasAds = process.env.GOOGLE_ADS_CUSTOMER_ID || process.env.META_ADS_ACCESS_TOKEN || process.env.TABOOLA_ACCOUNT_ID;
         testResult = {
@@ -6422,6 +7254,16 @@ crmRouter.post('/env-settings/test/:section', requireAdmin, async (req, res) => 
         testResult = {
           success: isStripeConfigured(),
           message: isStripeConfigured() ? 'Stripe configured' : 'Stripe credentials missing'
+        };
+        break;
+      case 'gocardless':
+        const gcConfigured = isGoCardlessConfigured();
+        const gcEnv = process.env.GOCARDLESS_ENVIRONMENT || 'sandbox';
+        testResult = {
+          success: gcConfigured,
+          message: gcConfigured
+            ? `GoCardless configured (${gcEnv} mode)`
+            : 'GoCardless access token not configured'
         };
         break;
       case 'email':
@@ -7397,6 +8239,32 @@ crmRouter.delete('/landlords/:id', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error deleting landlord:', error);
     res.status(500).json({ error: 'Failed to delete landlord' });
+  }
+});
+
+// Log a communication (note, call, etc.) for a landlord
+crmRouter.post('/landlords/:id/communications', requireAgent, async (req, res) => {
+  try {
+    const landlordId = parseInt(req.params.id);
+    const { type, direction, content, propertyId } = req.body;
+
+    if (!type || !content) {
+      return res.status(400).json({ error: 'type and content are required' });
+    }
+
+    const comm = await storage.createCommunication({
+      type,
+      direction: direction || 'outbound',
+      content,
+      status: 'sent',
+      landlordId,
+      propertyId: propertyId || null,
+    });
+
+    res.json(comm);
+  } catch (error) {
+    console.error('Error logging landlord communication:', error);
+    res.status(500).json({ error: 'Failed to log communication' });
   }
 });
 
@@ -8528,17 +9396,18 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
   try {
     const { status, priority, category, tenantId, propertyId, page = 1, limit = 20 } = req.query;
 
-    // Build query with filters
+    // Build query with filters - join both user and tenant tables since tenant_id may reference either
     let query = `
       SELECT
         st.*,
-        u.full_name as tenant_name,
-        u.email as tenant_email,
-        u.phone as tenant_phone,
+        COALESCE(t.name, u.full_name) as tenant_name,
+        COALESCE(t.email, u.email) as tenant_email,
+        COALESCE(t.phone, u.phone) as tenant_phone,
         p.address_line1 as property_address,
         p.postcode as property_postcode,
         c.company_name as contractor_name
       FROM support_ticket st
+      LEFT JOIN tenant t ON st.tenant_id = t.id
       LEFT JOIN "user" u ON st.tenant_id = u.id
       LEFT JOIN property p ON st.property_id = p.id
       LEFT JOIN contractor c ON st.assigned_to_id = c.id
@@ -8582,35 +9451,56 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
 
     params.push(Number(limit), (Number(page) - 1) * Number(limit));
 
-    // For now, return mock data since we may not have the tables created yet
-    const mockTickets = [
-      {
-        id: 1,
-        ticketNumber: 'JB241218ABC1',
-        category: 'plumbing',
-        subject: 'Leaking tap in kitchen',
-        description: 'The kitchen tap has been dripping constantly for 2 days',
-        priority: 'medium',
-        status: 'open',
-        tenantName: 'John Smith',
-        tenantEmail: 'john@example.com',
-        tenantPhone: '+447700900123',
-        propertyAddress: '42 High Street',
-        propertyPostcode: 'W2 1AB',
-        contractorName: null,
-        attachments: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }
-    ];
+    const result = await pool.query(query, params);
+
+    // Get total count for pagination
+    let countQuery = `SELECT COUNT(*) FROM support_ticket st WHERE 1=1`;
+    const countParams: any[] = [];
+    let countIndex = 1;
+    if (status) { countQuery += ` AND st.status = $${countIndex++}`; countParams.push(status); }
+    if (priority) { countQuery += ` AND st.priority = $${countIndex++}`; countParams.push(priority); }
+    if (category) { countQuery += ` AND st.category = $${countIndex++}`; countParams.push(category); }
+    if (tenantId) { countQuery += ` AND st.tenant_id = $${countIndex++}`; countParams.push(tenantId); }
+    if (propertyId) { countQuery += ` AND st.property_id = $${countIndex++}`; countParams.push(propertyId); }
+
+    const countResult = await pool.query(countQuery, countParams);
+    const total = Number(countResult.rows[0].count);
+
+    const tickets = result.rows.map((row: any) => ({
+      id: row.id,
+      ticketNumber: row.ticket_number,
+      category: row.category,
+      subject: row.subject,
+      description: row.description,
+      priority: row.priority,
+      status: row.status,
+      workflowStatus: row.workflow_status,
+      tenantId: row.tenant_id,
+      propertyId: row.property_id,
+      assignedToId: row.assigned_to_id,
+      contractorId: row.contractor_id,
+      tenantName: row.tenant_name,
+      tenantEmail: row.tenant_email,
+      tenantPhone: row.tenant_phone,
+      propertyAddress: row.property_address,
+      propertyPostcode: row.property_postcode,
+      contractorName: row.contractor_name,
+      attachments: row.attachments || [],
+      resolution: row.resolution,
+      resolvedAt: row.resolved_at,
+      satisfactionRating: row.satisfaction_rating,
+      escalationLevel: row.escalation_level,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
 
     res.json({
-      tickets: mockTickets,
+      tickets,
       pagination: {
         page: Number(page),
         limit: Number(limit),
-        total: mockTickets.length,
-        totalPages: 1
+        total,
+        totalPages: Math.ceil(total / Number(limit))
       }
     });
   } catch (error) {
@@ -8619,65 +9509,129 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
   }
 });
 
+// Create support ticket (admin/agent manual creation)
+crmRouter.post('/support-tickets', requireAgent, async (req: any, res) => {
+  try {
+    const { tenantId, propertyId, category, subject, description, priority } = req.body;
+
+    if (!tenantId || !propertyId || !category || !subject || !description) {
+      return res.status(400).json({ error: 'tenantId, propertyId, category, subject, and description are required' });
+    }
+
+    // Generate ticket number
+    const prefix = 'JB';
+    const date = new Date().toISOString().slice(2, 10).replace(/-/g, '');
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    const ticketNumber = `${prefix}${date}${random}`;
+
+    const result = await pool.query(`
+      INSERT INTO support_ticket (tenant_id, property_id, ticket_number, category, subject, description, priority, status, workflow_status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', 'new', NOW(), NOW())
+      RETURNING *
+    `, [tenantId, propertyId, ticketNumber, category, subject, description, priority || 'medium']);
+
+    const ticket = result.rows[0];
+
+    // Fetch tenant and property names for response
+    const detailResult = await pool.query(`
+      SELECT t.name as tenant_name, p.address_line1 as property_address, p.postcode as property_postcode
+      FROM tenant t, property p
+      WHERE t.id = $1 AND p.id = $2
+    `, [tenantId, propertyId]);
+
+    const detail = detailResult.rows[0] || {};
+
+    res.json({
+      ...ticket,
+      tenantName: detail.tenant_name,
+      propertyAddress: detail.property_address,
+      propertyPostcode: detail.property_postcode
+    });
+  } catch (error) {
+    console.error('Error creating support ticket:', error);
+    res.status(500).json({ error: 'Failed to create support ticket' });
+  }
+});
+
 // Get single support ticket with full details
 crmRouter.get('/support-tickets/:ticketId', requireAgent, async (req, res) => {
   try {
     const { ticketId } = req.params;
 
-    // Mock ticket detail
+    const result = await pool.query(`
+      SELECT
+        st.*,
+        COALESCE(t.name, u.full_name) as tenant_name,
+        COALESCE(t.email, u.email) as tenant_email,
+        COALESCE(t.phone, u.phone) as tenant_phone,
+        p.address_line1 as property_address,
+        p.postcode as property_postcode,
+        c.company_name as contractor_name
+      FROM support_ticket st
+      LEFT JOIN tenant t ON st.tenant_id = t.id
+      LEFT JOIN "user" u ON st.tenant_id = u.id
+      LEFT JOIN property p ON st.property_id = p.id
+      LEFT JOIN contractor c ON st.contractor_id = c.id
+      WHERE st.id = $1
+    `, [ticketId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    const row = result.rows[0];
+
+    // Get comments
+    const commentsResult = await pool.query(`
+      SELECT tc.*, u.full_name as user_full_name
+      FROM ticket_comment tc
+      LEFT JOIN "user" u ON tc.user_id = u.id
+      WHERE tc.ticket_id = $1
+      ORDER BY tc.created_at ASC
+    `, [ticketId]);
+
     const ticket = {
-      id: Number(ticketId),
-      ticketNumber: 'JB241218ABC1',
-      category: 'plumbing',
-      subject: 'Leaking tap in kitchen',
-      description: 'The kitchen tap has been dripping constantly for 2 days. Water is pooling under the sink.',
-      priority: 'medium',
-      status: 'in_progress',
-      tenantId: 1,
-      propertyId: 1,
-      assignedToId: null,
+      id: row.id,
+      ticketNumber: row.ticket_number,
+      category: row.category,
+      subject: row.subject,
+      description: row.description,
+      priority: row.priority,
+      status: row.status,
+      workflowStatus: row.workflow_status,
+      tenantId: row.tenant_id,
+      propertyId: row.property_id,
+      assignedToId: row.assigned_to_id,
+      contractorId: row.contractor_id,
+      activeQuoteId: row.active_quote_id,
       tenant: {
-        id: 1,
-        fullName: 'John Smith',
-        email: 'john@example.com',
-        phone: '+447700900123'
+        id: row.tenant_id,
+        fullName: row.tenant_name,
+        email: row.tenant_email,
+        phone: row.tenant_phone
       },
       property: {
-        id: 1,
-        addressLine1: '42 High Street',
-        postcode: 'W2 1AB'
+        id: row.property_id,
+        addressLine1: row.property_address,
+        postcode: row.property_postcode
       },
-      contractor: null,
-      attachments: [],
-      comments: [
-        {
-          id: 1,
-          userId: 1,
-          userFullName: 'John Smith',
-          comment: 'The leak is getting worse',
-          isInternal: false,
-          attachments: [],
-          createdAt: new Date().toISOString()
-        }
-      ],
-      communications: [
-        {
-          id: 1,
-          channel: 'whatsapp',
-          direction: 'inbound',
-          content: 'Hi, my kitchen tap is leaking badly',
-          timestamp: new Date().toISOString()
-        },
-        {
-          id: 2,
-          channel: 'whatsapp',
-          direction: 'outbound',
-          content: 'Thank you for reporting this. We have created ticket #JB241218ABC1',
-          timestamp: new Date().toISOString()
-        }
-      ],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      contractorName: row.contractor_name,
+      attachments: row.attachments || [],
+      comments: commentsResult.rows.map((c: any) => ({
+        id: c.id,
+        userId: c.user_id,
+        userFullName: c.user_full_name,
+        comment: c.comment,
+        isInternal: c.is_internal,
+        attachments: c.attachments || [],
+        createdAt: c.created_at
+      })),
+      resolution: row.resolution,
+      resolvedAt: row.resolved_at,
+      satisfactionRating: row.satisfaction_rating,
+      escalationLevel: row.escalation_level,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
     };
 
     res.json(ticket);
@@ -9242,42 +10196,74 @@ crmRouter.get('/support-tickets/:ticketId/workflow', requireAgent, async (req, r
 // Get support ticket statistics for dashboard
 crmRouter.get('/support-tickets/stats/overview', requireAgent, async (req, res) => {
   try {
-    // Mock statistics
+    // Count tickets by status
+    const statusResult = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'open') AS open,
+        COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+        COUNT(*) FILTER (WHERE status = 'waiting_tenant') AS waiting_tenant,
+        COUNT(*) FILTER (WHERE status = 'resolved') AS resolved,
+        COUNT(*) FILTER (WHERE status = 'closed') AS closed,
+        COUNT(*) FILTER (WHERE priority = 'urgent') AS urgent,
+        COUNT(*) FILTER (WHERE priority = 'high') AS high,
+        COUNT(*) AS total
+      FROM support_ticket
+    `);
+
+    // Average resolution time (for resolved/closed tickets)
+    const resolutionResult = await pool.query(`
+      SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600) AS avg_hours
+      FROM support_ticket
+      WHERE resolved_at IS NOT NULL
+    `);
+
+    // Average satisfaction rating
+    const satisfactionResult = await pool.query(`
+      SELECT ROUND(AVG(satisfaction_rating)::numeric, 1) AS avg_rating
+      FROM support_ticket
+      WHERE satisfaction_rating IS NOT NULL
+    `);
+
+    // Count by category
+    const categoryResult = await pool.query(`
+      SELECT category, COUNT(*) AS count
+      FROM support_ticket
+      GROUP BY category
+    `);
+
+    const row = statusResult.rows[0];
+    const avgHours = resolutionResult.rows[0]?.avg_hours;
+    const avgRating = satisfactionResult.rows[0]?.avg_rating;
+
+    const byCategory: Record<string, number> = {};
+    for (const cat of categoryResult.rows) {
+      byCategory[cat.category] = Number(cat.count);
+    }
+
+    // Format resolution time
+    let averageResolutionTime = 'N/A';
+    if (avgHours !== null && avgHours !== undefined) {
+      const hours = Math.round(Number(avgHours));
+      if (hours < 24) {
+        averageResolutionTime = `${hours} hours`;
+      } else {
+        const days = Math.round(hours / 24);
+        averageResolutionTime = `${days} days`;
+      }
+    }
+
     const stats = {
-      total: 156,
-      open: 23,
-      inProgress: 12,
-      waitingTenant: 5,
-      resolved: 98,
-      closed: 18,
-      urgent: 2,
-      high: 8,
-      averageResolutionTime: '18 hours',
-      satisfactionRating: 4.2,
-      byCategory: {
-        plumbing: 45,
-        electrical: 28,
-        heating: 32,
-        appliances: 15,
-        structural: 18,
-        pest: 5,
-        exterior: 8,
-        billing: 5
-      },
-      byChannel: {
-        whatsapp: 89,
-        email: 42,
-        phone: 25
-      },
-      recentTrend: [
-        { date: '2024-12-12', count: 8 },
-        { date: '2024-12-13', count: 12 },
-        { date: '2024-12-14', count: 6 },
-        { date: '2024-12-15', count: 9 },
-        { date: '2024-12-16', count: 11 },
-        { date: '2024-12-17', count: 7 },
-        { date: '2024-12-18', count: 5 }
-      ]
+      total: Number(row.total),
+      open: Number(row.open),
+      inProgress: Number(row.in_progress),
+      waitingTenant: Number(row.waiting_tenant),
+      resolved: Number(row.resolved),
+      closed: Number(row.closed),
+      urgent: Number(row.urgent),
+      high: Number(row.high),
+      averageResolutionTime,
+      satisfactionRating: avgRating ? Number(avgRating) : 'N/A',
+      byCategory
     };
 
     res.json(stats);
@@ -9294,9 +10280,14 @@ crmRouter.get('/support-tickets/stats/overview', requireAgent, async (req, res) 
 // Get all contractors
 crmRouter.get('/contractors', requireAgent, async (req, res) => {
   try {
-    const { specialization, available } = req.query;
+    const { specialization, available, type } = req.query;
 
     let allContractors = await db.select().from(contractors).orderBy(desc(contractors.createdAt));
+
+    // Filter by contractor type (trade, valuer, surveyor, solicitor)
+    if (type) {
+      allContractors = allContractors.filter(c => c.contractorType === type);
+    }
 
     // Filter by specialization if provided
     if (specialization) {
@@ -9446,6 +10437,319 @@ crmRouter.get('/contractors/find-best', requireAgent, async (req, res) => {
     res.status(500).json({ error: 'Failed to find contractor' });
   }
 });
+
+// ============================================================
+// PROPERTY WORKFLOW ENDPOINTS
+// ============================================================
+
+// Get all property workflows
+crmRouter.get('/workflows', requireAgent, async (req, res) => {
+  try {
+    const rows = await db.select({
+      workflow: propertyWorkflows,
+      address: properties.address,
+      addressLine1: properties.addressLine1,
+      postcode: properties.postcode,
+      images: properties.images,
+      title: properties.title,
+    })
+      .from(propertyWorkflows)
+      .leftJoin(properties, eq(propertyWorkflows.propertyId, properties.id))
+      .orderBy(desc(propertyWorkflows.updatedAt));
+
+    const enriched = rows.map(row => ({
+      ...row.workflow,
+      propertyAddress: row.addressLine1
+        ? `${row.addressLine1}${row.postcode ? ', ' + row.postcode : ''}`
+        : row.address || 'Unknown',
+      propertyTitle: row.title,
+      propertyImages: row.images,
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching workflows:', error);
+    res.status(500).json({ error: 'Failed to fetch workflows' });
+  }
+});
+
+// Get single workflow
+crmRouter.get('/workflows/:id', requireAgent, async (req, res) => {
+  try {
+    const [row] = await db.select({
+      workflow: propertyWorkflows,
+      address: properties.address,
+      addressLine1: properties.addressLine1,
+      postcode: properties.postcode,
+      images: properties.images,
+      title: properties.title,
+    })
+      .from(propertyWorkflows)
+      .leftJoin(properties, eq(propertyWorkflows.propertyId, properties.id))
+      .where(eq(propertyWorkflows.id, parseInt(req.params.id)));
+
+    if (!row) return res.status(404).json({ error: 'Workflow not found' });
+
+    res.json({
+      ...row.workflow,
+      propertyAddress: row.addressLine1
+        ? `${row.addressLine1}${row.postcode ? ', ' + row.postcode : ''}`
+        : row.address || 'Unknown',
+      propertyTitle: row.title,
+      propertyImages: row.images,
+    });
+  } catch (error) {
+    console.error('Error fetching workflow:', error);
+    res.status(500).json({ error: 'Failed to fetch workflow' });
+  }
+});
+
+// Start new valuation — creates workflow, optionally emails valuer
+crmRouter.post('/workflows/valuation', requireAgent, async (req, res) => {
+  try {
+    const { propertyAddress, vendorName, vendorEmail, vendorPhone, preferredDate, notes, valuerId } = req.body;
+
+    if (!propertyAddress) {
+      return res.status(400).json({ error: 'Property address is required' });
+    }
+
+    // Create or find the property
+    let propertyId: number | null = null;
+    const existingProp = await db.select().from(properties)
+      .where(sql`LOWER(${properties.address}) = LOWER(${propertyAddress})`)
+      .limit(1);
+    if (existingProp.length > 0) {
+      propertyId = existingProp[0].id;
+    } else {
+      // Create a minimal property record
+      const [newProp] = await db.insert(properties).values({
+        address: propertyAddress,
+        addressLine1: propertyAddress,
+        status: 'valuation_pending',
+        isListedSale: false,
+        isListedRental: false,
+      } as any).returning();
+      propertyId = newProp.id;
+    }
+
+    // Create workflow record
+    const stage = preferredDate ? 'valuation_scheduled' : 'valuation_requested';
+    const [workflow] = await db.insert(propertyWorkflows).values({
+      propertyId,
+      currentStage: stage,
+      valuationRequestDate: new Date(),
+      valuationDate: preferredDate ? new Date(preferredDate) : null,
+      valuationNotes: notes || null,
+      valuationAgent: req.user?.id || null,
+    }).returning();
+
+    // Email the valuer if one was selected
+    if (valuerId) {
+      try {
+        const [valuer] = await db.select().from(contractors)
+          .where(eq(contractors.id, parseInt(valuerId)));
+        if (valuer?.email) {
+          const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #791E75; color: white; padding: 20px; text-align: center;">
+                <h1 style="margin: 0; font-size: 20px;">Valuation Request</h1>
+                <p style="margin: 5px 0 0; opacity: 0.9;">John Barclay Property Management</p>
+              </div>
+              <div style="padding: 20px; border: 1px solid #e5e7eb;">
+                <p>Dear ${valuer.contactName || valuer.companyName},</p>
+                <p>We would like to request a property valuation for the following property:</p>
+                <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                  <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold; width: 140px;">Property Address</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${propertyAddress}</td></tr>
+                  <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Vendor Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${vendorName || 'N/A'}</td></tr>
+                  <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Vendor Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${vendorPhone || 'N/A'}</td></tr>
+                  ${preferredDate ? `<tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Preferred Date</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${new Date(preferredDate).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td></tr>` : ''}
+                  ${notes ? `<tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Notes</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb;">${notes}</td></tr>` : ''}
+                </table>
+                <p style="color: #dc2626; font-weight: bold;">Please confirm the appointment date and time with our office. Do NOT contact the vendor directly.</p>
+                <p>Kind regards,<br/>John Barclay Property Management<br/>020 7328 3822</p>
+              </div>
+            </div>`;
+          await emailService.sendEmail(
+            valuer.email,
+            `Valuation Request — ${propertyAddress}`,
+            emailHtml
+          );
+          console.log(`[Workflow] Valuation email sent to ${valuer.email} for ${propertyAddress}`);
+        }
+      } catch (emailErr) {
+        console.error('[Workflow] Failed to send valuation email:', emailErr);
+        // Don't fail the workflow creation
+      }
+    }
+
+    res.status(201).json({ ...workflow, propertyAddress });
+  } catch (error) {
+    console.error('Error starting valuation:', error);
+    res.status(500).json({ error: 'Failed to start valuation' });
+  }
+});
+
+// Progress workflow to next stage
+crmRouter.post('/workflows/:id/progress', requireAgent, async (req, res) => {
+  try {
+    const workflowId = parseInt(req.params.id);
+    const { stage, data } = req.body;
+
+    const validStages = [
+      'valuation_requested', 'valuation_scheduled', 'valuation_completed',
+      'instruction_pending', 'instruction_signed', 'listing_preparation', 'listed',
+      'viewing_scheduled', 'offer_received', 'offer_accepted',
+      'contracts_preparing', 'contracts_sent', 'contracts_exchanged', 'completed'
+    ];
+
+    if (!validStages.includes(stage)) {
+      return res.status(400).json({ error: 'Invalid workflow stage' });
+    }
+
+    // Build update object
+    const updateData: Record<string, any> = {
+      currentStage: stage,
+      updatedAt: new Date(),
+    };
+
+    // Stage-specific fields
+    if (data) {
+      if (data.valuationAmount !== undefined) updateData.valuationAmount = data.valuationAmount;
+      if (data.valuationNotes !== undefined) updateData.valuationNotes = data.valuationNotes;
+      if (data.valuationDate !== undefined) updateData.valuationDate = new Date(data.valuationDate);
+      if (data.askingPrice !== undefined) updateData.askingPrice = data.askingPrice;
+      if (data.minimumAcceptablePrice !== undefined) updateData.minimumAcceptablePrice = data.minimumAcceptablePrice;
+      if (data.instructionDate !== undefined) updateData.instructionDate = new Date(data.instructionDate);
+      if (data.marketingStartDate !== undefined) updateData.marketingStartDate = new Date(data.marketingStartDate);
+      if (data.agreedPrice !== undefined) updateData.agreedPrice = data.agreedPrice;
+      if (data.buyerId !== undefined) updateData.buyerId = data.buyerId;
+      if (data.exchangeDate !== undefined) updateData.exchangeDate = new Date(data.exchangeDate);
+      if (data.completionDate !== undefined) updateData.completionDate = new Date(data.completionDate);
+    }
+
+    const [updated] = await db.update(propertyWorkflows)
+      .set(updateData)
+      .where(eq(propertyWorkflows.id, workflowId))
+      .returning();
+
+    if (!updated) return res.status(404).json({ error: 'Workflow not found' });
+
+    // Sync property status with workflow stage
+    if (updated.propertyId) {
+      const statusMap: Record<string, string> = {
+        'listed': 'available',
+        'viewing_scheduled': 'available',
+        'offer_received': 'available',
+        'offer_accepted': 'under_offer',
+        'contracts_preparing': 'under_offer',
+        'contracts_sent': 'under_offer',
+        'contracts_exchanged': 'exchanged',
+        'completed': 'sold',
+      };
+      const newStatus = statusMap[stage];
+      if (newStatus) {
+        await db.update(properties)
+          .set({ status: newStatus, updatedAt: new Date() })
+          .where(eq(properties.id, updated.propertyId));
+      }
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error progressing workflow:', error);
+    res.status(500).json({ error: 'Failed to progress workflow' });
+  }
+});
+
+// Schedule a viewing (for workflow context)
+crmRouter.post('/viewings', requireAgent, async (req, res) => {
+  try {
+    const { propertyId, leadId, scheduledAt, viewingType, notes, workflowId } = req.body;
+
+    // Create viewing record
+    const result = await pool.query(`
+      INSERT INTO lead_viewing (lead_id, property_id, scheduled_at, viewing_type, status, agent_notes, conducted_by)
+      VALUES ($1, $2, $3, $4, 'scheduled', $5, $6)
+      RETURNING *
+    `, [leadId || null, propertyId, scheduledAt, viewingType || 'in_person', notes || null, req.user?.id || null]);
+
+    // Update workflow viewing count if linked
+    if (workflowId) {
+      await pool.query(`
+        UPDATE property_workflow SET total_viewings = COALESCE(total_viewings, 0) + 1, updated_at = NOW()
+        WHERE id = $1
+      `, [workflowId]);
+    }
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error scheduling viewing:', error);
+    res.status(500).json({ error: 'Failed to schedule viewing' });
+  }
+});
+
+// Submit an offer
+crmRouter.post('/offers', requireAgent, async (req, res) => {
+  try {
+    const { propertyId, workflowId, buyerName, buyerEmail, buyerPhone, amount, conditions, leadId } = req.body;
+
+    // Update workflow
+    if (workflowId) {
+      await db.update(propertyWorkflows).set({
+        totalOffers: sql`COALESCE(${propertyWorkflows.totalOffers}, 0) + 1`,
+        updatedAt: new Date(),
+      }).where(eq(propertyWorkflows.id, parseInt(workflowId)));
+    }
+
+    // Log as activity if lead exists
+    if (leadId) {
+      await pool.query(`
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
+        VALUES ($1, 'status_change', $2, $3, $4)
+      `, [leadId, `Offer of £${amount?.toLocaleString()} submitted`, propertyId || null, req.user?.id || null]);
+    }
+
+    res.status(201).json({
+      success: true,
+      offer: { propertyId, buyerName, amount, conditions, createdAt: new Date() }
+    });
+  } catch (error) {
+    console.error('Error submitting offer:', error);
+    res.status(500).json({ error: 'Failed to submit offer' });
+  }
+});
+
+// Send contracts (placeholder for DocuSign integration)
+crmRouter.post('/workflows/:id/contracts', requireAgent, async (req, res) => {
+  try {
+    const workflowId = parseInt(req.params.id);
+    const [updated] = await db.update(propertyWorkflows).set({
+      currentStage: 'contracts_sent',
+      updatedAt: new Date(),
+    }).where(eq(propertyWorkflows.id, workflowId)).returning();
+
+    if (!updated) return res.status(404).json({ error: 'Workflow not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error sending contracts:', error);
+    res.status(500).json({ error: 'Failed to send contracts' });
+  }
+});
+
+// Get customer enquiries
+crmRouter.get('/enquiries', requireAgent, async (req, res) => {
+  try {
+    const rows = await db.select().from(customerEnquiries)
+      .orderBy(desc(customerEnquiries.createdAt))
+      .limit(50);
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching enquiries:', error);
+    res.status(500).json({ error: 'Failed to fetch enquiries' });
+  }
+});
+
+// ============================================================
 
 // Send WhatsApp message to tenant (manual)
 crmRouter.post('/support-tickets/:ticketId/send-whatsapp', requireAgent, async (req, res) => {
@@ -10609,8 +11913,9 @@ crmRouter.post('/pm/properties', requireAgent, async (req, res) => {
 // Update property
 crmRouter.patch('/pm/properties/:id', requireAgent, async (req, res) => {
   try {
+    const updates = sanitizePropertyUpdates(req.body);
     const [property] = await db.update(properties)
-      .set({ ...req.body, updatedAt: new Date() })
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(properties.id, parseInt(req.params.id)))
       .returning();
     if (!property) {
@@ -12684,7 +13989,7 @@ function getAllowedEventTypes(clearance: number, accessLevelCode: string | null)
 // --- MY OVERVIEW ENDPOINTS ---
 
 // GET /my-overview/stats - Personal stats summary
-crmRouter.get('/my-overview/stats', requireAgent, async (req: any, res) => {
+crmRouter.get('/my-desk/stats', requireAgent, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const now = new Date();
@@ -12739,12 +14044,36 @@ crmRouter.get('/my-overview/stats', requireAgent, async (req: any, res) => {
       .from(properties)
       .where(or(eq(properties.agentId, userId), eq(properties.propertyManagerId, userId)));
 
+    // Pending tasks
+    const pendingTasksResult = await db
+      .select({ count: count(tasks.id) })
+      .from(tasks)
+      .where(and(eq(tasks.assignedToId, userId), or(eq(tasks.status, 'pending'), eq(tasks.status, 'in_progress'))));
+
+    // New enquiries
+    const newEnquiriesResult = await db
+      .select({ count: count(customerEnquiries.id) })
+      .from(customerEnquiries)
+      .where(and(
+        eq(customerEnquiries.status, 'new'),
+        or(eq(customerEnquiries.assignedToId, userId), sql`${customerEnquiries.assignedToId} IS NULL`)
+      ));
+
+    // Active leads
+    const activeLeadsResult = await db
+      .select({ count: count(sql`id`) })
+      .from(sql`lead`)
+      .where(sql`assigned_to = ${userId} AND status NOT IN ('converted', 'lost', 'archived')`);
+
     res.json({
       todayEvents: Number(todayEventsResult[0]?.count || 0),
       upcomingViewings: Number(upcomingViewingsResult[0]?.count || 0),
       unreadEmails: Number(unreadResult[0]?.count || 0),
       openWhatsappConversations: Number(whatsappResult[0]?.count || 0),
       myProperties: Number(propertiesResult[0]?.count || 0),
+      pendingTasks: Number(pendingTasksResult[0]?.count || 0),
+      newEnquiries: Number(newEnquiriesResult[0]?.count || 0),
+      activeLeads: Number(activeLeadsResult[0]?.count || 0),
     });
   } catch (error) {
     console.error('Error fetching my overview stats:', error);
@@ -12753,7 +14082,7 @@ crmRouter.get('/my-overview/stats', requireAgent, async (req: any, res) => {
 });
 
 // GET /my-overview/calendar - Personal calendar events
-crmRouter.get('/my-overview/calendar', requireAgent, async (req: any, res) => {
+crmRouter.get('/my-desk/calendar', requireAgent, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const clearance = req.user.securityClearance || 3;
@@ -12784,7 +14113,7 @@ crmRouter.get('/my-overview/calendar', requireAgent, async (req: any, res) => {
 });
 
 // GET /my-overview/communications - Personal emails + WhatsApp
-crmRouter.get('/my-overview/communications', requireAgent, async (req: any, res) => {
+crmRouter.get('/my-desk/communications', requireAgent, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const limit = parseInt(req.query.limit as string) || 20;
@@ -12809,7 +14138,7 @@ crmRouter.get('/my-overview/communications', requireAgent, async (req: any, res)
 });
 
 // GET /my-overview/properties - Properties assigned to current user
-crmRouter.get('/my-overview/properties', requireAgent, async (req: any, res) => {
+crmRouter.get('/my-desk/properties', requireAgent, async (req: any, res) => {
   try {
     const userId = req.user.id;
     const userProperties = await storage.getPropertiesByStaffUser(userId);
@@ -13050,5 +14379,674 @@ crmRouter.get('/dashboard-overview/properties', requireClearance(8), async (req:
   } catch (error) {
     console.error('Error fetching dashboard properties:', error);
     res.status(500).json({ error: 'Failed to fetch properties' });
+  }
+});
+
+// ==========================================
+// TASK MANAGEMENT
+// ==========================================
+
+// GET /tasks/my - Current user's tasks
+crmRouter.get('/tasks/my', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const { status, priority, taskType } = req.query;
+    const result = await storage.getTasksForUser(userId, {
+      status: status as string,
+      priority: priority as string,
+      taskType: taskType as string,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching my tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+// GET /tasks - All tasks (filterable, clearance >= 7 for others' tasks)
+crmRouter.get('/tasks', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const clearance = req.user.securityClearance || 3;
+    const { assignedTo, status, priority, taskType } = req.query;
+
+    // Clearance < 7 can only see their own tasks
+    const effectiveAssignedTo = clearance >= 7 ? (assignedTo ? parseInt(assignedTo as string) : undefined) : userId;
+
+    const result = await storage.getAllTasks({
+      assignedTo: effectiveAssignedTo,
+      status: status as string,
+      priority: priority as string,
+      taskType: taskType as string,
+    });
+
+    // Enrich with assignee names
+    const userIds = new Set<number>();
+    result.forEach((t) => {
+      userIds.add(t.assignedToId);
+      if (t.assignedById) userIds.add(t.assignedById);
+    });
+    const userList = userIds.size > 0
+      ? await db.select({ id: users.id, fullName: users.fullName }).from(users).where(inArray(users.id, [...userIds]))
+      : [];
+    const userMap = new Map(userList.map((u) => [u.id, u.fullName || `User ${u.id}`]));
+
+    const enriched = result.map((t) => ({
+      ...t,
+      assignedToName: userMap.get(t.assignedToId) || null,
+      assignedByName: t.assignedById ? userMap.get(t.assignedById) || null : null,
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching tasks:', error);
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+// GET /tasks/:id - Single task
+crmRouter.get('/tasks/:id', requireAgent, async (req: any, res) => {
+  try {
+    const task = await storage.getTask(parseInt(req.params.id));
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+    res.json(task);
+  } catch (error) {
+    console.error('Error fetching task:', error);
+    res.status(500).json({ error: 'Failed to fetch task' });
+  }
+});
+
+// POST /tasks - Create task
+crmRouter.post('/tasks', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const clearance = req.user.securityClearance || 3;
+    const { title, description, taskType, priority, assignedToId, propertyId, leadId, landlordId, tenantId, dueDate, notes } = req.body;
+
+    if (!title || !taskType) {
+      return res.status(400).json({ error: 'Title and task type are required' });
+    }
+
+    // If assigning to someone else, need clearance >= 7
+    const targetUserId = assignedToId || userId;
+    if (targetUserId !== userId && clearance < 7) {
+      return res.status(403).json({ error: 'Clearance level 7+ required to assign tasks to others' });
+    }
+
+    const task = await storage.createTask({
+      title,
+      description,
+      taskType,
+      priority: priority || 'normal',
+      status: 'pending',
+      assignedToId: targetUserId,
+      assignedById: userId,
+      propertyId: propertyId || null,
+      leadId: leadId || null,
+      landlordId: landlordId || null,
+      tenantId: tenantId || null,
+      dueDate: dueDate ? new Date(dueDate) : null,
+      notes,
+    });
+
+    res.status(201).json(task);
+  } catch (error) {
+    console.error('Error creating task:', error);
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+// PATCH /tasks/:id - Update task (status, reassign, add notes)
+crmRouter.patch('/tasks/:id', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const clearance = req.user.securityClearance || 3;
+    const taskId = parseInt(req.params.id);
+    const task = await storage.getTask(taskId);
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    // Can only update own tasks unless clearance >= 7
+    if (task.assignedToId !== userId && clearance < 7) {
+      return res.status(403).json({ error: 'Not authorized to update this task' });
+    }
+
+    const updates: any = {};
+    const { status, priority, assignedToId, notes, dueDate } = req.body;
+
+    if (status) {
+      updates.status = status;
+      if (status === 'completed') updates.completedAt = new Date();
+    }
+    if (priority) updates.priority = priority;
+    if (notes !== undefined) updates.notes = notes;
+    if (dueDate !== undefined) updates.dueDate = dueDate ? new Date(dueDate) : null;
+
+    // Reassignment requires clearance >= 7
+    if (assignedToId && assignedToId !== task.assignedToId) {
+      if (clearance < 7) {
+        return res.status(403).json({ error: 'Clearance level 7+ required to reassign tasks' });
+      }
+      updates.assignedToId = assignedToId;
+    }
+
+    const updated = await storage.updateTask(taskId, updates);
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating task:', error);
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+// DELETE /tasks/:id - Delete task (creator or clearance >= 7)
+crmRouter.delete('/tasks/:id', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const clearance = req.user.securityClearance || 3;
+    const task = await storage.getTask(parseInt(req.params.id));
+    if (!task) return res.status(404).json({ error: 'Task not found' });
+
+    if (task.assignedById !== userId && task.assignedToId !== userId && clearance < 7) {
+      return res.status(403).json({ error: 'Not authorized to delete this task' });
+    }
+
+    await storage.deleteTask(task.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting task:', error);
+    res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
+
+// ==========================================
+// MY DESK ENDPOINTS
+// ==========================================
+
+// GET /my-desk/enquiries - Unresponded enquiries for user
+crmRouter.get('/my-desk/enquiries', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const enquiries = await storage.getDeskEnquiries(userId);
+    res.json(enquiries);
+  } catch (error) {
+    console.error('Error fetching desk enquiries:', error);
+    res.status(500).json({ error: 'Failed to fetch enquiries' });
+  }
+});
+
+// GET /my-desk/leads - User's assigned leads
+crmRouter.get('/my-desk/leads', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const result = await storage.getUserLeads(userId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching desk leads:', error);
+    res.status(500).json({ error: 'Failed to fetch leads' });
+  }
+});
+
+// GET /my-desk/schedule - Today's events for the user
+crmRouter.get('/my-desk/schedule', requireAgent, async (req: any, res) => {
+  try {
+    const userId = req.user.id;
+    const clearance = req.user.securityClearance || 3;
+    const accessLevelCode = req.user.accessLevelCode || null;
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    const allowedTypes = getAllowedEventTypes(clearance, accessLevelCode);
+    const events = await storage.getCalendarEventsForUser(userId, startOfDay, endOfDay, allowedTypes);
+
+    // Enrich with property addresses
+    const enriched = await Promise.all(events.map(async (event) => {
+      let propertyAddress = null;
+      if (event.propertyId) {
+        const prop = await storage.getProperty(event.propertyId);
+        propertyAddress = prop?.address || null;
+      }
+      return { ...event, propertyAddress };
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching desk schedule:', error);
+    res.status(500).json({ error: 'Failed to fetch schedule' });
+  }
+});
+
+// PATCH /properties/:id/assign - Assign agent/PM to property (clearance >= 7)
+crmRouter.patch('/properties/:id/assign', requireClearance(7), async (req: any, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const { agentId, propertyManagerId } = req.body;
+    const updates: any = { updatedAt: new Date() };
+    if (agentId !== undefined) updates.agentId = agentId;
+    if (propertyManagerId !== undefined) updates.propertyManagerId = propertyManagerId;
+
+    const [updated] = await db.update(properties).set(updates).where(eq(properties.id, propertyId)).returning();
+    if (!updated) return res.status(404).json({ error: 'Property not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error assigning property:', error);
+    res.status(500).json({ error: 'Failed to assign property' });
+  }
+});
+
+// PATCH /leads/:id/assign - Assign lead to agent (clearance >= 7)
+crmRouter.patch('/leads/:id/assign', requireClearance(7), async (req: any, res) => {
+  try {
+    const leadId = parseInt(req.params.id);
+    const { assignedTo } = req.body;
+    if (!assignedTo) return res.status(400).json({ error: 'assignedTo is required' });
+
+    const result = await db.query.leads?.findFirst?.({ where: (l: any, { eq: e }: any) => e(l.id, leadId) });
+    if (!result) {
+      // Fallback: direct SQL update
+      await db.execute(sql`UPDATE lead SET assigned_to = ${assignedTo}, updated_at = NOW() WHERE id = ${leadId}`);
+      res.json({ success: true, leadId, assignedTo });
+      return;
+    }
+    res.json({ success: true, leadId, assignedTo });
+  } catch (error) {
+    console.error('Error assigning lead:', error);
+    res.status(500).json({ error: 'Failed to assign lead' });
+  }
+});
+
+// ==========================================
+// TENANCY RENEWAL ROUTES
+// ==========================================
+
+crmRouter.get('/tenancy-renewals', requireAgent, async (req: any, res) => {
+  try {
+    const filters: any = {};
+    if (req.query.status) filters.status = req.query.status as string;
+    if (req.query.propertyId) filters.propertyId = parseInt(req.query.propertyId as string);
+    const includeArchived = req.query.includeArchived === 'true';
+    const reminders = await storage.getRenewalReminders(filters);
+
+    // Filter out archived unless requested
+    const filtered = includeArchived ? reminders : reminders.filter((r: any) => r.status !== 'archived');
+
+    // Enrich with property address, tenant name, landlord name, tenancy details
+    const enriched = await Promise.all(filtered.map(async (r: any) => {
+      let propertyAddress = '';
+      let tenantName = '';
+      let landlordName = '';
+      let rentAmount = '';
+      let rentFrequency = '';
+      let tenancyStatus = '';
+      let startDate = '';
+
+      try {
+        if (r.propertyId) {
+          const [prop] = await db.select({ address: properties.address, addressLine1: properties.addressLine1 })
+            .from(properties).where(eq(properties.id, r.propertyId)).limit(1);
+          if (prop) propertyAddress = prop.address || prop.addressLine1 || '';
+        }
+      } catch (e) {}
+
+      try {
+        if (r.tenantId) {
+          const [t] = await db.select({ name: tenant.name }).from(tenant).where(eq(tenant.id, r.tenantId)).limit(1);
+          if (t) tenantName = t.name || '';
+        }
+      } catch (e) {}
+
+      try {
+        if (r.landlordId) {
+          const [l] = await db.select({ name: landlords.name }).from(landlords).where(eq(landlords.id, r.landlordId)).limit(1);
+          if (l) landlordName = l.name || '';
+        }
+      } catch (e) {}
+
+      try {
+        if (r.tenancyId) {
+          const [tc] = await db.select({
+            rentAmount: tenancies.rentAmount,
+            rentFrequency: tenancies.rentFrequency,
+            status: tenancies.status,
+            startDate: tenancies.startDate,
+          }).from(tenancies).where(eq(tenancies.id, r.tenancyId)).limit(1);
+          if (tc) {
+            rentAmount = tc.rentAmount || '';
+            rentFrequency = tc.rentFrequency || '';
+            tenancyStatus = tc.status || '';
+            startDate = tc.startDate ? new Date(tc.startDate).toISOString() : '';
+          }
+        }
+      } catch (e) {}
+
+      return {
+        ...r,
+        propertyAddress,
+        tenantName,
+        landlordName,
+        rentAmount,
+        rentFrequency,
+        tenancyStatus,
+        startDate,
+      };
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching renewal reminders:', error);
+    res.status(500).json({ error: 'Failed to fetch renewal reminders' });
+  }
+});
+
+// Archive a renewal reminder
+crmRouter.put('/tenancy-renewals/:id/archive', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updated = await storage.updateRenewalReminder(id, { status: 'archived' } as any);
+    if (!updated) return res.status(404).json({ error: 'Renewal reminder not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error archiving renewal reminder:', error);
+    res.status(500).json({ error: 'Failed to archive renewal reminder' });
+  }
+});
+
+// Bulk archive expired renewal reminders
+crmRouter.post('/tenancy-renewals/bulk-archive', requireAgent, async (req: any, res) => {
+  try {
+    const result = await pool.query(
+      `UPDATE renewal_reminder SET status = 'archived' WHERE status = 'pending' AND expiry_date < NOW() - INTERVAL '30 days' RETURNING id`
+    );
+    res.json({ archived: result.rowCount });
+  } catch (error) {
+    console.error('Error bulk archiving renewals:', error);
+    res.status(500).json({ error: 'Failed to bulk archive renewals' });
+  }
+});
+
+crmRouter.post('/tenancy-renewals/check', requireAgent, async (req: any, res) => {
+  try {
+    const thresholds = [90, 60, 30, 14];
+    const created: any[] = [];
+
+    for (const days of thresholds) {
+      const expiring = await storage.getExpiringTenancies(days);
+      const reminderType = `${days}_day`;
+
+      for (const tenancy of expiring) {
+        // Check if reminder already sent for this tenancy and type
+        const existing = await pool.query(
+          `SELECT id FROM renewal_reminder WHERE tenancy_id = $1 AND reminder_type = $2`,
+          [tenancy.id, reminderType]
+        );
+        if (existing.rows.length > 0) continue;
+
+        const reminder = await storage.createRenewalReminder({
+          tenancyId: tenancy.id,
+          propertyId: tenancy.propertyId,
+          landlordId: tenancy.landlordId,
+          tenantId: tenancy.tenantId,
+          expiryDate: tenancy.endDate,
+          reminderType,
+          status: 'pending',
+        });
+        created.push(reminder);
+      }
+    }
+
+    res.json({ created: created.length, reminders: created });
+  } catch (error) {
+    console.error('Error checking renewals:', error);
+    res.status(500).json({ error: 'Failed to check renewals' });
+  }
+});
+
+crmRouter.put('/tenancy-renewals/:id', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updated = await storage.updateRenewalReminder(id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Renewal reminder not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating renewal reminder:', error);
+    res.status(500).json({ error: 'Failed to update renewal reminder' });
+  }
+});
+
+// ==========================================
+// SCREENING ROUTES
+// ==========================================
+
+crmRouter.post('/tenants/:id/screening', requireAgent, async (req: any, res) => {
+  try {
+    const tenantId = parseInt(req.params.id);
+    const request = await storage.createScreeningRequest({
+      tenantId,
+      tenancyId: req.body.tenancyId,
+      screeningType: req.body.screeningType,
+      provider: req.body.provider || 'manual',
+      status: 'requested',
+    });
+    res.status(201).json(request);
+  } catch (error) {
+    console.error('Error creating screening request:', error);
+    res.status(500).json({ error: 'Failed to create screening request' });
+  }
+});
+
+crmRouter.get('/tenants/:id/screening', requireAgent, async (req: any, res) => {
+  try {
+    const tenantId = parseInt(req.params.id);
+    const requests = await storage.getScreeningByTenant(tenantId);
+    res.json(requests);
+  } catch (error) {
+    console.error('Error fetching screening:', error);
+    res.status(500).json({ error: 'Failed to fetch screening' });
+  }
+});
+
+crmRouter.put('/screening/:id', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updated = await storage.updateScreeningRequest(id, req.body);
+    if (!updated) return res.status(404).json({ error: 'Screening request not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating screening:', error);
+    res.status(500).json({ error: 'Failed to update screening' });
+  }
+});
+
+// ==========================================
+// CONTACT HISTORY ROUTES
+// ==========================================
+
+crmRouter.get('/contact-history', requireAgent, async (req: any, res) => {
+  try {
+    const entityType = req.query.entityType as string;
+    const entityId = parseInt(req.query.entityId as string);
+    if (!entityType || !entityId) {
+      return res.status(400).json({ error: 'entityType and entityId are required' });
+    }
+    const history = await storage.getUnifiedContactHistory(entityType, entityId);
+    res.json(history);
+  } catch (error) {
+    console.error('Error fetching contact history:', error);
+    res.status(500).json({ error: 'Failed to fetch contact history' });
+  }
+});
+
+// ==========================================
+// TAG ROUTES
+// ==========================================
+
+crmRouter.get('/tags', requireAgent, async (req: any, res) => {
+  try {
+    const tags = await storage.getAllTags();
+    res.json(tags);
+  } catch (error) {
+    console.error('Error fetching tags:', error);
+    res.status(500).json({ error: 'Failed to fetch tags' });
+  }
+});
+
+crmRouter.post('/tags', requireAgent, async (req: any, res) => {
+  try {
+    const tag = await storage.createTag(req.body);
+    res.status(201).json(tag);
+  } catch (error) {
+    console.error('Error creating tag:', error);
+    res.status(500).json({ error: 'Failed to create tag' });
+  }
+});
+
+crmRouter.delete('/tags/:id', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await storage.deleteTag(id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting tag:', error);
+    res.status(500).json({ error: 'Failed to delete tag' });
+  }
+});
+
+crmRouter.post('/tags/assign', requireAgent, async (req: any, res) => {
+  try {
+    const { tagId, entityType, entityId } = req.body;
+    const assignment = await storage.assignTag(tagId, entityType, entityId, req.user?.id);
+    res.status(201).json(assignment);
+  } catch (error) {
+    console.error('Error assigning tag:', error);
+    res.status(500).json({ error: 'Failed to assign tag' });
+  }
+});
+
+crmRouter.delete('/tags/unassign', requireAgent, async (req: any, res) => {
+  try {
+    const { tagId, entityType, entityId } = req.body;
+    await storage.removeTagAssignment(tagId, entityType, entityId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error removing tag:', error);
+    res.status(500).json({ error: 'Failed to remove tag' });
+  }
+});
+
+crmRouter.get('/tags/by-entity', requireAgent, async (req: any, res) => {
+  try {
+    const entityType = req.query.entityType as string;
+    const entityId = parseInt(req.query.entityId as string);
+    const tags = await storage.getTagsByEntity(entityType, entityId);
+    res.json(tags);
+  } catch (error) {
+    console.error('Error fetching entity tags:', error);
+    res.status(500).json({ error: 'Failed to fetch tags' });
+  }
+});
+
+// ==========================================
+// CAMPAIGN ROUTES (real DB, replacing mocks)
+// ==========================================
+
+crmRouter.get('/campaigns-list', requireAgent, async (req: any, res) => {
+  try {
+    const campaigns = await storage.getCampaigns();
+    res.json(campaigns);
+  } catch (error) {
+    console.error('Error fetching campaigns:', error);
+    res.status(500).json({ error: 'Failed to fetch campaigns' });
+  }
+});
+
+crmRouter.post('/campaigns-create', requireAgent, async (req: any, res) => {
+  try {
+    const campaign = await storage.createCampaign({ ...req.body, createdBy: req.user?.id });
+    res.status(201).json(campaign);
+  } catch (error) {
+    console.error('Error creating campaign:', error);
+    res.status(500).json({ error: 'Failed to create campaign' });
+  }
+});
+
+crmRouter.put('/campaigns-update/:id', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const campaign = await storage.updateCampaign(id, req.body);
+    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
+    res.json(campaign);
+  } catch (error) {
+    console.error('Error updating campaign:', error);
+    res.status(500).json({ error: 'Failed to update campaign' });
+  }
+});
+
+crmRouter.post('/campaigns/:id/recipients', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    await storage.addCampaignRecipients(id, req.body.recipients);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error adding recipients:', error);
+    res.status(500).json({ error: 'Failed to add recipients' });
+  }
+});
+
+// ==========================================
+// TENANCY CHECKLIST GENERATION
+// ==========================================
+
+crmRouter.post('/tenancies/:id/generate-checklist', requireAgent, async (req: any, res) => {
+  try {
+    const tenancyId = parseInt(req.params.id);
+    const checklistTypes = [
+      'tenancy_agreement', 'notices', 'guarantors_agreement', 'deposits_and_rent',
+      'standing_order', 'inventory', 'deposit_protection_dps',
+      'work_reference', 'bank_reference', 'previous_landlord_reference',
+      'tenants_id', 'authorization_to_landlord', 'terms_and_conditions_to_landlord',
+      'information_sheet_to_landlord', 'gas_safety_certificate',
+      'keys_given_to_tenant', 'spare_keys_in_office'
+    ];
+
+    const created: any[] = [];
+    for (const itemType of checklistTypes) {
+      // Check if already exists
+      const existing = await pool.query(
+        `SELECT id FROM tenancy_checklist_item WHERE tenancy_id = $1 AND item_type = $2`,
+        [tenancyId, itemType]
+      );
+      if (existing.rows.length > 0) continue;
+
+      const result = await pool.query(
+        `INSERT INTO tenancy_checklist_item (tenancy_id, item_type, is_completed, created_at, updated_at)
+         VALUES ($1, $2, false, NOW(), NOW()) RETURNING *`,
+        [tenancyId, itemType]
+      );
+      created.push(result.rows[0]);
+    }
+
+    res.json({ created: created.length, items: created });
+  } catch (error) {
+    console.error('Error generating checklist:', error);
+    res.status(500).json({ error: 'Failed to generate checklist' });
+  }
+});
+
+crmRouter.get('/tenancies/:id/checklist-progress', requireAgent, async (req: any, res) => {
+  try {
+    const tenancyId = parseInt(req.params.id);
+    const result = await pool.query(
+      `SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE is_completed = true) as completed
+       FROM tenancy_checklist_item WHERE tenancy_id = $1`,
+      [tenancyId]
+    );
+    const { total, completed } = result.rows[0];
+    const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+    res.json({ total: parseInt(total), completed: parseInt(completed), percentage });
+  } catch (error) {
+    console.error('Error fetching checklist progress:', error);
+    res.status(500).json({ error: 'Failed to fetch checklist progress' });
   }
 });

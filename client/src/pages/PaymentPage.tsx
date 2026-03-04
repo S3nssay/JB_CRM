@@ -400,7 +400,7 @@ export default function PaymentPage() {
                         <div>
                           <p className="font-medium">{payment.description || payment.paymentType}</p>
                           <p className="text-sm text-gray-500">
-                            {new Date(payment.paymentDate).toLocaleDateString('en-GB', {
+                            {new Date(payment.paidAt || payment.createdAt).toLocaleDateString('en-GB', {
                               day: 'numeric',
                               month: 'short',
                               year: 'numeric',
@@ -408,7 +408,7 @@ export default function PaymentPage() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold">{formatCurrency(parseFloat(payment.amount))}</p>
+                          <p className="font-semibold">{formatCurrency(payment.amount / 100)}</p>
                           <Badge
                             variant={payment.status === 'completed' ? 'default' : 'secondary'}
                           >
@@ -449,9 +449,9 @@ export default function PaymentPage() {
                         className="flex items-center justify-between p-4 border rounded-lg"
                       >
                         <div>
-                          <p className="font-medium">{schedule.description || schedule.scheduleType}</p>
+                          <p className="font-medium">{schedule.paymentType}</p>
                           <p className="text-sm text-gray-500">
-                            Due: {new Date(schedule.dueDate).toLocaleDateString('en-GB', {
+                            Due: {new Date(schedule.nextDueDate).toLocaleDateString('en-GB', {
                               day: 'numeric',
                               month: 'short',
                               year: 'numeric',
@@ -460,9 +460,9 @@ export default function PaymentPage() {
                           <p className="text-xs text-gray-400">{schedule.frequency}</p>
                         </div>
                         <div className="text-right">
-                          <p className="font-semibold">{formatCurrency(parseFloat(schedule.amount))}</p>
+                          <p className="font-semibold">{formatCurrency(schedule.amount / 100)}</p>
                           <Badge
-                            variant={schedule.status === 'pending' ? 'outline' : 'default'}
+                            variant={schedule.status === 'active' ? 'default' : 'outline'}
                           >
                             {schedule.status}
                           </Badge>

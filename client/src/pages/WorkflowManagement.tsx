@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, FileText, Users, Calendar, Mail, Check, AlertCircle, Clock, ArrowRight, Home, Eye, DollarSign, FileSignature, ArrowLeft } from 'lucide-react';
+import { Loader2, FileText, Users, Calendar, Mail, Check, AlertCircle, Clock, ArrowRight, Home, Eye, PoundSterling, FileSignature, ArrowLeft } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ const WORKFLOW_STAGES = [
   { id: 'listing_preparation', label: 'Preparing Listing', icon: FileText, color: 'bg-[#791E75] text-white 500' },
   { id: 'listed', label: 'Listed', icon: Home, color: 'bg-[#791E75] text-white 500' },
   { id: 'viewing_scheduled', label: 'Viewings Active', icon: Eye, color: 'bg-[#791E75] text-white 500' },
-  { id: 'offer_received', label: 'Offer Received', icon: DollarSign, color: 'bg-[#F8B324] text-black 500' },
+  { id: 'offer_received', label: 'Offer Received', icon: PoundSterling, color: 'bg-[#F8B324] text-black 500' },
   { id: 'offer_accepted', label: 'Offer Accepted', icon: Check, color: 'bg-[#791E75] text-white 500' },
   { id: 'contracts_preparing', label: 'Preparing Contracts', icon: FileText, color: 'bg-purple-500' },
   { id: 'contracts_sent', label: 'Contracts Sent', icon: Mail, color: 'bg-[#791E75] text-white 500' },
@@ -44,7 +44,8 @@ const valuationFormSchema = z.object({
   vendorEmail: z.string().email("Valid email required"),
   vendorPhone: z.string().min(10, "Phone number required"),
   preferredDate: z.string(),
-  notes: z.string().optional()
+  notes: z.string().optional(),
+  valuerId: z.string().optional()
 });
 
 const viewingFormSchema = z.object({
@@ -92,14 +93,24 @@ export default function WorkflowManagement() {
       return response.json();
     }
   });
+
+  // Fetch valuers (contractors with type=valuer)
+  const { data: valuers = [] } = useQuery({
+    queryKey: ['/api/crm/contractors', 'valuers'],
+    queryFn: async () => {
+      const response = await fetch('/api/crm/contractors?type=valuer');
+      if (!response.ok) throw new Error('Failed to fetch valuers');
+      return response.json();
+    }
+  });
   
   // Progress workflow mutation
   const progressWorkflow = useMutation({
-    mutationFn: async ({ workflowId, nextStage }: any) => {
+    mutationFn: async ({ workflowId, nextStage, data }: any) => {
       return apiRequest(
-        `/api/crm/workflows/${workflowId}/progress`, 
+        `/api/crm/workflows/${workflowId}/progress`,
         'POST',
-        { nextStage }
+        { stage: nextStage, data }
       );
     },
     onSuccess: () => {
@@ -313,7 +324,7 @@ export default function WorkflowManagement() {
                             {workflow.totalViewings || 0} viewings
                           </span>
                           <span className="flex items-center gap-1">
-                            <DollarSign className="h-4 w-4" />
+                            <PoundSterling className="h-4 w-4" />
                             {workflow.totalOffers || 0} offers
                           </span>
                         </div>
@@ -514,6 +525,30 @@ export default function WorkflowManagement() {
                     <FormControl>
                       <Input type="datetime-local" {...field} />
                     </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={valuationForm.control}
+                name="valuerId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Assign Valuer</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder={valuers.length > 0 ? "Select a valuer..." : "No valuers — add one in Contractors"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {valuers.map((v: any) => (
+                          <SelectItem key={v.id} value={String(v.id)}>
+                            {v.companyName} — {v.contactName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">The valuer will be emailed with the job details</p>
                   </FormItem>
                 )}
               />

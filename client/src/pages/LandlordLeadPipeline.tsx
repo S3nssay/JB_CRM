@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  ArrowLeft, Phone, Mail, MapPin, Calendar, DollarSign,
+  ArrowLeft, Phone, Mail, MapPin, Calendar, PoundSterling,
   User, Home, FileText, CheckCircle, Loader2, Search,
   ChevronRight, Building2, Clock, ArrowRight
 } from 'lucide-react';
@@ -282,7 +282,7 @@ export default function LandlordLeadPipeline() {
 
                           {lead.valuation_amount > 0 && (
                             <div className="flex items-center gap-1 text-xs font-medium text-green-600">
-                              <DollarSign className="h-3 w-3" />
+                              <PoundSterling className="h-3 w-3" />
                               {formatCurrency(lead.valuation_amount)}
                             </div>
                           )}

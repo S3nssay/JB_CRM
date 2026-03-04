@@ -12,6 +12,9 @@
  * - EMAIL_TOKEN_ENCRYPTION_KEY: Encryption key for token storage
  */
 
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
+
 import crypto from 'crypto';
 import { encryptToken, decryptToken, generateSecureToken } from '../../lib/encryption';
 
@@ -81,27 +84,33 @@ setInterval(() => {
  * Microsoft Graph OAuth Service
  */
 export class GraphAuthService {
-  private clientId: string;
-  private clientSecret: string;
-  private tenantId: string;
-  private redirectUri: string;
-  private isConfigured: boolean = false;
+  private get clientId(): string {
+    return process.env.MICROSOFT_CLIENT_ID || '';
+  }
+  private get clientSecret(): string {
+    return process.env.MICROSOFT_CLIENT_SECRET || '';
+  }
+  private get tenantId(): string {
+    return process.env.MICROSOFT_TENANT_ID || 'common';
+  }
+  private get redirectUri(): string {
+    const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
+    return `${baseUrl}/api/email-integration/oauth/callback`;
+  }
+  private get isConfigured(): boolean {
+    return !!(this.clientId && this.clientSecret);
+  }
 
   constructor() {
-    this.clientId = process.env.MICROSOFT_CLIENT_ID || '';
-    this.clientSecret = process.env.MICROSOFT_CLIENT_SECRET || '';
-    this.tenantId = process.env.MICROSOFT_TENANT_ID || 'common';
-
-    const baseUrl = process.env.BASE_URL || 'http://localhost:5000';
-    this.redirectUri = `${baseUrl}/api/email-integration/oauth/callback`;
-
-    this.isConfigured = !!(this.clientId && this.clientSecret);
-
-    if (this.isConfigured) {
-      console.log('Microsoft Graph OAuth service configured');
-    } else {
-      console.warn('Microsoft Graph OAuth service not configured - missing MICROSOFT_CLIENT_ID or MICROSOFT_CLIENT_SECRET');
-    }
+    // Env vars are read lazily via getters to avoid ESM import hoisting issues
+    // where dotenv.config() hasn't run yet at import time
+    setTimeout(() => {
+      if (this.isConfigured) {
+        console.log('Microsoft Graph OAuth service configured');
+      } else {
+        console.warn('Microsoft Graph OAuth service not configured - missing MICROSOFT_CLIENT_ID or MICROSOFT_CLIENT_SECRET');
+      }
+    }, 0);
   }
 
   /**

@@ -1,711 +1,763 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 import {
-  FileText, Plus, Download, Calendar, Clock,
-  BarChart3, PieChart, TrendingUp, Users, Home,
-  DollarSign, Wrench, Mail, Eye, Edit, Trash2,
-  Play, Pause, Copy, Save, FileSpreadsheet, File, ArrowLeft
+  FileText, Download, Building2, Users, Shield, Wrench,
+  PoundSterling, ClipboardCheck, Key, TrendingUp, Home,
+  Loader2, Table, ChevronRight, AlertTriangle,
+  Calendar, UserCheck, FileSpreadsheet
 } from 'lucide-react';
 
-// Mock saved reports
-const mockReports = [
-  {
-    id: 1,
-    name: 'Monthly Property Performance',
-    description: 'Overview of property listings, views, and enquiries',
-    reportType: 'property_performance',
-    format: 'pdf',
-    isScheduled: true,
-    frequency: 'monthly',
-    lastRunAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7),
-    nextRunAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 23),
-    recipients: ['manager@agency.com'],
-    status: 'active'
-  },
-  {
-    id: 2,
-    name: 'Agent Performance Report',
-    description: 'Individual agent metrics and KPIs',
-    reportType: 'agent_performance',
-    format: 'excel',
-    isScheduled: true,
-    frequency: 'weekly',
-    lastRunAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-    nextRunAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 4),
-    recipients: ['director@agency.com', 'manager@agency.com'],
-    status: 'active'
-  },
-  {
-    id: 3,
-    name: 'Financial Summary',
-    description: 'Revenue, commissions, and expenses breakdown',
-    reportType: 'financial',
-    format: 'pdf',
-    isScheduled: false,
-    frequency: null,
-    lastRunAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 14),
-    nextRunAt: null,
-    recipients: [],
-    status: 'active'
-  },
-  {
-    id: 4,
-    name: 'Maintenance Report',
-    description: 'Ticket status, resolution times, and costs',
-    reportType: 'maintenance',
-    format: 'pdf',
-    isScheduled: true,
-    frequency: 'monthly',
-    lastRunAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2),
-    nextRunAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 28),
-    recipients: ['maintenance@agency.com'],
-    status: 'active'
-  }
-];
+// ─── Report definitions ─────────────────────────────────────────────
 
-// Report templates
-const reportTemplates = [
+interface ReportDefinition {
+  id: string;
+  name: string;
+  description: string;
+  category: 'financial' | 'property' | 'compliance' | 'maintenance' | 'landlord' | 'tenant' | 'performance';
+  icon: any;
+  frequency: string;
+  fetchData: () => Promise<any[]>;
+  columns: { key: string; label: string }[];
+  transform: (raw: any) => Record<string, any>;
+}
+
+const categoryLabels: Record<string, { label: string; color: string }> = {
+  financial: { label: 'Financial', color: 'bg-green-100 text-green-800' },
+  property: { label: 'Property', color: 'bg-blue-100 text-blue-800' },
+  compliance: { label: 'Compliance', color: 'bg-red-100 text-red-800' },
+  maintenance: { label: 'Maintenance', color: 'bg-orange-100 text-orange-800' },
+  landlord: { label: 'Landlord', color: 'bg-purple-100 text-purple-800' },
+  tenant: { label: 'Tenant', color: 'bg-indigo-100 text-indigo-800' },
+  performance: { label: 'Performance', color: 'bg-yellow-100 text-yellow-800' },
+};
+
+function formatCurrency(val: any): string {
+  if (val == null || val === '') return '—';
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(num)) return '—';
+  return `£${num.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatDate(val: any): string {
+  if (!val) return '—';
+  try {
+    return new Date(val).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch {
+    return String(val);
+  }
+}
+
+const reports: ReportDefinition[] = [
+  // ── PROPERTY REPORTS ──
   {
-    id: 'property_performance',
-    name: 'Property Performance',
-    description: 'Track listing performance, views, enquiries, and days on market',
+    id: 'property-portfolio',
+    name: 'Property Portfolio Overview',
+    description: 'Complete list of all managed and listed properties with status, type, and value',
+    category: 'property',
+    icon: Building2,
+    frequency: 'Monthly',
+    fetchData: () => apiRequest('/api/crm/properties'),
+    columns: [
+      { key: 'address', label: 'Address' },
+      { key: 'postcode', label: 'Postcode' },
+      { key: 'propertyType', label: 'Type' },
+      { key: 'bedrooms', label: 'Beds' },
+      { key: 'status', label: 'Status' },
+      { key: 'isManaged', label: 'Managed' },
+      { key: 'isListedRental', label: 'Listed Rental' },
+      { key: 'isListedSale', label: 'Listed Sale' },
+      { key: 'rentAmount', label: 'Rent (pcm)' },
+      { key: 'price', label: 'Price' },
+    ],
+    transform: (p: any) => ({
+      address: p.address || [p.address_line1, p.address_line2, p.city].filter(Boolean).join(', '),
+      postcode: p.postcode || '—',
+      propertyType: p.property_type || p.propertyType || '—',
+      bedrooms: p.bedrooms ?? '—',
+      status: p.status || '—',
+      isManaged: p.is_managed || p.isManaged ? 'Yes' : 'No',
+      isListedRental: p.is_listed_rental || p.isListedRental ? 'Yes' : 'No',
+      isListedSale: p.is_listed_sale || p.isListedSale ? 'Yes' : 'No',
+      rentAmount: formatCurrency(p.rent_amount || p.rentAmount),
+      price: formatCurrency(p.price),
+    }),
+  },
+  {
+    id: 'vacancy-report',
+    name: 'Vacancy & Void Report',
+    description: 'Properties currently vacant or not tenanted, with void duration and marketing status',
+    category: 'property',
     icon: Home,
-    metrics: ['listings', 'views', 'enquiries', 'avgDays', 'conversions']
+    frequency: 'Weekly',
+    fetchData: async () => {
+      const all = await apiRequest<any[]>('/api/crm/properties');
+      return all.filter((p: any) => {
+        const managed = p.is_managed || p.isManaged;
+        const status = (p.status || '').toLowerCase();
+        return managed && (status === 'vacant' || status === 'available' || status === 'void');
+      });
+    },
+    columns: [
+      { key: 'address', label: 'Address' },
+      { key: 'postcode', label: 'Postcode' },
+      { key: 'propertyType', label: 'Type' },
+      { key: 'bedrooms', label: 'Beds' },
+      { key: 'rentAmount', label: 'Asking Rent' },
+      { key: 'status', label: 'Status' },
+      { key: 'publishedWebsite', label: 'Website' },
+      { key: 'publishedRightmove', label: 'Rightmove' },
+      { key: 'publishedZoopla', label: 'Zoopla' },
+    ],
+    transform: (p: any) => ({
+      address: p.address || [p.address_line1, p.address_line2, p.city].filter(Boolean).join(', '),
+      postcode: p.postcode || '—',
+      propertyType: p.property_type || p.propertyType || '—',
+      bedrooms: p.bedrooms ?? '—',
+      rentAmount: formatCurrency(p.rent_amount || p.rentAmount),
+      status: p.status || '—',
+      publishedWebsite: p.is_published_website ? 'Yes' : 'No',
+      publishedRightmove: p.is_published_rightmove ? 'Yes' : 'No',
+      publishedZoopla: p.is_published_zoopla ? 'Yes' : 'No',
+    }),
+  },
+
+  // ── FINANCIAL REPORTS ──
+  {
+    id: 'rent-roll',
+    name: 'Rent Roll',
+    description: 'All active tenancies with contracted rent, frequency, and management fee details',
+    category: 'financial',
+    icon: PoundSterling,
+    frequency: 'Monthly',
+    fetchData: () => apiRequest('/api/crm/pm/tenancies'),
+    columns: [
+      { key: 'property', label: 'Property' },
+      { key: 'tenant', label: 'Tenant' },
+      { key: 'landlord', label: 'Landlord' },
+      { key: 'startDate', label: 'Start Date' },
+      { key: 'endDate', label: 'End Date' },
+      { key: 'rentAmount', label: 'Rent Amount' },
+      { key: 'rentFrequency', label: 'Frequency' },
+      { key: 'status', label: 'Status' },
+    ],
+    transform: (t: any) => ({
+      property: t.propertyAddress || t.property_address || t.property?.address || '—',
+      tenant: t.tenantName || t.tenant_name || t.tenant?.name || '—',
+      landlord: t.landlordName || t.landlord_name || t.landlord?.name || '—',
+      startDate: formatDate(t.startDate || t.start_date),
+      endDate: formatDate(t.endDate || t.end_date),
+      rentAmount: formatCurrency(t.rentAmount || t.rent_amount),
+      rentFrequency: t.rentFrequency || t.rent_frequency || '—',
+      status: t.status || '—',
+    }),
   },
   {
-    id: 'agent_performance',
-    name: 'Agent Performance',
-    description: 'Individual and team performance metrics',
+    id: 'management-fees',
+    name: 'Management Fee Income',
+    description: 'Revenue from management fees across all managed properties',
+    category: 'financial',
+    icon: PoundSterling,
+    frequency: 'Monthly',
+    fetchData: async () => {
+      const properties = await apiRequest<any[]>('/api/crm/properties');
+      return properties.filter((p: any) => p.is_managed || p.isManaged);
+    },
+    columns: [
+      { key: 'address', label: 'Property' },
+      { key: 'landlord', label: 'Landlord' },
+      { key: 'rentAmount', label: 'Monthly Rent' },
+      { key: 'feeType', label: 'Fee Type' },
+      { key: 'feeValue', label: 'Fee Value' },
+      { key: 'monthlyFee', label: 'Monthly Fee' },
+    ],
+    transform: (p: any) => {
+      const rent = parseFloat(p.rent_amount || p.rentAmount || '0');
+      const feeType = p.management_fee_type || p.managementFeeType || 'percentage';
+      const feeValue = parseFloat(p.management_fee_value || p.managementFeeValue || '0');
+      const monthlyFee = feeType === 'percentage' ? (rent * feeValue / 100) : feeValue;
+      return {
+        address: p.address || [p.address_line1, p.address_line2, p.city].filter(Boolean).join(', '),
+        landlord: p.landlord_name || p.landlordName || '—',
+        rentAmount: formatCurrency(rent),
+        feeType: feeType === 'percentage' ? 'Percentage' : 'Fixed',
+        feeValue: feeType === 'percentage' ? `${feeValue}%` : formatCurrency(feeValue),
+        monthlyFee: formatCurrency(monthlyFee),
+      };
+    },
+  },
+
+  // ── TENANCY REPORTS ──
+  {
+    id: 'tenancy-expiry',
+    name: 'Tenancy Expiry & Renewal',
+    description: 'Tenancies approaching end date within the next 90 days — plan renewals or remarketing',
+    category: 'tenant',
+    icon: Calendar,
+    frequency: 'Weekly',
+    fetchData: async () => {
+      const tenancies = await apiRequest<any[]>('/api/crm/pm/tenancies');
+      const now = new Date();
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() + 90);
+      return tenancies.filter((t: any) => {
+        const end = new Date(t.endDate || t.end_date);
+        return end >= now && end <= cutoff;
+      });
+    },
+    columns: [
+      { key: 'property', label: 'Property' },
+      { key: 'tenant', label: 'Tenant' },
+      { key: 'landlord', label: 'Landlord' },
+      { key: 'endDate', label: 'End Date' },
+      { key: 'daysRemaining', label: 'Days Left' },
+      { key: 'rentAmount', label: 'Current Rent' },
+      { key: 'status', label: 'Status' },
+    ],
+    transform: (t: any) => {
+      const end = new Date(t.endDate || t.end_date);
+      const days = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      return {
+        property: t.propertyAddress || t.property_address || t.property?.address || '—',
+        tenant: t.tenantName || t.tenant_name || t.tenant?.name || '—',
+        landlord: t.landlordName || t.landlord_name || t.landlord?.name || '—',
+        endDate: formatDate(t.endDate || t.end_date),
+        daysRemaining: days.toString(),
+        rentAmount: formatCurrency(t.rentAmount || t.rent_amount),
+        status: t.status || '—',
+      };
+    },
+  },
+  {
+    id: 'deposit-tracking',
+    name: 'Deposit Tracking',
+    description: 'All tenant deposits with protection scheme status and certificate numbers',
+    category: 'tenant',
+    icon: Shield,
+    frequency: 'Monthly',
+    fetchData: () => apiRequest('/api/crm/pm/tenancies'),
+    columns: [
+      { key: 'property', label: 'Property' },
+      { key: 'tenant', label: 'Tenant' },
+      { key: 'depositAmount', label: 'Deposit Amount' },
+      { key: 'depositScheme', label: 'Scheme' },
+      { key: 'certificateNo', label: 'Certificate No.' },
+      { key: 'startDate', label: 'Tenancy Start' },
+      { key: 'status', label: 'Status' },
+    ],
+    transform: (t: any) => ({
+      property: t.propertyAddress || t.property_address || t.property?.address || '—',
+      tenant: t.tenantName || t.tenant_name || t.tenant?.name || '—',
+      depositAmount: formatCurrency(t.depositAmount || t.deposit_amount),
+      depositScheme: t.depositScheme || t.deposit_scheme || '—',
+      certificateNo: t.depositCertificateNumber || t.deposit_certificate_number || '—',
+      startDate: formatDate(t.startDate || t.start_date),
+      status: t.status || '—',
+    }),
+  },
+  {
+    id: 'tenant-directory',
+    name: 'Tenant Directory',
+    description: 'Full directory of all tenants with contact details and tenancy status',
+    category: 'tenant',
     icon: Users,
-    metrics: ['deals', 'revenue', 'viewings', 'conversions', 'ratings']
+    frequency: 'Monthly',
+    fetchData: () => apiRequest('/api/crm/tenants'),
+    columns: [
+      { key: 'name', label: 'Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'mobile', label: 'Mobile' },
+      { key: 'status', label: 'Status' },
+      { key: 'emergencyContact', label: 'Emergency Contact' },
+    ],
+    transform: (t: any) => ({
+      name: t.name || '—',
+      email: t.email || '—',
+      phone: t.phone || '—',
+      mobile: t.mobile || '—',
+      status: t.status || '—',
+      emergencyContact: t.emergency_contact_name || t.emergencyContactName || '—',
+    }),
   },
+
+  // ── LANDLORD REPORTS ──
   {
-    id: 'financial',
-    name: 'Financial Summary',
-    description: 'Revenue, commissions, fees, and expense breakdown',
-    icon: DollarSign,
-    metrics: ['revenue', 'commissions', 'fees', 'expenses', 'profit']
+    id: 'landlord-directory',
+    name: 'Landlord Directory',
+    description: 'All landlords with contact details, type, bank information, and property count',
+    category: 'landlord',
+    icon: UserCheck,
+    frequency: 'Monthly',
+    fetchData: () => apiRequest('/api/crm/landlords'),
+    columns: [
+      { key: 'name', label: 'Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'landlordType', label: 'Type' },
+      { key: 'bankName', label: 'Bank' },
+      { key: 'hasBankDetails', label: 'Bank Details' },
+      { key: 'status', label: 'Status' },
+    ],
+    transform: (l: any) => ({
+      name: l.name || '—',
+      email: l.email || '—',
+      phone: l.phone || l.mobile || '—',
+      landlordType: (l.landlord_type || l.landlordType || 'individual').charAt(0).toUpperCase() +
+        (l.landlord_type || l.landlordType || 'individual').slice(1),
+      bankName: l.bank_name || l.bankName || '—',
+      hasBankDetails: (l.bank_account_number || l.bankAccountNumber) ? 'Yes' : 'No',
+      status: l.status || '—',
+    }),
   },
+
+  // ── COMPLIANCE REPORTS ──
   {
-    id: 'maintenance',
-    name: 'Maintenance Report',
-    description: 'Ticket status, resolution times, and contractor performance',
+    id: 'compliance-tracker',
+    name: 'Compliance Tracker',
+    description: 'Status of all legally required certificates — gas safety, EPC, EICR, and more',
+    category: 'compliance',
+    icon: ClipboardCheck,
+    frequency: 'Weekly',
+    fetchData: async () => {
+      try {
+        const data = await apiRequest<any>('/api/crm/compliance/dashboard');
+        // Flatten compliance items from dashboard into a list
+        const items: any[] = [];
+        if (data?.expiringSoon) items.push(...data.expiringSoon.map((i: any) => ({ ...i, _status: 'Expiring Soon' })));
+        if (data?.expired) items.push(...data.expired.map((i: any) => ({ ...i, _status: 'Expired' })));
+        if (data?.actionRequired) items.push(...data.actionRequired.map((i: any) => ({ ...i, _status: 'Action Required' })));
+        if (data?.compliant) items.push(...data.compliant.map((i: any) => ({ ...i, _status: 'Compliant' })));
+        if (items.length > 0) return items;
+        // If dashboard returns different format, return as array
+        return Array.isArray(data) ? data : [];
+      } catch {
+        // Fallback to certifications endpoint
+        return apiRequest('/api/crm/certifications');
+      }
+    },
+    columns: [
+      { key: 'property', label: 'Property' },
+      { key: 'type', label: 'Certificate Type' },
+      { key: 'expiryDate', label: 'Expiry Date' },
+      { key: 'status', label: 'Status' },
+    ],
+    transform: (c: any) => ({
+      property: c.propertyAddress || c.property_address || c.property?.address || '—',
+      type: c.requirementName || c.requirement_name || c.type || c.name || '—',
+      expiryDate: formatDate(c.expiryDate || c.expiry_date || c.dueDate || c.due_date),
+      status: c._status || c.status || '—',
+    }),
+  },
+
+  // ── MAINTENANCE REPORTS ──
+  {
+    id: 'maintenance-report',
+    name: 'Maintenance & Repairs',
+    description: 'All maintenance tickets with status, priority, contractor, and costs',
+    category: 'maintenance',
     icon: Wrench,
-    metrics: ['tickets', 'resolution', 'costs', 'contractors']
+    frequency: 'Weekly',
+    fetchData: async () => {
+      try {
+        return await apiRequest('/api/crm/maintenance/tickets');
+      } catch {
+        return await apiRequest('/api/crm/maintenance');
+      }
+    },
+    columns: [
+      { key: 'property', label: 'Property' },
+      { key: 'title', label: 'Issue' },
+      { key: 'priority', label: 'Priority' },
+      { key: 'status', label: 'Status' },
+      { key: 'contractor', label: 'Contractor' },
+      { key: 'reportedDate', label: 'Reported' },
+      { key: 'cost', label: 'Cost' },
+    ],
+    transform: (m: any) => ({
+      property: m.propertyAddress || m.property_address || m.property?.address || '—',
+      title: m.title || m.description || m.issue || '—',
+      priority: m.priority || '—',
+      status: m.status || '—',
+      contractor: m.contractorName || m.contractor_name || m.contractor || '—',
+      reportedDate: formatDate(m.reportedAt || m.reported_at || m.createdAt || m.created_at),
+      cost: formatCurrency(m.cost || m.actualCost || m.actual_cost),
+    }),
+  },
+
+  // ── PERFORMANCE REPORTS ──
+  {
+    id: 'lead-conversion',
+    name: 'Lead & Enquiry Report',
+    description: 'All leads with source, status, type, and assigned agent for pipeline analysis',
+    category: 'performance',
+    icon: TrendingUp,
+    frequency: 'Weekly',
+    fetchData: () => apiRequest('/api/crm/leads'),
+    columns: [
+      { key: 'name', label: 'Name' },
+      { key: 'email', label: 'Email' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'leadType', label: 'Type' },
+      { key: 'source', label: 'Source' },
+      { key: 'status', label: 'Status' },
+      { key: 'createdAt', label: 'Created' },
+    ],
+    transform: (l: any) => ({
+      name: l.name || '—',
+      email: l.email || '—',
+      phone: l.phone || l.mobile || '—',
+      leadType: l.lead_type || l.leadType || '—',
+      source: l.source || '—',
+      status: l.status || '—',
+      createdAt: formatDate(l.created_at || l.createdAt),
+    }),
   },
   {
-    id: 'marketing',
-    name: 'Marketing Report',
-    description: 'Campaign performance, lead sources, and ROI',
-    icon: BarChart3,
-    metrics: ['campaigns', 'leads', 'conversions', 'roi']
+    id: 'agent-performance',
+    name: 'Agent Performance',
+    description: 'Agent productivity metrics — listings, viewings, enquiries handled, and revenue',
+    category: 'performance',
+    icon: Users,
+    frequency: 'Monthly',
+    fetchData: async () => {
+      try {
+        return await apiRequest('/api/crm/analytics/agents');
+      } catch {
+        return await apiRequest('/api/crm/staff');
+      }
+    },
+    columns: [
+      { key: 'name', label: 'Agent' },
+      { key: 'propertiesListed', label: 'Listed' },
+      { key: 'propertiesSold', label: 'Sold' },
+      { key: 'viewings', label: 'Viewings' },
+      { key: 'enquiries', label: 'Enquiries' },
+      { key: 'revenue', label: 'Revenue' },
+    ],
+    transform: (a: any) => ({
+      name: a.name || a.fullName || a.full_name || '—',
+      propertiesListed: a.propertiesListed ?? a.properties_listed ?? '—',
+      propertiesSold: a.propertiesSold ?? a.properties_sold ?? '—',
+      viewings: a.viewingsConducted ?? a.viewings_conducted ?? a.viewings ?? '—',
+      enquiries: a.enquiriesHandled ?? a.enquiries_handled ?? a.enquiries ?? '—',
+      revenue: a.revenue ? formatCurrency(a.revenue) : '—',
+    }),
   },
   {
-    id: 'custom',
-    name: 'Custom Report',
-    description: 'Build your own report with custom metrics',
-    icon: FileText,
-    metrics: []
-  }
+    id: 'tenancy-checkin-checkout',
+    name: 'Tenancy Check-In / Check-Out',
+    description: 'Upcoming and recent move-ins and move-outs with checklist completion status',
+    category: 'tenant',
+    icon: Key,
+    frequency: 'Weekly',
+    fetchData: async () => {
+      const tenancies = await apiRequest<any[]>('/api/crm/pm/tenancies');
+      const now = new Date();
+      const past30 = new Date();
+      past30.setDate(past30.getDate() - 30);
+      const future30 = new Date();
+      future30.setDate(future30.getDate() + 30);
+      return tenancies.filter((t: any) => {
+        const start = new Date(t.startDate || t.start_date);
+        const end = new Date(t.endDate || t.end_date);
+        return (start >= past30 && start <= future30) || (end >= past30 && end <= future30);
+      });
+    },
+    columns: [
+      { key: 'property', label: 'Property' },
+      { key: 'tenant', label: 'Tenant' },
+      { key: 'event', label: 'Event' },
+      { key: 'date', label: 'Date' },
+      { key: 'status', label: 'Status' },
+    ],
+    transform: (t: any) => {
+      const now = new Date();
+      const start = new Date(t.startDate || t.start_date);
+      const end = new Date(t.endDate || t.end_date);
+      const future30 = new Date();
+      future30.setDate(future30.getDate() + 30);
+      const past30 = new Date();
+      past30.setDate(past30.getDate() - 30);
+
+      const isCheckIn = start >= past30 && start <= future30;
+      return {
+        property: t.propertyAddress || t.property_address || t.property?.address || '—',
+        tenant: t.tenantName || t.tenant_name || t.tenant?.name || '—',
+        event: isCheckIn ? 'Check-In' : 'Check-Out',
+        date: formatDate(isCheckIn ? (t.startDate || t.start_date) : (t.endDate || t.end_date)),
+        status: t.status || '—',
+      };
+    },
+  },
 ];
 
-// Available metrics for custom reports
-const availableMetrics = [
-  { id: 'total_properties', name: 'Total Properties', category: 'Properties' },
-  { id: 'active_listings', name: 'Active Listings', category: 'Properties' },
-  { id: 'properties_sold', name: 'Properties Sold', category: 'Properties' },
-  { id: 'properties_let', name: 'Properties Let', category: 'Properties' },
-  { id: 'avg_days_market', name: 'Avg Days on Market', category: 'Properties' },
-  { id: 'total_revenue', name: 'Total Revenue', category: 'Financial' },
-  { id: 'sales_commission', name: 'Sales Commission', category: 'Financial' },
-  { id: 'lettings_fees', name: 'Lettings Fees', category: 'Financial' },
-  { id: 'management_fees', name: 'Management Fees', category: 'Financial' },
-  { id: 'total_viewings', name: 'Total Viewings', category: 'Activity' },
-  { id: 'total_valuations', name: 'Total Valuations', category: 'Activity' },
-  { id: 'total_enquiries', name: 'Total Enquiries', category: 'Activity' },
-  { id: 'conversion_rate', name: 'Conversion Rate', category: 'Activity' },
-  { id: 'open_tickets', name: 'Open Tickets', category: 'Maintenance' },
-  { id: 'resolved_tickets', name: 'Resolved Tickets', category: 'Maintenance' },
-  { id: 'avg_resolution_time', name: 'Avg Resolution Time', category: 'Maintenance' }
-];
+// ─── CSV export helper ──────────────────────────────────────────────
+
+function downloadCSV(filename: string, columns: { key: string; label: string }[], rows: Record<string, any>[]) {
+  const header = columns.map(c => `"${c.label}"`).join(',');
+  const body = rows.map(row =>
+    columns.map(c => {
+      const val = row[c.key] ?? '';
+      return `"${String(val).replace(/"/g, '""')}"`;
+    }).join(',')
+  ).join('\n');
+  const csv = header + '\n' + body;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+// ─── Component ──────────────────────────────────────────────────────
 
 export default function ReportBuilder() {
   const { toast } = useToast();
-  const [activeTab, setActiveTab] = useState('reports');
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+  const [selectedReport, setSelectedReport] = useState<ReportDefinition | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [reportData, setReportData] = useState<Record<string, any>[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
 
-  const [reportForm, setReportForm] = useState({
-    name: '',
-    description: '',
-    reportType: '',
-    format: 'pdf',
-    dateRange: '30',
-    customStartDate: '',
-    customEndDate: '',
-    selectedMetrics: [] as string[],
-    isScheduled: false,
-    frequency: 'monthly',
-    recipients: ''
-  });
+  const handleGenerateReport = async (report: ReportDefinition) => {
+    setSelectedReport(report);
+    setLoading(true);
+    setReportData(null);
+    setError(null);
 
-  const handleCreateReport = () => {
-    if (!reportForm.name) {
+    try {
+      const rawData = await report.fetchData();
+      const data = Array.isArray(rawData) ? rawData : [];
+      const transformed = data.map(report.transform);
+      setReportData(transformed);
       toast({
-        title: 'Name required',
-        description: 'Please enter a name for the report.',
-        variant: 'destructive'
+        title: 'Report generated',
+        description: `${report.name}: ${transformed.length} records found.`,
       });
-      return;
-    }
-
-    toast({
-      title: 'Report created',
-      description: `"${reportForm.name}" has been created successfully.`
-    });
-    setShowCreateDialog(false);
-    setSelectedTemplate(null);
-    setReportForm({
-      name: '',
-      description: '',
-      reportType: '',
-      format: 'pdf',
-      dateRange: '30',
-      customStartDate: '',
-      customEndDate: '',
-      selectedMetrics: [],
-      isScheduled: false,
-      frequency: 'monthly',
-      recipients: ''
-    });
-  };
-
-  const handleGenerateReport = (report: any) => {
-    toast({
-      title: 'Generating report',
-      description: `"${report.name}" is being generated. It will download shortly.`
-    });
-  };
-
-  const handleRunNow = (report: any) => {
-    toast({
-      title: 'Running report',
-      description: `"${report.name}" is being generated and will be sent to recipients.`
-    });
-  };
-
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric'
-    });
-  };
-
-  const toggleMetric = (metricId: string) => {
-    if (reportForm.selectedMetrics.includes(metricId)) {
-      setReportForm({
-        ...reportForm,
-        selectedMetrics: reportForm.selectedMetrics.filter(m => m !== metricId)
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to generate report';
+      setError(msg);
+      toast({
+        title: 'Error generating report',
+        description: msg,
+        variant: 'destructive',
       });
-    } else {
-      setReportForm({
-        ...reportForm,
-        selectedMetrics: [...reportForm.selectedMetrics, metricId]
-      });
+    } finally {
+      setLoading(false);
     }
   };
+
+  const handleDownload = () => {
+    if (!selectedReport || !reportData) return;
+    const filename = `${selectedReport.id}-${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadCSV(filename, selectedReport.columns, reportData);
+    toast({ title: 'Downloaded', description: `${filename} saved.` });
+  };
+
+  const filteredReports = categoryFilter === 'all'
+    ? reports
+    : reports.filter(r => r.category === categoryFilter);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/portal">
-                <Button variant="ghost" size="icon" data-testid="button-back-to-portal">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
-              <FileText className="h-8 w-8 text-[#791E75] mr-3" />
-              <h1 className="text-xl font-semibold">Report Builder</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Report
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Create New Report</DialogTitle>
-                    <DialogDescription>
-                      Choose a template or build a custom report
-                    </DialogDescription>
-                  </DialogHeader>
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-xl font-semibold flex items-center gap-2">
+          <FileText className="h-5 w-5 text-[#791E75]" />
+          Reports
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">Generate and download management reports</p>
+      </div>
 
-                  {!selectedTemplate ? (
-                    <div className="grid grid-cols-2 gap-4">
-                      {reportTemplates.map((template) => {
-                        const IconComponent = template.icon;
-                        return (
-                          <div
-                            key={template.id}
-                            className="p-4 border rounded-lg cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors"
-                            onClick={() => {
-                              setSelectedTemplate(template.id);
-                              setReportForm({ ...reportForm, reportType: template.id });
-                            }}
-                          >
-                            <div className="flex items-center space-x-3 mb-2">
-                              <IconComponent className="h-5 w-5 text-gray-600" />
-                              <span className="font-medium">{template.name}</span>
-                            </div>
-                            <p className="text-sm text-gray-500">{template.description}</p>
-                          </div>
-                        );
-                      })}
+        {/* Category filter */}
+        <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <Label className="text-sm font-medium mr-2">Category:</Label>
+          <Button
+            variant={categoryFilter === 'all' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setCategoryFilter('all')}
+          >
+            All Reports
+          </Button>
+          {Object.entries(categoryLabels).map(([key, { label }]) => (
+            <Button
+              key={key}
+              variant={categoryFilter === key ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setCategoryFilter(key)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Report list (left panel) */}
+          <div className="lg:col-span-1 space-y-3">
+            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              Available Reports ({filteredReports.length})
+            </h2>
+            {filteredReports.map((report) => {
+              const IconComp = report.icon;
+              const isActive = selectedReport?.id === report.id;
+              const cat = categoryLabels[report.category];
+              return (
+                <Card
+                  key={report.id}
+                  className={`cursor-pointer transition-all hover:shadow-md ${isActive ? 'ring-2 ring-[#791E75] shadow-md' : ''}`}
+                  onClick={() => handleGenerateReport(report)}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-gray-100 rounded-lg flex-shrink-0">
+                        <IconComp className="h-5 w-5 text-gray-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h3 className="font-semibold text-sm truncate">{report.name}</h3>
+                          <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        </div>
+                        <p className="text-xs text-gray-500 line-clamp-2">{report.description}</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge className={`text-[10px] ${cat.color}`}>{cat.label}</Badge>
+                          <span className="text-[10px] text-gray-400">{report.frequency}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {/* Report results (right panel) */}
+          <div className="lg:col-span-2">
+            {!selectedReport && !loading && (
+              <Card className="h-full flex items-center justify-center min-h-[400px]">
+                <CardContent className="text-center py-12">
+                  <Table className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600 mb-2">Select a Report</h3>
+                  <p className="text-sm text-gray-400 max-w-sm mx-auto">
+                    Choose a report from the list to generate it with live data from your CRM.
+                    Reports can be downloaded as CSV.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {loading && (
+              <Card className="h-full flex items-center justify-center min-h-[400px]">
+                <CardContent className="text-center py-12">
+                  <Loader2 className="h-12 w-12 mx-auto text-[#791E75] animate-spin mb-4" />
+                  <h3 className="text-lg font-medium text-gray-600">Generating Report...</h3>
+                  <p className="text-sm text-gray-400 mt-1">Fetching data from the CRM</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {error && !loading && (
+              <Card className="border-red-200">
+                <CardContent className="py-12 text-center">
+                  <AlertTriangle className="h-12 w-12 mx-auto text-red-400 mb-4" />
+                  <h3 className="text-lg font-medium text-red-600 mb-2">Error</h3>
+                  <p className="text-sm text-gray-500">{error}</p>
+                  <Button
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => selectedReport && handleGenerateReport(selectedReport)}
+                  >
+                    Retry
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
+            {selectedReport && reportData && !loading && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        {(() => { const Icon = selectedReport.icon; return <Icon className="h-5 w-5" />; })()}
+                        {selectedReport.name}
+                      </CardTitle>
+                      <CardDescription>
+                        {reportData.length} records — Generated {new Date().toLocaleString('en-GB')}
+                      </CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={handleDownload}>
+                        <Download className="h-4 w-4 mr-2" />
+                        Download CSV
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {reportData.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <FileText className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+                      <p className="text-gray-500">No data found for this report.</p>
+                      <p className="text-sm text-gray-400 mt-1">Try adjusting filters or check that data exists in the system.</p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedTemplate(null)}
-                      >
-                        ← Back to templates
-                      </Button>
-
-                      <div className="space-y-2">
-                        <Label>Report Name</Label>
-                        <Input
-                          placeholder="e.g., Monthly Performance Report"
-                          value={reportForm.name}
-                          onChange={(e) => setReportForm({ ...reportForm, name: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Description</Label>
-                        <Input
-                          placeholder="Brief description of this report"
-                          value={reportForm.description}
-                          onChange={(e) => setReportForm({ ...reportForm, description: e.target.value })}
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Format</Label>
-                          <Select
-                            value={reportForm.format}
-                            onValueChange={(value) => setReportForm({ ...reportForm, format: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pdf">PDF</SelectItem>
-                              <SelectItem value="excel">Excel</SelectItem>
-                              <SelectItem value="csv">CSV</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Date Range</Label>
-                          <Select
-                            value={reportForm.dateRange}
-                            onValueChange={(value) => setReportForm({ ...reportForm, dateRange: value })}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="7">Last 7 days</SelectItem>
-                              <SelectItem value="30">Last 30 days</SelectItem>
-                              <SelectItem value="90">Last 90 days</SelectItem>
-                              <SelectItem value="365">Last 12 months</SelectItem>
-                              <SelectItem value="custom">Custom range</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-
-                      {reportForm.dateRange === 'custom' && (
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                            <Label>Start Date</Label>
-                            <Input
-                              type="date"
-                              value={reportForm.customStartDate}
-                              onChange={(e) => setReportForm({ ...reportForm, customStartDate: e.target.value })}
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label>End Date</Label>
-                            <Input
-                              type="date"
-                              value={reportForm.customEndDate}
-                              onChange={(e) => setReportForm({ ...reportForm, customEndDate: e.target.value })}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {selectedTemplate === 'custom' && (
-                        <div className="space-y-2">
-                          <Label>Select Metrics</Label>
-                          <div className="border rounded-lg p-4 max-h-[200px] overflow-y-auto">
-                            {['Properties', 'Financial', 'Activity', 'Maintenance'].map((category) => (
-                              <div key={category} className="mb-4">
-                                <p className="text-sm font-medium text-gray-500 mb-2">{category}</p>
-                                <div className="space-y-2">
-                                  {availableMetrics
-                                    .filter(m => m.category === category)
-                                    .map((metric) => (
-                                      <div key={metric.id} className="flex items-center space-x-2">
-                                        <Checkbox
-                                          id={metric.id}
-                                          checked={reportForm.selectedMetrics.includes(metric.id)}
-                                          onCheckedChange={() => toggleMetric(metric.id)}
-                                        />
-                                        <Label htmlFor={metric.id} className="text-sm">
-                                          {metric.name}
-                                        </Label>
-                                      </div>
-                                    ))}
-                                </div>
-                              </div>
+                    <div className="overflow-x-auto border rounded-lg">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-50 border-b">
+                          <tr>
+                            <th className="text-left p-3 text-xs font-semibold text-gray-600 w-8">#</th>
+                            {selectedReport.columns.map(col => (
+                              <th key={col.key} className="text-left p-3 text-xs font-semibold text-gray-600 whitespace-nowrap">
+                                {col.label}
+                              </th>
                             ))}
-                          </div>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {reportData.slice(0, 100).map((row, idx) => (
+                            <tr key={idx} className="border-b hover:bg-gray-50 last:border-0">
+                              <td className="p-3 text-xs text-gray-400">{idx + 1}</td>
+                              {selectedReport.columns.map(col => (
+                                <td key={col.key} className="p-3 text-xs whitespace-nowrap">
+                                  {row[col.key] ?? '—'}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {reportData.length > 100 && (
+                        <div className="p-3 text-center text-xs text-gray-400 bg-gray-50 border-t">
+                          Showing first 100 of {reportData.length} records. Download CSV for full data.
                         </div>
                       )}
-
-                      <div className="border-t pt-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <p className="font-medium">Schedule Report</p>
-                            <p className="text-sm text-gray-500">Automatically generate and send</p>
-                          </div>
-                          <Switch
-                            checked={reportForm.isScheduled}
-                            onCheckedChange={(checked) => setReportForm({ ...reportForm, isScheduled: checked })}
-                          />
-                        </div>
-
-                        {reportForm.isScheduled && (
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <Label>Frequency</Label>
-                              <Select
-                                value={reportForm.frequency}
-                                onValueChange={(value) => setReportForm({ ...reportForm, frequency: value })}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="daily">Daily</SelectItem>
-                                  <SelectItem value="weekly">Weekly</SelectItem>
-                                  <SelectItem value="monthly">Monthly</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label>Recipients (comma-separated emails)</Label>
-                              <Input
-                                placeholder="email1@example.com, email2@example.com"
-                                value={reportForm.recipients}
-                                onChange={(e) => setReportForm({ ...reportForm, recipients: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                        )}
-                      </div>
                     </div>
                   )}
 
-                  {selectedTemplate && (
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-                        Cancel
-                      </Button>
-                      <Button onClick={handleCreateReport}>
-                        Create Report
-                      </Button>
-                    </DialogFooter>
+                  {/* Summary stats */}
+                  {reportData.length > 0 && (
+                    <div className="mt-4 flex items-center gap-4 text-xs text-gray-500">
+                      <span className="flex items-center gap-1">
+                        <FileSpreadsheet className="h-3.5 w-3.5" />
+                        {reportData.length} total records
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5" />
+                        Generated: {new Date().toLocaleDateString('en-GB')}
+                      </span>
+                    </div>
                   )}
-                </DialogContent>
-              </Dialog>
-            </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
-      </header>
-
-      <div className="p-6">
-        {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Saved Reports</p>
-                  <p className="text-2xl font-bold">12</p>
-                </div>
-                <FileText className="h-8 w-8 text-blue-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Scheduled</p>
-                  <p className="text-2xl font-bold">8</p>
-                </div>
-                <Calendar className="h-8 w-8 text-green-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Generated This Month</p>
-                  <p className="text-2xl font-bold">24</p>
-                </div>
-                <Download className="h-8 w-8 text-purple-500" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-600">Next Scheduled</p>
-                  <p className="text-2xl font-bold">2h</p>
-                </div>
-                <Clock className="h-8 w-8 text-yellow-500" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Main Content */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="reports">
-              <FileText className="h-4 w-4 mr-2" />
-              My Reports
-            </TabsTrigger>
-            <TabsTrigger value="templates">
-              <Copy className="h-4 w-4 mr-2" />
-              Templates
-            </TabsTrigger>
-            <TabsTrigger value="history">
-              <Clock className="h-4 w-4 mr-2" />
-              History
-            </TabsTrigger>
-          </TabsList>
-
-          {/* My Reports Tab */}
-          <TabsContent value="reports">
-            <Card>
-              <CardHeader>
-                <CardTitle>Saved Reports</CardTitle>
-                <CardDescription>Your configured reports and schedules</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {mockReports.map((report) => (
-                    <div key={report.id} className="border rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="flex items-center space-x-2">
-                            <h3 className="font-semibold">{report.name}</h3>
-                            <Badge variant={report.format === 'pdf' ? 'default' : 'secondary'}>
-                              {report.format.toUpperCase()}
-                            </Badge>
-                          </div>
-                          <p className="text-sm text-gray-500 mt-1">{report.description}</p>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          <Button variant="outline" size="sm" onClick={() => handleGenerateReport(report)}>
-                            <Download className="h-4 w-4 mr-2" />
-                            Download
-                          </Button>
-                          <Button variant="ghost" size="icon">
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button variant="ghost" size="icon">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-sm">
-                        <div className="flex items-center space-x-4">
-                          {report.isScheduled ? (
-                            <>
-                              <span className="flex items-center text-green-600">
-                                <Play className="h-3 w-3 mr-1" />
-                                Scheduled ({report.frequency})
-                              </span>
-                              <span className="text-gray-500">
-                                Next: {report.nextRunAt ? formatDate(report.nextRunAt) : 'N/A'}
-                              </span>
-                            </>
-                          ) : (
-                            <span className="flex items-center text-gray-500">
-                              <Pause className="h-3 w-3 mr-1" />
-                              Not scheduled
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-gray-500">
-                          Last run: {formatDate(report.lastRunAt)}
-                        </span>
-                      </div>
-
-                      {report.isScheduled && report.recipients.length > 0 && (
-                        <div className="mt-3 pt-3 border-t">
-                          <div className="flex items-center text-sm text-gray-500">
-                            <Mail className="h-4 w-4 mr-2" />
-                            Recipients: {report.recipients.join(', ')}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Templates Tab */}
-          <TabsContent value="templates">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {reportTemplates.map((template) => {
-                const IconComponent = template.icon;
-                return (
-                  <Card key={template.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-6">
-                      <div className="flex items-center space-x-3 mb-3">
-                        <div className="p-2 bg-gray-100 rounded-lg">
-                          <IconComponent className="h-6 w-6 text-gray-600" />
-                        </div>
-                        <h3 className="font-semibold">{template.name}</h3>
-                      </div>
-                      <p className="text-sm text-gray-500 mb-4">{template.description}</p>
-                      {template.metrics.length > 0 && (
-                        <div className="mb-4">
-                          <p className="text-xs font-medium text-gray-500 mb-2">Includes:</p>
-                          <div className="flex flex-wrap gap-1">
-                            {template.metrics.slice(0, 3).map((metric) => (
-                              <Badge key={metric} variant="outline" className="text-xs">
-                                {metric}
-                              </Badge>
-                            ))}
-                            {template.metrics.length > 3 && (
-                              <Badge variant="outline" className="text-xs">
-                                +{template.metrics.length - 3} more
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                      <Button
-                        className="w-full"
-                        variant="outline"
-                        onClick={() => {
-                          setSelectedTemplate(template.id);
-                          setReportForm({ ...reportForm, reportType: template.id });
-                          setShowCreateDialog(true);
-                        }}
-                      >
-                        Use Template
-                      </Button>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </TabsContent>
-
-          {/* History Tab */}
-          <TabsContent value="history">
-            <Card>
-              <CardHeader>
-                <CardTitle>Report History</CardTitle>
-                <CardDescription>Previously generated reports</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                      <tr>
-                        <th className="text-left p-3 font-medium">Report</th>
-                        <th className="text-left p-3 font-medium">Generated</th>
-                        <th className="text-left p-3 font-medium">Format</th>
-                        <th className="text-left p-3 font-medium">Status</th>
-                        <th className="text-left p-3 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {[
-                        { name: 'Monthly Property Performance', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2), format: 'pdf', status: 'completed' },
-                        { name: 'Agent Performance Report', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3), format: 'excel', status: 'completed' },
-                        { name: 'Financial Summary', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5), format: 'pdf', status: 'completed' },
-                        { name: 'Maintenance Report', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 7), format: 'pdf', status: 'completed' },
-                        { name: 'Marketing Report', date: new Date(Date.now() - 1000 * 60 * 60 * 24 * 10), format: 'excel', status: 'completed' },
-                      ].map((item, index) => (
-                        <tr key={index} className="border-b hover:bg-gray-50">
-                          <td className="p-3 font-medium">{item.name}</td>
-                          <td className="p-3">{formatDate(item.date)}</td>
-                          <td className="p-3">
-                            <Badge variant="outline">
-                              {item.format === 'pdf' ? (
-                                <><File className="h-3 w-3 mr-1" /> PDF</>
-                              ) : (
-                                <><FileSpreadsheet className="h-3 w-3 mr-1" /> Excel</>
-                              )}
-                            </Badge>
-                          </td>
-                          <td className="p-3">
-                            <Badge className="bg-green-100 text-green-800">
-                              {item.status}
-                            </Badge>
-                          </td>
-                          <td className="p-3">
-                            <Button variant="ghost" size="sm">
-                              <Download className="h-4 w-4 mr-2" />
-                              Download
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </div>
     </div>
   );
 }

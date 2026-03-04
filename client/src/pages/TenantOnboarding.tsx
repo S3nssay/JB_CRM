@@ -61,7 +61,7 @@ interface TenantFormData {
     agreesToTerms: boolean;
 }
 
-type WizardStep = 'personal' | 'employment' | 'right-to-rent' | 'references' | 'guarantor' | 'documents';
+type WizardStep = 'personal' | 'employment' | 'right-to-rent' | 'references' | 'guarantor' | 'documents' | 'payment-setup';
 
 const steps: { key: WizardStep; label: string; icon: typeof User }[] = [
     { key: 'personal', label: 'Personal', icon: User },
@@ -69,7 +69,8 @@ const steps: { key: WizardStep; label: string; icon: typeof User }[] = [
     { key: 'right-to-rent', label: 'Right to Rent', icon: Home },
     { key: 'references', label: 'References', icon: Users },
     { key: 'guarantor', label: 'Guarantor', icon: Shield },
-    { key: 'documents', label: 'Documents', icon: FileCheck }
+    { key: 'documents', label: 'Documents', icon: FileCheck },
+    { key: 'payment-setup', label: 'Payment', icon: CreditCard }
 ];
 
 export default function TenantOnboarding() {
@@ -164,6 +165,8 @@ export default function TenantOnboarding() {
                 return !formData.requiresGuarantor || (formData.guarantorName && formData.guarantorEmail);
             case 'documents':
                 return formData.idDocumentUploaded && formData.agreesToTerms;
+            case 'payment-setup':
+                return true; // Payment setup is optional
             default:
                 return true;
         }
@@ -598,6 +601,77 @@ export default function TenantOnboarding() {
                                     <p className="text-sm text-muted-foreground">
                                         I confirm all information provided is accurate and I consent to
                                         referencing checks being carried out.
+                                    </p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
+
+                {currentStep === 'payment-setup' && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <CreditCard className="h-5 w-5" />
+                                Payment Setup
+                            </CardTitle>
+                            <CardDescription>
+                                Choose how rent payments will be collected (optional - can be set up later)
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors bg-green-50/50">
+                                <div className="flex items-start gap-4">
+                                    <div className="p-2 bg-green-100 rounded-lg mt-1">
+                                        <CreditCard className="h-5 w-5 text-green-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-semibold">Direct Debit (Recommended)</p>
+                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Recommended</span>
+                                        </div>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            Set up a Direct Debit mandate via GoCardless. Rent is automatically collected on the due date each month.
+                                            The tenant will be redirected to authorise the mandate with their bank.
+                                        </p>
+                                        <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                                            <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Automatic collection on due date</li>
+                                            <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Protected by Direct Debit Guarantee</li>
+                                            <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Reduces arrears risk</li>
+                                        </ul>
+                                        <p className="text-xs text-muted-foreground mt-3 italic">
+                                            Note: Direct Debit setup will be completed after tenant record is created. You can set it up from the Direct Debits management page.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="border rounded-lg p-4">
+                                <div className="flex items-start gap-4">
+                                    <div className="p-2 bg-blue-100 rounded-lg mt-1">
+                                        <ArrowRight className="h-5 w-5 text-blue-600" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <p className="font-semibold">Manual Bank Transfer</p>
+                                        <p className="text-sm text-muted-foreground mt-1">
+                                            Tenant pays by standing order or manual bank transfer. Payments are reconciled via bank statement import.
+                                        </p>
+                                        <div className="mt-3 p-3 bg-muted/50 rounded text-sm">
+                                            <p className="font-medium mb-1">Company Bank Details:</p>
+                                            <p>Account Name: John Barclay Estates Ltd</p>
+                                            <p>Sort Code: XX-XX-XX</p>
+                                            <p>Account Number: XXXXXXXX</p>
+                                            <p className="text-xs text-muted-foreground mt-1">Reference: Tenant name + property address</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-3 border rounded-lg bg-yellow-50/50 border-yellow-200">
+                                <div className="flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4 text-yellow-600" />
+                                    <p className="text-sm text-yellow-800">
+                                        This step is optional. Payment setup can be configured later from the tenant's profile or the Direct Debits page.
                                     </p>
                                 </div>
                             </div>

@@ -6,9 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
-  Building2, Users, Home, Plus, Eye, Edit, Trash2, Bell,
-  Search, Phone, Mail, CreditCard, LogOut, ArrowLeft,
-  Loader2, Building, UserCircle, BanknoteIcon, MessageCircle
+  Building2, Users, Home, Plus, Eye, Edit, Trash2,
+  Search, Phone, Mail, CreditCard,
+  Loader2, Building, UserCircle, User, MessageCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -51,6 +51,7 @@ export default function LandlordManagement() {
   const { toast } = useToast();
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'individual' | 'corporate'>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedLandlord, setSelectedLandlord] = useState<Landlord | null>(null);
@@ -158,11 +159,15 @@ export default function LandlordManagement() {
   };
 
   // Filter landlords
-  const filteredLandlords = landlords.filter((l: Landlord) =>
-    l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.mobile?.includes(searchTerm)
-  );
+  const filteredLandlords = landlords.filter((l: Landlord) => {
+    const matchesSearch = !searchTerm ||
+      l.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      l.mobile?.includes(searchTerm);
+    const matchesType = typeFilter === 'all' ||
+      (typeFilter === 'corporate' ? l.landlordType === 'corporate' : l.landlordType !== 'corporate');
+    return matchesSearch && matchesType;
+  });
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -182,227 +187,212 @@ export default function LandlordManagement() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center">
-              <Button variant="ghost" size="icon" onClick={() => setLocation('/crm/dashboard')}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <Building2 className="h-8 w-8 text-[#791E75] ml-2 mr-3" />
-              <h1 className="text-xl font-semibold">Landlord Management</h1>
-            </div>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold flex items-center gap-2">
+          <Building2 className="h-5 w-5 text-[#791E75]" />
+          Landlord Management
+        </h1>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => setShowAddDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Landlord
+          </Button>
+        </div>
+      </div>
 
-            <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-700">{user?.fullName}</span>
-                <Button variant="ghost" size="icon" onClick={handleLogout}>
-                  <LogOut className="h-5 w-5" />
-                </Button>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card
+          className={`cursor-pointer transition-all ${typeFilter === 'all' ? 'ring-2 ring-[#791E75] shadow-md' : 'hover:shadow-md'}`}
+          onClick={() => setTypeFilter('all')}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Landlords</p>
+                <p className="text-2xl font-bold mt-2">{landlords.length}</p>
+              </div>
+              <div className="p-3 rounded-full bg-[#791E75]">
+                <Users className="h-6 w-6 text-white" />
               </div>
             </div>
-          </div>
-        </div>
-      </header>
+          </CardContent>
+        </Card>
 
-      <main className="p-6">
-        <div className="space-y-6">
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Total Landlords</p>
-                    <p className="text-2xl font-bold mt-2">{landlords.length}</p>
-                  </div>
-                  <div className="p-3 rounded-full bg-[#791E75]">
-                    <Users className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Active</p>
-                    <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) => l.status === 'active').length}
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-full bg-green-500">
-                    <UserCircle className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">With Bank Details</p>
-                    <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) => l.bankAccountNumber).length}
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-full bg-[#F8B324]">
-                    <BanknoteIcon className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">Corporate</p>
-                    <p className="text-2xl font-bold mt-2">
-                      {landlords.filter((l: Landlord) => l.landlordType === 'corporate').length}
-                    </p>
-                  </div>
-                  <div className="p-3 rounded-full bg-purple-500">
-                    <Building className="h-6 w-6 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Search and Add */}
-          <div className="flex justify-between items-center flex-wrap gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Search landlords by name, email, or phone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Active</p>
+                <p className="text-2xl font-bold mt-2">
+                  {landlords.filter((l: Landlord) => l.status === 'active').length}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-green-500">
+                <UserCircle className="h-6 w-6 text-white" />
+              </div>
             </div>
-            <Button onClick={() => setShowAddDialog(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Landlord
-            </Button>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* Landlords Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Landlords Directory</CardTitle>
-              <CardDescription>Manage all landlords and their property portfolios</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="flex justify-center items-center h-64">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#791E75]" />
-                </div>
-              ) : filteredLandlords.length === 0 ? (
-                <div className="text-center py-12">
-                  <Users className="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No landlords found</h3>
-                  <p className="text-gray-500 mb-4">
-                    {landlords.length === 0 ? 'Add your first landlord to get started' : 'Try adjusting your search'}
-                  </p>
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Bank Details</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredLandlords.map((landlord: Landlord) => (
-                      <TableRow key={landlord.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-[#791E75] flex items-center justify-center text-white font-semibold">
-                              {landlord.name?.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                              <Link href={`/crm/landlords/${landlord.id}`}>
-                                <p className="font-medium text-[#791E75] hover:underline cursor-pointer">{landlord.name}</p>
-                              </Link>
-                              {landlord.landlordType === 'corporate' && (
-                                <Badge variant="outline" className="text-xs">Corporate</Badge>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="space-y-1">
-                            {landlord.email && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <Mail className="h-3 w-3 text-gray-400" />
-                                <span>{landlord.email}</span>
-                              </div>
-                            )}
-                            {landlord.mobile && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <Phone className="h-3 w-3 text-gray-400" />
-                                <span>{landlord.mobile}</span>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {landlord.bankAccountNumber ? (
-                            <div className="space-y-1 text-sm">
-                              <div className="flex items-center gap-2">
-                                <CreditCard className="h-3 w-3 text-gray-400" />
-                                <span>****{landlord.bankAccountNumber?.slice(-4)}</span>
-                              </div>
-                              {landlord.bankSortCode && (
-                                <span className="text-gray-500">{landlord.bankSortCode}</span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">Not provided</span>
+        <Card
+          className={`cursor-pointer transition-all ${typeFilter === 'individual' ? 'ring-2 ring-[#F8B324] shadow-md' : 'hover:shadow-md'}`}
+          onClick={() => setTypeFilter('individual')}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Individual</p>
+                <p className="text-2xl font-bold mt-2">
+                  {landlords.filter((l: Landlord) => l.landlordType !== 'corporate').length}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-[#F8B324]">
+                <User className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card
+          className={`cursor-pointer transition-all ${typeFilter === 'corporate' ? 'ring-2 ring-purple-500 shadow-md' : 'hover:shadow-md'}`}
+          onClick={() => setTypeFilter('corporate')}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Corporate</p>
+                <p className="text-2xl font-bold mt-2">
+                  {landlords.filter((l: Landlord) => l.landlordType === 'corporate').length}
+                </p>
+              </div>
+              <div className="p-3 rounded-full bg-purple-500">
+                <Building className="h-6 w-6 text-white" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <Input
+          placeholder="Search landlords by name, email, or phone..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      {/* Landlords Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Landlords Directory</CardTitle>
+          <CardDescription>Manage all landlords and their property portfolios</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center items-center h-64">
+              <Loader2 className="h-8 w-8 animate-spin text-[#791E75]" />
+            </div>
+          ) : filteredLandlords.length === 0 ? (
+            <div className="text-center py-12">
+              <Users className="h-12 w-12 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No landlords found</h3>
+              <p className="text-gray-500 mb-4">
+                {landlords.length === 0 ? 'Add your first landlord to get started' : 'Try adjusting your search'}
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Bank Details</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredLandlords.map((landlord: Landlord) => (
+                  <TableRow key={landlord.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#791E75] flex items-center justify-center text-white font-semibold">
+                          {landlord.name?.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <Link href={`/crm/landlords/${landlord.id}`}>
+                            <p className="font-medium text-[#791E75] hover:underline cursor-pointer">{landlord.name}</p>
+                          </Link>
+                          {landlord.landlordType === 'corporate' && (
+                            <Badge variant="outline" className="text-xs">Corporate</Badge>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={landlord.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
-                            {landlord.status === 'active' ? 'Active' : 'Inactive'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon" onClick={() => handleEdit(landlord)}>
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setLocation(`/crm/landlords/${landlord.id}/properties`)}>
-                              <Home className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => setLocation(`/crm/communications?landlordId=${landlord.id}`)} title="Communication History">
-                              <MessageCircle className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(landlord.id)}>
-                              <Trash2 className="h-4 w-4 text-red-500" />
-                            </Button>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {landlord.email && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Mail className="h-3 w-3 text-gray-400" />
+                            <span>{landlord.email}</span>
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </main>
+                        )}
+                        {landlord.mobile && (
+                          <div className="flex items-center gap-2 text-sm">
+                            <Phone className="h-3 w-3 text-gray-400" />
+                            <span>{landlord.mobile}</span>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {landlord.bankAccountNumber ? (
+                        <div className="space-y-1 text-sm">
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-3 w-3 text-gray-400" />
+                            <span>****{landlord.bankAccountNumber?.slice(-4)}</span>
+                          </div>
+                          {landlord.bankSortCode && (
+                            <span className="text-gray-500">{landlord.bankSortCode}</span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400">Not provided</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={landlord.status === 'active' ? 'bg-green-500' : 'bg-gray-500'}>
+                        {landlord.status === 'active' ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="icon" onClick={() => handleEdit(landlord)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setLocation(`/crm/landlords/${landlord.id}/properties`)}>
+                          <Home className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setLocation(`/crm/communications?landlordId=${landlord.id}`)} title="Communication History">
+                          <MessageCircle className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(landlord.id)}>
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add Landlord Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>

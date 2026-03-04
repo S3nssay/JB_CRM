@@ -1,8 +1,8 @@
 /**
  * Email Sender Service
  *
- * Handles sending emails via Microsoft Graph API.
- * Manages draft creation, sending, and tracking.
+ * Handles sending emails via Microsoft Graph API or SMTP.
+ * Routes to the correct transport based on connection provider.
  */
 
 import { db } from '../../db';
@@ -11,11 +11,13 @@ import {
   sentEmails,
   InsertSentEmail,
   SentEmail,
+  EmailConnection,
 } from '@shared/schema';
 import { eq } from 'drizzle-orm';
 import { graphAuthService } from '../microsoft/graphAuthService';
 import { createGraphClient, SendEmailOptions } from '../microsoft/graphApiClient';
 import { emailJobQueue } from './jobQueue';
+import { smtpSender } from './smtpTransport';
 
 export interface SendEmailRequest {
   connectionId: number;
@@ -128,7 +130,8 @@ export class EmailSender {
   }
 
   /**
-   * Sends a queued email immediately (called by worker)
+   * Sends a queued email immediately (called by worker).
+   * Routes to Graph API or SMTP based on connection provider.
    */
   async sendQueuedEmail(sentEmailId: number): Promise<SendEmailResult> {
     try {
@@ -170,29 +173,112 @@ export class EmailSender {
         .set({ status: 'sending', updatedAt: new Date() })
         .where(eq(sentEmails.id, sentEmailId));
 
-      // Get valid access token
-      const tokenResult = await graphAuthService.getValidAccessToken(
-        connection.accessToken,
-        connection.refreshToken,
-        connection.tokenExpiresAt,
-        connection.tenantId
-      );
-
-      // Update tokens if refreshed
-      if (tokenResult.needsUpdate) {
-        await db
-          .update(emailConnections)
-          .set({
-            accessToken: tokenResult.newAccessToken!,
-            refreshToken: tokenResult.newRefreshToken!,
-            tokenExpiresAt: tokenResult.newExpiresAt!,
-            updatedAt: new Date(),
-          })
-          .where(eq(emailConnections.id, connection.id));
+      // Branch on provider
+      if (connection.provider === 'smtp') {
+        return this.sendViaSmtp(sentEmailId, sentEmail, connection);
+      } else {
+        return this.sendViaGraph(sentEmailId, sentEmail, connection);
       }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Failed to send email ${sentEmailId}:`, errorMessage);
+      await this.markSendFailed(sentEmailId, errorMessage);
+      return { success: false, error: errorMessage };
+    }
+  }
 
-      // Prepare email options
-      const sendOptions: SendEmailOptions = {
+  /**
+   * Send via Microsoft Graph API
+   */
+  private async sendViaGraph(
+    sentEmailId: number,
+    sentEmail: SentEmail,
+    connection: EmailConnection
+  ): Promise<SendEmailResult> {
+    // Get valid access token
+    const tokenResult = await graphAuthService.getValidAccessToken(
+      connection.accessToken!,
+      connection.refreshToken!,
+      connection.tokenExpiresAt!,
+      connection.tenantId!
+    );
+
+    // Update tokens if refreshed
+    if (tokenResult.needsUpdate) {
+      await db
+        .update(emailConnections)
+        .set({
+          accessToken: tokenResult.newAccessToken!,
+          refreshToken: tokenResult.newRefreshToken!,
+          tokenExpiresAt: tokenResult.newExpiresAt!,
+          updatedAt: new Date(),
+        })
+        .where(eq(emailConnections.id, connection.id));
+    }
+
+    // Prepare email options
+    const sendOptions: SendEmailOptions = {
+      to: sentEmail.toAddresses,
+      cc: sentEmail.ccAddresses || undefined,
+      bcc: sentEmail.bccAddresses || undefined,
+      subject: sentEmail.subject,
+      bodyText: sentEmail.bodyText || undefined,
+      bodyHtml: sentEmail.bodyHtml || undefined,
+      importance: sentEmail.importance as 'low' | 'normal' | 'high' | undefined,
+      replyTo: sentEmail.replyTo || undefined,
+      saveToSentItems: true,
+    };
+
+    // Add attachments if present
+    if (sentEmail.attachments && Array.isArray(sentEmail.attachments)) {
+      sendOptions.attachments = (sentEmail.attachments as any[]).map((a) => ({
+        name: a.name,
+        contentType: a.contentType,
+        contentBytes: a.contentBytes,
+      }));
+    }
+
+    // Send via Graph API
+    const graphClient = createGraphClient(tokenResult.accessToken);
+    await graphClient.sendEmail(sendOptions);
+
+    // Mark as sent
+    await db
+      .update(sentEmails)
+      .set({
+        status: 'sent',
+        sentAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(sentEmails.id, sentEmailId));
+
+    console.log(`Successfully sent email ${sentEmailId} via Graph to ${sentEmail.toAddresses.join(', ')}`);
+    return { success: true, sentEmailId };
+  }
+
+  /**
+   * Send via SMTP
+   */
+  private async sendViaSmtp(
+    sentEmailId: number,
+    sentEmail: SentEmail,
+    connection: EmailConnection
+  ): Promise<SendEmailResult> {
+    if (!connection.smtpHost || !connection.smtpUser || !connection.smtpPassword) {
+      await this.markSendFailed(sentEmailId, 'SMTP credentials not configured');
+      return { success: false, error: 'SMTP credentials not configured' };
+    }
+
+    const result = await smtpSender.sendEmail(
+      {
+        smtpHost: connection.smtpHost,
+        smtpPort: connection.smtpPort || 587,
+        smtpUser: connection.smtpUser,
+        smtpPassword: connection.smtpPassword,
+        smtpSecure: connection.smtpSecure || false,
+        mailboxUpn: connection.mailboxUpn,
+      },
+      {
         to: sentEmail.toAddresses,
         cc: sentEmail.ccAddresses || undefined,
         bcc: sentEmail.bccAddresses || undefined,
@@ -201,41 +287,30 @@ export class EmailSender {
         bodyHtml: sentEmail.bodyHtml || undefined,
         importance: sentEmail.importance as 'low' | 'normal' | 'high' | undefined,
         replyTo: sentEmail.replyTo || undefined,
-        saveToSentItems: true,
-      };
-
-      // Add attachments if present
-      if (sentEmail.attachments && Array.isArray(sentEmail.attachments)) {
-        sendOptions.attachments = (sentEmail.attachments as any[]).map((a) => ({
-          name: a.name,
-          contentType: a.contentType,
-          contentBytes: a.contentBytes,
-        }));
+        inReplyTo: sentEmail.inReplyTo || undefined,
+        attachments: sentEmail.attachments && Array.isArray(sentEmail.attachments)
+          ? (sentEmail.attachments as any[]).map((a) => ({
+              name: a.name,
+              contentType: a.contentType,
+              contentBytes: a.contentBytes,
+            }))
+          : undefined,
       }
+    );
 
-      // Send via Graph API
-      const graphClient = createGraphClient(tokenResult.accessToken);
-      await graphClient.sendEmail(sendOptions);
+    // Mark as sent and store the SMTP message ID
+    await db
+      .update(sentEmails)
+      .set({
+        status: 'sent',
+        sentAt: new Date(),
+        internetMessageId: result.messageId,
+        updatedAt: new Date(),
+      })
+      .where(eq(sentEmails.id, sentEmailId));
 
-      // Mark as sent
-      await db
-        .update(sentEmails)
-        .set({
-          status: 'sent',
-          sentAt: new Date(),
-          updatedAt: new Date(),
-        })
-        .where(eq(sentEmails.id, sentEmailId));
-
-      console.log(`Successfully sent email ${sentEmailId} to ${sentEmail.toAddresses.join(', ')}`);
-
-      return { success: true, sentEmailId };
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`Failed to send email ${sentEmailId}:`, errorMessage);
-      await this.markSendFailed(sentEmailId, errorMessage);
-      return { success: false, error: errorMessage };
-    }
+    console.log(`Successfully sent email ${sentEmailId} via SMTP to ${sentEmail.toAddresses.join(', ')}`);
+    return { success: true, sentEmailId };
   }
 
   /**

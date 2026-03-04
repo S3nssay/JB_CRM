@@ -873,9 +873,11 @@ export default function AreaPageTemplate({
           <p className="text-purple-100 mb-6 text-lg leading-relaxed max-w-3xl mx-auto">
             We specialise in {areaName} and surrounding postcodes. Get in touch for off-market opportunities, school catchment advice, and tailored buy-to-let projections.
           </p>
-          <Button className="bg-[#F8B324] text-black 500 hover:bg-[#F8B324] text-black 600 text-black font-bold px-8 py-3 text-lg">
-            Contact John Barclay Estate & Management
-          </Button>
+          <a href="/contact">
+            <Button className="bg-[#F8B324] text-black 500 hover:bg-[#F8B324] text-black 600 text-black font-bold px-8 py-3 text-lg">
+              Contact Us
+            </Button>
+          </a>
           <p className="text-purple-200 text-sm mt-4">
             Ask us for a street-level pricing report and comparable sales.
           </p>

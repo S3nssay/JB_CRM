@@ -12,12 +12,16 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
     ArrowLeft, User, Phone, Mail, Building, FileText, CreditCard, Shield, Briefcase,
     Upload, Download, CheckCircle2, AlertCircle, Loader2, Home, Key, Calendar,
-    MessageSquare, ExternalLink, Users, Plus, Trash2, Edit, Pencil, Save
+    MessageSquare, ExternalLink, Users, Plus, Trash2, Edit, Pencil, Save, Send
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import { Textarea } from "@/components/ui/textarea";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import ContactTimeline from "@/components/ContactTimeline";
 
 export default function LandlordDetails() {
     const { id } = useParams();
@@ -29,7 +33,7 @@ export default function LandlordDetails() {
     const { data: landlord, isLoading } = useQuery({
         queryKey: ['landlord', id],
         queryFn: async () => {
-            const res = await fetch(`/api/crm/landlords/${id}`);
+            const res = await fetch(`/api/crm/landlords/${id}`, { credentials: 'include' });
             if (!res.ok) throw new Error("Failed to fetch landlord");
             return res.json();
         }
@@ -115,6 +119,115 @@ export default function LandlordDetails() {
             });
         }
     }, [landlord]);
+
+    // Communications state
+    const [showComposeDialog, setShowComposeDialog] = useState(false);
+    const [showLogDialog, setShowLogDialog] = useState(false);
+    const [logType, setLogType] = useState<'note' | 'phone'>('note');
+    const [composeForm, setComposeForm] = useState({ to: '', cc: '', subject: '', body: '' });
+    const [logForm, setLogForm] = useState({ content: '', direction: 'outbound' });
+    const [sendingEmail, setSendingEmail] = useState(false);
+    const [loggingComm, setLoggingComm] = useState(false);
+
+    // Property assignment state
+    const [assignPopoverOpen, setAssignPopoverOpen] = useState(false);
+    const [assigningProperty, setAssigningProperty] = useState(false);
+
+    const { data: unassignedProperties = [] } = useQuery({
+        queryKey: ['unassigned-properties'],
+        queryFn: async () => {
+            const res = await fetch('/api/crm/properties/unassigned', { credentials: 'include' });
+            if (!res.ok) return [];
+            return res.json();
+        },
+    });
+
+    const handleAssignProperty = async (propertyId: number) => {
+        setAssigningProperty(true);
+        try {
+            const res = await fetch(`/api/crm/properties/${propertyId}/assign-landlord`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ landlordId: parseInt(id as string) }),
+            });
+            if (!res.ok) throw new Error('Failed to assign');
+            toast({ title: 'Property Assigned', description: 'Property linked to this landlord.' });
+            setAssignPopoverOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['landlord-properties', id] });
+            queryClient.invalidateQueries({ queryKey: ['unassigned-properties'] });
+        } catch (err) {
+            toast({ title: 'Failed to assign property', variant: 'destructive' });
+        } finally {
+            setAssigningProperty(false);
+        }
+    };
+
+    const handleSendEmail = async () => {
+        if (!composeForm.to || !composeForm.subject) {
+            toast({ title: 'Missing Fields', description: 'To and Subject are required.', variant: 'destructive' });
+            return;
+        }
+        setSendingEmail(true);
+        try {
+            const payload = {
+                category: 'lettings',
+                to: composeForm.to.split(',').map((e: string) => e.trim()).filter(Boolean),
+                cc: composeForm.cc ? composeForm.cc.split(',').map((e: string) => e.trim()).filter(Boolean) : undefined,
+                subject: composeForm.subject,
+                bodyText: composeForm.body,
+                bodyHtml: `<p>${composeForm.body.replace(/\n/g, '<br/>')}</p>`,
+                linkedContactId: parseInt(id as string),
+            };
+            const res = await fetch('/api/email-integration/department-send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify(payload),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.error || 'Failed to send');
+            }
+            toast({ title: 'Email Sent', description: `Sent to ${composeForm.to}` });
+            setShowComposeDialog(false);
+            setComposeForm({ to: '', cc: '', subject: '', body: '' });
+            queryClient.invalidateQueries({ queryKey: ['/api/crm/contact-history', 'landlord', parseInt(id as string)] });
+        } catch (err: any) {
+            toast({ title: 'Send Failed', description: err.message || 'Error', variant: 'destructive' });
+        } finally {
+            setSendingEmail(false);
+        }
+    };
+
+    const handleLogCommunication = async () => {
+        if (!logForm.content.trim()) {
+            toast({ title: 'Content required', variant: 'destructive' });
+            return;
+        }
+        setLoggingComm(true);
+        try {
+            const res = await fetch(`/api/crm/landlords/${id}/communications`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                    type: logType,
+                    direction: logType === 'note' ? 'outbound' : logForm.direction,
+                    content: logForm.content,
+                }),
+            });
+            if (!res.ok) throw new Error('Failed to log');
+            toast({ title: `${logType === 'note' ? 'Note' : 'Call'} logged` });
+            setShowLogDialog(false);
+            setLogForm({ content: '', direction: 'outbound' });
+            queryClient.invalidateQueries({ queryKey: ['/api/crm/contact-history', 'landlord', parseInt(id as string)] });
+        } catch (err) {
+            toast({ title: 'Failed to log', variant: 'destructive' });
+        } finally {
+            setLoggingComm(false);
+        }
+    };
 
     // Mutation to update landlord
     const updateLandlordMutation = useMutation({
@@ -581,6 +694,13 @@ export default function LandlordDetails() {
                                             <Badge variant="secondary" className="ml-2">{beneficialOwners.length}</Badge>
                                         )}
                                     </TabsTrigger>
+                                    <TabsTrigger
+                                        value="communications"
+                                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#791E75] data-[state=active]:bg-transparent px-6"
+                                    >
+                                        <MessageSquare className="h-4 w-4 mr-2" />
+                                        Communications
+                                    </TabsTrigger>
                                 </TabsList>
 
                                 {/* Documents Tab */}
@@ -630,7 +750,50 @@ export default function LandlordDetails() {
                                 <TabsContent value="properties" className="p-6">
                                     <div className="flex justify-between items-center mb-4">
                                         <h4 className="font-medium">Owned Properties</h4>
-                                        <Badge variant="outline">{properties.length} properties</Badge>
+                                        <div className="flex items-center gap-2">
+                                            <Popover open={assignPopoverOpen} onOpenChange={setAssignPopoverOpen}>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" size="sm">
+                                                        <Plus className="h-4 w-4 mr-1" />
+                                                        Assign Property
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-[400px] p-0" align="end">
+                                                    <Command>
+                                                        <CommandInput placeholder="Search unassigned properties..." />
+                                                        <CommandList>
+                                                            <CommandEmpty>No unassigned properties found.</CommandEmpty>
+                                                            <CommandGroup heading="Unassigned Properties">
+                                                                {unassignedProperties.map((prop: any) => (
+                                                                    <CommandItem
+                                                                        key={prop.id}
+                                                                        value={`${prop.addressLine1} ${prop.postcode}`}
+                                                                        onSelect={() => handleAssignProperty(prop.id)}
+                                                                        disabled={assigningProperty}
+                                                                    >
+                                                                        <div>
+                                                                            <div className="font-medium">{prop.addressLine1}</div>
+                                                                            <div className="text-xs text-muted-foreground">
+                                                                                {prop.postcode} {prop.bedrooms ? `• ${prop.bedrooms} bed` : ''} {prop.propertyType || ''}
+                                                                            </div>
+                                                                        </div>
+                                                                    </CommandItem>
+                                                                ))}
+                                                            </CommandGroup>
+                                                        </CommandList>
+                                                    </Command>
+                                                </PopoverContent>
+                                            </Popover>
+                                            <Button
+                                                size="sm"
+                                                className="bg-[#791E75] hover:bg-[#5a1657]"
+                                                onClick={() => setLocation(`/crm/properties/create?type=managed&landlordId=${id}`)}
+                                            >
+                                                <Plus className="h-4 w-4 mr-1" />
+                                                Add Property
+                                            </Button>
+                                            <Badge variant="outline">{properties.length} properties</Badge>
+                                        </div>
                                     </div>
                                     {isLoadingProperties ? (
                                         <div className="text-center py-4">Loading properties...</div>
@@ -941,6 +1104,45 @@ export default function LandlordDetails() {
                                         </>
                                     )}
                                 </TabsContent>
+
+                                {/* Communications Tab */}
+                                <TabsContent value="communications" className="p-6 space-y-4">
+                                    <div className="flex gap-2 mb-4">
+                                        <Button size="sm" onClick={() => {
+                                            setComposeForm({
+                                                to: landlord?.email || '',
+                                                cc: '',
+                                                subject: '',
+                                                body: ''
+                                            });
+                                            setShowComposeDialog(true);
+                                        }}>
+                                            <Mail className="h-4 w-4 mr-1" />
+                                            Compose Email
+                                        </Button>
+                                        <Button size="sm" variant="outline" onClick={() => {
+                                            setLogType('note');
+                                            setLogForm({ content: '', direction: 'outbound' });
+                                            setShowLogDialog(true);
+                                        }}>
+                                            <FileText className="h-4 w-4 mr-1" />
+                                            Log Note
+                                        </Button>
+                                        <Button size="sm" variant="outline" onClick={() => {
+                                            setLogType('phone');
+                                            setLogForm({ content: '', direction: 'outbound' });
+                                            setShowLogDialog(true);
+                                        }}>
+                                            <Phone className="h-4 w-4 mr-1" />
+                                            Log Call
+                                        </Button>
+                                    </div>
+
+                                    <ContactTimeline
+                                        entityType="landlord"
+                                        entityId={parseInt(id as string)}
+                                    />
+                                </TabsContent>
                             </Tabs>
                         </CardContent>
                     </Card>
@@ -1196,6 +1398,97 @@ export default function LandlordDetails() {
                                     Save Changes
                                 </>
                             )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Compose Email Dialog */}
+            <Dialog open={showComposeDialog} onOpenChange={setShowComposeDialog}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Send Email to {landlord?.name}</DialogTitle>
+                        <DialogDescription>Send via lettings department mailbox</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div>
+                            <Label>To</Label>
+                            <Input
+                                value={composeForm.to}
+                                onChange={e => setComposeForm(f => ({ ...f, to: e.target.value }))}
+                                placeholder="recipient@example.com"
+                            />
+                        </div>
+                        <div>
+                            <Label>CC</Label>
+                            <Input
+                                value={composeForm.cc}
+                                onChange={e => setComposeForm(f => ({ ...f, cc: e.target.value }))}
+                                placeholder="cc@example.com"
+                            />
+                        </div>
+                        <div>
+                            <Label>Subject</Label>
+                            <Input
+                                value={composeForm.subject}
+                                onChange={e => setComposeForm(f => ({ ...f, subject: e.target.value }))}
+                                placeholder="Email subject"
+                            />
+                        </div>
+                        <div>
+                            <Label>Message</Label>
+                            <Textarea
+                                value={composeForm.body}
+                                onChange={e => setComposeForm(f => ({ ...f, body: e.target.value }))}
+                                placeholder="Write your message..."
+                                rows={10}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowComposeDialog(false)}>Cancel</Button>
+                        <Button onClick={handleSendEmail} disabled={sendingEmail} className="bg-[#791E75] hover:bg-[#5a1657]">
+                            {sendingEmail ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Send className="h-4 w-4 mr-1" />}
+                            Send
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Log Note/Call Dialog */}
+            <Dialog open={showLogDialog} onOpenChange={setShowLogDialog}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Log {logType === 'note' ? 'Note' : 'Phone Call'}</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        {logType === 'phone' && (
+                            <div>
+                                <Label>Direction</Label>
+                                <Select value={logForm.direction} onValueChange={v => setLogForm(f => ({ ...f, direction: v }))}>
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="inbound">Inbound</SelectItem>
+                                        <SelectItem value="outbound">Outbound</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                        <div>
+                            <Label>{logType === 'note' ? 'Note Content' : 'Call Summary'}</Label>
+                            <Textarea
+                                value={logForm.content}
+                                onChange={e => setLogForm(f => ({ ...f, content: e.target.value }))}
+                                placeholder={logType === 'note' ? 'Enter note...' : 'Summarize the call...'}
+                                rows={5}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setShowLogDialog(false)}>Cancel</Button>
+                        <Button onClick={handleLogCommunication} disabled={loggingComm} className="bg-[#791E75] hover:bg-[#5a1657]">
+                            {loggingComm ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Save className="h-4 w-4 mr-1" />}
+                            Save
                         </Button>
                     </DialogFooter>
                 </DialogContent>

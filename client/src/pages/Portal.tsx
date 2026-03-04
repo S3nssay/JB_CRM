@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import {
   Building2, Users, Home, Wrench, Calendar, BarChart3,
-  Settings, LogOut, Bell, MessageSquare, Share2, DollarSign,
+  Settings, LogOut, Bell, MessageSquare, Share2, PoundSterling,
   FileText, Shield, GitBranch, Mic, Globe, Mail, Plus,
   Eye, CreditCard, Key, User, ChevronRight
 } from 'lucide-react';
@@ -164,7 +164,7 @@ const menuConfig = {
     {
       category: 'Services',
       items: [
-        { label: 'Get Valuation', icon: DollarSign, path: '/valuation', description: 'Free property valuation' },
+        { label: 'Get Valuation', icon: PoundSterling, path: '/valuation', description: 'Free property valuation' },
       ]
     },
     {

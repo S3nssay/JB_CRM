@@ -216,6 +216,9 @@ const statusStyles: Record<string, { variant: "default" | "secondary" | "destruc
   qualified: { variant: "default", className: "bg-purple-500" },
   viewing_booked: { variant: "default", className: "bg-amber-500" },
   offer_made: { variant: "default", className: "bg-orange-500" },
+  under_offer: { variant: "default", className: "bg-indigo-500" },
+  contracts_exchanged: { variant: "default", className: "bg-emerald-600" },
+  completed: { variant: "default", className: "bg-green-700" },
   converted: { variant: "default", className: "bg-green-500" },
   lost: { variant: "destructive", className: "" },
   archived: { variant: "secondary", className: "" },
@@ -401,18 +404,24 @@ export default function LeadManagement() {
     }
   });
 
-  // Convert to tenant mutation
+  // Convert to tenant or buyer mutation
+  const [showConvertDialog, setShowConvertDialog] = useState(false);
   const convertMutation = useMutation({
-    mutationFn: async (leadId: number) => {
+    mutationFn: async ({ leadId, convertAs }: { leadId: number; convertAs: 'tenant' | 'buyer' }) => {
       const response = await fetch(`/api/crm/leads/${leadId}/convert`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ convertAs })
       });
       if (!response.ok) throw new Error('Failed to convert lead');
       return response.json();
     },
     onSuccess: (data) => {
-      toast({ title: 'Success', description: `Lead converted to tenant #${data.tenantId}` });
+      const msg = data.convertedAs === 'buyer'
+        ? 'Lead converted to buyer'
+        : `Lead converted to tenant #${data.tenant?.id}`;
+      toast({ title: 'Success', description: msg });
+      setShowConvertDialog(false);
       setShowDetailDialog(false);
       setSelectedLead(null);
       refetch();
@@ -838,15 +847,22 @@ export default function LeadManagement() {
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {lead.status !== 'converted' && (
-                                <DropdownMenuItem onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (confirm('Convert this lead to a tenant?')) {
-                                    convertMutation.mutate(lead.id);
-                                  }
-                                }}>
-                                  <UserCheck className="mr-2 h-4 w-4" />
-                                  Convert to Tenant
-                                </DropdownMenuItem>
+                                <>
+                                  <DropdownMenuItem onClick={(e) => {
+                                    e.stopPropagation();
+                                    convertMutation.mutate({ leadId: lead.id, convertAs: 'tenant' });
+                                  }}>
+                                    <UserCheck className="mr-2 h-4 w-4" />
+                                    Convert to Tenant
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={(e) => {
+                                    e.stopPropagation();
+                                    convertMutation.mutate({ leadId: lead.id, convertAs: 'buyer' });
+                                  }}>
+                                    <UserCheck className="mr-2 h-4 w-4" />
+                                    Convert to Buyer
+                                  </DropdownMenuItem>
+                                </>
                               )}
                               <DropdownMenuItem
                                 className="text-red-600"
@@ -1148,18 +1164,26 @@ export default function LeadManagement() {
                   Log Communication
                 </Button>
                 {selectedLead?.status !== 'converted' && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      if (confirm('Convert this lead to a tenant?')) {
-                        convertMutation.mutate(selectedLead!.id);
-                      }
-                    }}
-                  >
-                    <UserCheck className="h-4 w-4 mr-2" />
-                    Convert
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => convertMutation.mutate({ leadId: selectedLead!.id, convertAs: 'tenant' })}
+                      disabled={convertMutation.isPending}
+                    >
+                      <UserCheck className="h-4 w-4 mr-2" />
+                      Convert to Tenant
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => convertMutation.mutate({ leadId: selectedLead!.id, convertAs: 'buyer' })}
+                      disabled={convertMutation.isPending}
+                    >
+                      <UserCheck className="h-4 w-4 mr-2" />
+                      Convert to Buyer
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>
@@ -1302,6 +1326,13 @@ export default function LeadManagement() {
                                 <SelectItem value="qualified">Qualified</SelectItem>
                                 <SelectItem value="viewing_booked">Viewing Booked</SelectItem>
                                 <SelectItem value="offer_made">Offer Made</SelectItem>
+                                {(leadDetails?.leadType === 'purchase' || leadDetails?.leadType === 'both') && (
+                                  <>
+                                    <SelectItem value="under_offer">Under Offer</SelectItem>
+                                    <SelectItem value="contracts_exchanged">Contracts Exchanged</SelectItem>
+                                    <SelectItem value="completed">Completed</SelectItem>
+                                  </>
+                                )}
                                 <SelectItem value="converted">Converted</SelectItem>
                                 <SelectItem value="lost">Lost</SelectItem>
                                 <SelectItem value="archived">Archived</SelectItem>

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
@@ -12,9 +13,9 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import {
   ArrowLeft, ArrowRight, Wand2, Save, Sparkles, Upload,
-  Home, MapPin, Bed, Bath, Square, Check,
+  Home, MapPin, Bed, Bath, Square, Check, User,
   Plus, X, Image, Trash2, Loader2, CheckCircle2, Building2,
-  Link as LinkIcon, Globe
+  Link as LinkIcon, Globe, PoundSterling, Key
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
@@ -43,19 +44,38 @@ interface ParsedProperty {
 export default function PropertyCreate() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  
+
+  // Read query params to pre-configure property type and landlord
+  const params = new URLSearchParams(window.location.search);
+  const paramType = params.get('type'); // managed, res_sale, res_rental, com_sale, com_rental
+  const paramLandlordId = params.get('landlordId');
+
+  const { data: linkedLandlord } = useQuery({
+    queryKey: ['landlord', paramLandlordId],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/landlords/${paramLandlordId}`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!paramLandlordId,
+  });
+
   const [currentStep, setCurrentStep] = useState<WizardStep>('address');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   const [addressInput, setAddressInput] = useState('');
   const [parsedData, setParsedData] = useState<ParsedProperty | null>(null);
   const [features, setFeatures] = useState<string[]>([]);
   const [newFeature, setNewFeature] = useState('');
-  
+
   const [price, setPrice] = useState('');
-  const [isRental, setIsRental] = useState<boolean>(false); // false = sale, true = rental
-  const [isResidential, setIsResidential] = useState<boolean>(true);
+  const [isRental, setIsRental] = useState<boolean>(
+    paramType === 'res_rental' || paramType === 'com_rental' || paramType === 'managed'
+  );
+  const [isResidential, setIsResidential] = useState<boolean>(
+    paramType !== 'com_sale' && paramType !== 'com_rental'
+  );
   
   const [images, setImages] = useState<{ file: File; preview: string; isPrimary: boolean }[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -204,7 +224,7 @@ export default function PropertyCreate() {
       // Use isResidential from parsedData if AI detected it, otherwise use the user's selection
       const finalIsResidential = parsedData.isResidential !== undefined ? parsedData.isResidential : isResidential;
 
-      const propertyData = {
+      const propertyData: any = {
         isRental,
         isResidential: finalIsResidential,
         propertyType: parsedData.propertyType || (finalIsResidential ? 'flat' : 'retail'),
@@ -227,7 +247,8 @@ export default function PropertyCreate() {
         images: imageUrls,
         areaId: 1,
         status: 'active',
-        isListed: true  // Mark as listed so it appears on website and CRM dashboard
+        isListed: true,  // Mark as listed so it appears on website and CRM dashboard
+        ...(paramLandlordId ? { landlordId: parseInt(paramLandlordId), isManaged: true } : {}),
       };
 
       await apiRequest('/api/crm/properties', 'POST', propertyData);
@@ -238,7 +259,7 @@ export default function PropertyCreate() {
         description: "The property has been successfully listed.",
       });
 
-      setLocation('/crm/properties');
+      setLocation(paramLandlordId ? `/crm/landlords/${paramLandlordId}` : '/crm/properties');
     } catch (error) {
       toast({
         title: "Failed to create property",
@@ -265,26 +286,19 @@ export default function PropertyCreate() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-background">
-      <div className="bg-white dark:bg-card border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Button 
-                variant="ghost" 
-                size="icon"
-                onClick={() => setLocation('/crm/dashboard')}
-                data-testid="button-back"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <h1 className="text-xl font-semibold">Create New Property</h1>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="p-6 space-y-6">
+      <h1 className="text-xl font-semibold">Create New Property</h1>
 
-      <div className="max-w-3xl mx-auto p-6">
+      {linkedLandlord && (
+        <div className="max-w-3xl mx-auto bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-center gap-2">
+          <User className="h-4 w-4 text-purple-600" />
+          <span className="text-sm">
+            Creating property for landlord: <strong>{linkedLandlord.name}</strong>
+          </span>
+        </div>
+      )}
+
+      <div className="max-w-3xl mx-auto">
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
             {steps.map((step, idx) => (
@@ -335,27 +349,55 @@ export default function PropertyCreate() {
                 </TabsList>
 
                 <TabsContent value="manual" className="space-y-4 mt-4">
-                  {/* Property Category Selection */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <Button
-                      type="button"
-                      variant={isResidential ? 'default' : 'outline'}
-                      className={isResidential ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
-                      onClick={() => setIsResidential(true)}
-                    >
-                      <Home className="mr-2 h-4 w-4" />
-                      Residential
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={!isResidential ? 'default' : 'outline'}
-                      className={!isResidential ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
-                      onClick={() => setIsResidential(false)}
-                    >
-                      <Building2 className="mr-2 h-4 w-4" />
-                      Commercial
-                    </Button>
-                  </div>
+                  {/* Property Category Selection - show Residential/Commercial only if not pre-set from dashboard */}
+                  {paramType && (paramType.startsWith('res') || paramType.startsWith('com') || paramType === 'managed') ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        {isResidential ? 'Residential' : 'Commercial'} Property
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <Button
+                          type="button"
+                          variant={!isRental ? 'default' : 'outline'}
+                          className={!isRental ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                          onClick={() => setIsRental(false)}
+                        >
+                          <PoundSterling className="mr-2 h-4 w-4" />
+                          For Sale
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={isRental ? 'default' : 'outline'}
+                          className={isRental ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                          onClick={() => setIsRental(true)}
+                        >
+                          <Key className="mr-2 h-4 w-4" />
+                          For Rent
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-4">
+                      <Button
+                        type="button"
+                        variant={isResidential ? 'default' : 'outline'}
+                        className={isResidential ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                        onClick={() => setIsResidential(true)}
+                      >
+                        <Home className="mr-2 h-4 w-4" />
+                        Residential
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={!isResidential ? 'default' : 'outline'}
+                        className={!isResidential ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                        onClick={() => setIsResidential(false)}
+                      >
+                        <Building2 className="mr-2 h-4 w-4" />
+                        Commercial
+                      </Button>
+                    </div>
+                  )}
 
                   <Textarea
                     placeholder={!isResidential

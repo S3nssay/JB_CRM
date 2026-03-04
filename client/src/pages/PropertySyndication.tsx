@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
+
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,7 +19,7 @@ import {
   CheckCircle, AlertCircle, Clock, Eye, MessageSquare,
   ExternalLink, Home, Building2, BarChart3, TrendingUp,
   Facebook, Instagram, Twitter, Linkedin, Play, Pause,
-  Trash2, Edit, MoreVertical, Upload, Zap, ArrowLeft
+  Trash2, Edit, MoreVertical, Upload, Zap
 } from 'lucide-react';
 
 // Portal configuration
@@ -303,35 +303,24 @@ export default function PropertySyndication() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/portal">
-                <Button variant="ghost" size="icon" data-testid="button-back-to-portal">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Share2 className="h-8 w-8 text-[#791E75] mr-3" />
-              <h1 className="text-xl font-semibold">Property Syndication</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm" onClick={handleSyncAll}>
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Sync All
-              </Button>
-              <Button size="sm" onClick={() => setShowConnectDialog(true)}>
-                <Plus className="h-4 w-4 mr-2" />
-                Connect Portal
-              </Button>
-            </div>
-          </div>
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold flex items-center gap-2">
+          <Share2 className="h-5 w-5 text-[#791E75]" />
+          Property Syndication
+        </h1>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleSyncAll}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Sync All
+          </Button>
+          <Button size="sm" onClick={() => setShowConnectDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Connect Portal
+          </Button>
         </div>
-      </header>
+      </div>
 
-      <div className="p-6">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <Card>
@@ -433,7 +422,7 @@ export default function PropertySyndication() {
                     <Building2 className="h-12 w-12 mx-auto text-gray-300 mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No properties yet</h3>
                     <p className="text-gray-500 mb-4">Add properties to start syndicating them to portals</p>
-                    <Button onClick={() => window.location.href = '/crm/properties/new'}>
+                    <Button onClick={() => window.location.href = '/crm/properties/create'}>
                       <Plus className="h-4 w-4 mr-2" />
                       Add Property
                     </Button>
@@ -887,7 +876,6 @@ export default function PropertySyndication() {
             </div>
           </TabsContent>
         </Tabs>
-      </div>
 
       {/* Connect Portal Dialog */}
       <Dialog open={showConnectDialog} onOpenChange={setShowConnectDialog}>

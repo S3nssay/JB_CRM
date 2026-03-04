@@ -7,7 +7,8 @@ import { eq, and, desc } from 'drizzle-orm';
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { v4 as uuidv4 } from 'uuid';
-import { randomUUID } from "crypto";
+import { randomUUID, createHmac } from "crypto";
+import { pool } from './db';
 import { lookupAddressesUsingPostcodesIO, getLandRegistryPriceData, calculateOfferPrice, validateUkPostcode, geocodePostcode } from './ukPropertyDataNew';
 import { sendPropertyOfferSMS, PropertyOfferDetails } from './smsService';
 import { sendPropertyOfferWhatsApp, PropertyOfferWhatsAppDetails, sendPropertyDetailsWhatsApp, PropertyDetailsWhatsAppMessage, sendPropertyAlertWhatsApp, PropertyAlertWhatsAppMessage } from './whatsappService';
@@ -171,6 +172,7 @@ function parsePrice(priceStr: string): number {
 
 
 import { crmRouter } from './crmRoutes';
+import { financeRouter } from './financeRoutes';
 import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
 import path from 'path';
 import express from 'express';
@@ -183,6 +185,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register CRM router
   app.use('/api/crm', crmRouter);
+  app.use('/api/crm', financeRouter);
 
   // ==========================================
   // TWILIO VOICE WEBHOOKS (at /api/voice/*)
@@ -654,11 +657,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: 'Property not found' });
       }
 
-      // Only show property if it's published on website (for public website)
-      if (!property.isPublishedWebsite) {
-        return res.status(404).json({ error: 'Property not found' });
-      }
-
       // Add mock area name for display
       const propertyWithAreaName = {
         ...property,
@@ -1056,6 +1054,203 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'Failed to process contact form',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  // ============================================================
+  // Public Lead Capture API (no auth required - for website visitors)
+  // ============================================================
+
+  // Simple rate limiting for lead creation
+  const leadRateLimit = new Map<string, { count: number; resetAt: number }>();
+
+  function checkLeadRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = leadRateLimit.get(ip);
+    if (!entry || now > entry.resetAt) {
+      leadRateLimit.set(ip, { count: 1, resetAt: now + 3600000 }); // 1 hour window
+      return true;
+    }
+    if (entry.count >= 10) return false;
+    entry.count++;
+    return true;
+  }
+
+  function generateLeadToken(leadId: number): string {
+    const secret = process.env.SESSION_SECRET || 'jb-crm-lead-token-secret';
+    return createHmac('sha256', secret).update(leadId.toString()).digest('hex');
+  }
+
+  function verifyLeadToken(leadId: number, token: string): boolean {
+    return generateLeadToken(leadId) === token;
+  }
+
+  // Create a lead from the website
+  app.post('/api/public/leads', async (req: Request, res: Response) => {
+    try {
+      const ip = req.ip || req.socket.remoteAddress || 'unknown';
+      if (!checkLeadRateLimit(ip)) {
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+      }
+
+      const {
+        fullName, email, phone,
+        leadType, sourceDetail,
+        preferredPropertyType, preferredBedrooms, preferredAreas,
+        minBudget, maxBudget, moveInDate,
+        requirements
+      } = req.body;
+
+      if (!fullName) {
+        return res.status(400).json({ error: 'Name is required' });
+      }
+      if (!email && !phone) {
+        return res.status(400).json({ error: 'Email or phone is required' });
+      }
+
+      const result = await pool.query(`
+        INSERT INTO lead (
+          full_name, email, phone,
+          source, source_detail,
+          lead_type, preferred_property_type, preferred_bedrooms, preferred_areas,
+          min_budget, max_budget, move_in_date,
+          requirements,
+          status, priority, last_activity_at
+        ) VALUES (
+          $1, $2, $3,
+          'website', $4,
+          $5, $6, $7, $8,
+          $9, $10, $11,
+          $12,
+          'new', 'medium', NOW()
+        )
+        RETURNING *
+      `, [
+        fullName, email || null, phone || null,
+        sourceDetail || 'website_enquiry_chatbot',
+        leadType || 'rental', preferredPropertyType || null, preferredBedrooms || null, preferredAreas || null,
+        minBudget || null, maxBudget || null, moveInDate || null,
+        requirements || null
+      ]);
+
+      const lead = result.rows[0];
+
+      // Create activity record
+      await pool.query(`
+        INSERT INTO lead_activity (lead_id, activity_type, description)
+        VALUES ($1, 'created', $2)
+      `, [lead.id, `Lead created from website enquiry chatbot (${leadType || 'rental'})`]);
+
+      const leadToken = generateLeadToken(lead.id);
+
+      res.status(201).json({ id: lead.id, fullName: lead.full_name, leadToken });
+    } catch (error) {
+      console.error('Error creating public lead:', error);
+      res.status(500).json({ error: 'Failed to create lead' });
+    }
+  });
+
+  // Update lead preferences (public, token-verified)
+  app.put('/api/public/leads/:id', async (req: Request, res: Response) => {
+    try {
+      const leadId = parseInt(req.params.id);
+      const { leadToken, preferredPropertyType, preferredBedrooms, preferredAreas, minBudget, maxBudget, moveInDate, requirements } = req.body;
+
+      if (isNaN(leadId) || !leadToken || !verifyLeadToken(leadId, leadToken)) {
+        return res.status(403).json({ error: 'Invalid or missing lead token' });
+      }
+
+      await pool.query(`
+        UPDATE lead SET
+          preferred_property_type = COALESCE($2, preferred_property_type),
+          preferred_bedrooms = COALESCE($3, preferred_bedrooms),
+          preferred_areas = COALESCE($4, preferred_areas),
+          min_budget = COALESCE($5, min_budget),
+          max_budget = COALESCE($6, max_budget),
+          move_in_date = COALESCE($7, move_in_date),
+          requirements = COALESCE($8, requirements),
+          last_activity_at = NOW(),
+          updated_at = NOW()
+        WHERE id = $1
+      `, [leadId, preferredPropertyType || null, preferredBedrooms || null, preferredAreas || null, minBudget || null, maxBudget || null, moveInDate || null, requirements || null]);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error updating public lead:', error);
+      res.status(500).json({ error: 'Failed to update lead' });
+    }
+  });
+
+  // Record a property view (public, token-verified)
+  app.post('/api/public/leads/:id/property-views', async (req: Request, res: Response) => {
+    try {
+      const leadId = parseInt(req.params.id);
+      const { leadToken, propertyId } = req.body;
+
+      if (isNaN(leadId) || !leadToken || !verifyLeadToken(leadId, leadToken)) {
+        return res.status(403).json({ error: 'Invalid or missing lead token' });
+      }
+
+      if (!propertyId) {
+        return res.status(400).json({ error: 'Property ID is required' });
+      }
+
+      await pool.query(`
+        INSERT INTO lead_property_view (lead_id, property_id, view_source, requested_more_info)
+        VALUES ($1, $2, 'chatbot', true)
+      `, [leadId, propertyId]);
+
+      await pool.query('UPDATE lead SET last_activity_at = NOW() WHERE id = $1', [leadId]);
+
+      await pool.query(`
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id)
+        VALUES ($1, 'property_viewed', 'Enquired about property via chatbot', $2)
+      `, [leadId, propertyId]);
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error recording property view:', error);
+      res.status(500).json({ error: 'Failed to record property view' });
+    }
+  });
+
+  // Book a viewing (public, token-verified)
+  app.post('/api/public/leads/:id/viewings', async (req: Request, res: Response) => {
+    try {
+      const leadId = parseInt(req.params.id);
+      const { leadToken, propertyId, scheduledAt } = req.body;
+
+      if (isNaN(leadId) || !leadToken || !verifyLeadToken(leadId, leadToken)) {
+        return res.status(403).json({ error: 'Invalid or missing lead token' });
+      }
+
+      if (!propertyId || !scheduledAt) {
+        return res.status(400).json({ error: 'Property ID and scheduled time are required' });
+      }
+
+      const result = await pool.query(`
+        INSERT INTO lead_viewing (lead_id, property_id, scheduled_at, duration, viewing_type, status)
+        VALUES ($1, $2, $3, 30, 'in_person', 'scheduled')
+        RETURNING *
+      `, [leadId, propertyId, scheduledAt]);
+
+      // Update lead status to viewing_booked
+      await pool.query(`
+        UPDATE lead SET
+          status = CASE WHEN status IN ('new', 'contacted', 'qualified') THEN 'viewing_booked' ELSE status END,
+          last_activity_at = NOW()
+        WHERE id = $1
+      `, [leadId]);
+
+      await pool.query(`
+        INSERT INTO lead_activity (lead_id, activity_type, description, related_viewing_id, related_property_id)
+        VALUES ($1, 'viewing_booked', 'Viewing booked via website chatbot', $2, $3)
+      `, [leadId, result.rows[0].id, propertyId]);
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error('Error booking public viewing:', error);
+      res.status(500).json({ error: 'Failed to book viewing' });
     }
   });
 

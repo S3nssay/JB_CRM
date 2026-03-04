@@ -1,5 +1,4 @@
-import { useState } from 'react';
-import { Link } from 'wouter';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,7 +15,7 @@ import {
   Calendar, Plus, ChevronLeft, ChevronRight, Clock,
   MapPin, User, Users, Home, Video, Phone, Edit,
   Trash2, CheckCircle, AlertCircle, RefreshCw, Settings,
-  ExternalLink, ArrowLeft
+  ExternalLink
 } from 'lucide-react';
 
 interface CalendarEvent {
@@ -84,6 +83,24 @@ export default function CalendarIntegration() {
     virtualMeetingUrl: '',
     attendeeEmail: ''
   });
+
+  // Auto-open create dialog from URL params (e.g. ?new=viewing)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const newType = params.get('new');
+    if (newType) {
+      const today = new Date();
+      setEventForm((prev) => ({
+        ...prev,
+        eventType: newType,
+        date: today.toISOString().split('T')[0],
+        startTime: '10:00',
+        endTime: '10:30',
+      }));
+      setShowEventDialog(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // Fetch events from API
   const { data: events = [], isLoading: loadingEvents } = useQuery<CalendarEvent[]>({
@@ -237,154 +254,143 @@ export default function CalendarIntegration() {
   const calendarDays = getCalendarDays();
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b">
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Link href="/portal">
-                <Button variant="ghost" size="icon" data-testid="button-back-to-portal">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
-              <Calendar className="h-8 w-8 text-[#791E75] mr-3" />
-              <h1 className="text-xl font-semibold">Calendar</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm" onClick={() => setShowSettingsDialog(true)}>
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold flex items-center gap-2">
+          <Calendar className="h-5 w-5 text-[#791E75]" />
+          Calendar
+        </h1>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => setShowSettingsDialog(true)}>
+            <Settings className="h-4 w-4 mr-2" />
+            Settings
+          </Button>
+          <Dialog open={showEventDialog} onOpenChange={setShowEventDialog}>
+            <DialogTrigger asChild>
+              <Button size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                New Event
               </Button>
-              <Dialog open={showEventDialog} onOpenChange={setShowEventDialog}>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="h-4 w-4 mr-2" />
-                    New Event
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-lg">
-                  <DialogHeader>
-                    <DialogTitle>Create New Event</DialogTitle>
-                    <DialogDescription>
-                      Schedule a viewing, valuation, or meeting
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>Event Title</Label>
-                      <Input
-                        placeholder="e.g., Property Viewing"
-                        value={eventForm.title}
-                        onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Event Type</Label>
-                        <Select
-                          value={eventForm.eventType}
-                          onValueChange={(value) => setEventForm({ ...eventForm, eventType: value })}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="viewing">Viewing</SelectItem>
-                            <SelectItem value="valuation">Valuation</SelectItem>
-                            <SelectItem value="meeting">Meeting</SelectItem>
-                            <SelectItem value="inspection">Inspection</SelectItem>
-                            <SelectItem value="maintenance">Maintenance</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Date</Label>
-                        <Input
-                          type="date"
-                          value={eventForm.date}
-                          onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Start Time</Label>
-                        <Input
-                          type="time"
-                          value={eventForm.startTime}
-                          onChange={(e) => setEventForm({ ...eventForm, startTime: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>End Time</Label>
-                        <Input
-                          type="time"
-                          value={eventForm.endTime}
-                          onChange={(e) => setEventForm({ ...eventForm, endTime: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Location</Label>
-                      <Input
-                        placeholder="Address or meeting room"
-                        value={eventForm.location}
-                        onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
-                      />
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Switch
-                        checked={eventForm.isVirtual}
-                        onCheckedChange={(checked) => setEventForm({ ...eventForm, isVirtual: checked })}
-                      />
-                      <Label>Virtual Meeting</Label>
-                    </div>
-                    {eventForm.isVirtual && (
-                      <div className="space-y-2">
-                        <Label>Meeting URL</Label>
-                        <Input
-                          placeholder="https://meet.google.com/..."
-                          value={eventForm.virtualMeetingUrl}
-                          onChange={(e) => setEventForm({ ...eventForm, virtualMeetingUrl: e.target.value })}
-                        />
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      <Label>Attendee Email</Label>
-                      <Input
-                        type="email"
-                        placeholder="attendee@email.com"
-                        value={eventForm.attendeeEmail}
-                        onChange={(e) => setEventForm({ ...eventForm, attendeeEmail: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Description</Label>
-                      <Textarea
-                        placeholder="Event details..."
-                        value={eventForm.description}
-                        onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
-                      />
-                    </div>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg">
+              <DialogHeader>
+                <DialogTitle>Create New Event</DialogTitle>
+                <DialogDescription>
+                  Schedule a viewing, valuation, or meeting
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Event Title</Label>
+                  <Input
+                    placeholder="e.g., Property Viewing"
+                    value={eventForm.title}
+                    onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Event Type</Label>
+                    <Select
+                      value={eventForm.eventType}
+                      onValueChange={(value) => setEventForm({ ...eventForm, eventType: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="viewing">Viewing</SelectItem>
+                        <SelectItem value="valuation">Valuation</SelectItem>
+                        <SelectItem value="meeting">Meeting</SelectItem>
+                        <SelectItem value="inspection">Inspection</SelectItem>
+                        <SelectItem value="maintenance">Maintenance</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setShowEventDialog(false)}>
-                      Cancel
-                    </Button>
-                    <Button onClick={handleCreateEvent}>
-                      Create Event
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
-          </div>
+                  <div className="space-y-2">
+                    <Label>Date</Label>
+                    <Input
+                      type="date"
+                      value={eventForm.date}
+                      onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Start Time</Label>
+                    <Input
+                      type="time"
+                      value={eventForm.startTime}
+                      onChange={(e) => setEventForm({ ...eventForm, startTime: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>End Time</Label>
+                    <Input
+                      type="time"
+                      value={eventForm.endTime}
+                      onChange={(e) => setEventForm({ ...eventForm, endTime: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Location</Label>
+                  <Input
+                    placeholder="Address or meeting room"
+                    value={eventForm.location}
+                    onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    checked={eventForm.isVirtual}
+                    onCheckedChange={(checked) => setEventForm({ ...eventForm, isVirtual: checked })}
+                  />
+                  <Label>Virtual Meeting</Label>
+                </div>
+                {eventForm.isVirtual && (
+                  <div className="space-y-2">
+                    <Label>Meeting URL</Label>
+                    <Input
+                      placeholder="https://meet.google.com/..."
+                      value={eventForm.virtualMeetingUrl}
+                      onChange={(e) => setEventForm({ ...eventForm, virtualMeetingUrl: e.target.value })}
+                    />
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <Label>Attendee Email</Label>
+                  <Input
+                    type="email"
+                    placeholder="attendee@email.com"
+                    value={eventForm.attendeeEmail}
+                    onChange={(e) => setEventForm({ ...eventForm, attendeeEmail: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Description</Label>
+                  <Textarea
+                    placeholder="Event details..."
+                    value={eventForm.description}
+                    onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowEventDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateEvent}>
+                  Create Event
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
-      </header>
+      </div>
 
-      <div className="p-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Calendar */}
           <div className="lg:col-span-3">
@@ -628,7 +634,6 @@ export default function CalendarIntegration() {
             </Card>
           </div>
         </div>
-      </div>
 
       {/* Settings Dialog */}
       <Dialog open={showSettingsDialog} onOpenChange={setShowSettingsDialog}>

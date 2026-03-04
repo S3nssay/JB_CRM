@@ -20,7 +20,7 @@ import {
     User,
     Shield,
     MapPin,
-    DollarSign,
+    PoundSterling,
     ChevronRight,
     ChevronLeft
 } from "lucide-react";
@@ -87,8 +87,16 @@ const RESPONSE_TIMES = [
     { value: '1 week', label: '1 Week' },
 ];
 
+const CONTRACTOR_TYPES = [
+    { value: 'trade', label: 'Trade' },
+    { value: 'valuer', label: 'Valuer' },
+    { value: 'surveyor', label: 'Surveyor' },
+    { value: 'solicitor', label: 'Solicitor' },
+];
+
 interface Contractor {
     id: number;
+    contractorType?: string;
     companyName: string;
     contactName: string;
     email: string;
@@ -111,6 +119,7 @@ interface Contractor {
 }
 
 const emptyContractor: Partial<Contractor> = {
+    contractorType: 'trade',
     companyName: '',
     contactName: '',
     email: '',
@@ -132,11 +141,16 @@ export default function ContractorManagement() {
     const [, setLocation] = useLocation();
     const [searchTerm, setSearchTerm] = useState("");
     const [specializationFilter, setSpecializationFilter] = useState<string>("all");
+    const [typeFilter, setTypeFilter] = useState<string>("all");
     const [showWizard, setShowWizard] = useState(false);
     const [wizardStep, setWizardStep] = useState(1);
     const [editingContractor, setEditingContractor] = useState<Contractor | null>(null);
     const [formData, setFormData] = useState<Partial<Contractor>>(emptyContractor);
     const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+    const [showAssignDialog, setShowAssignDialog] = useState(false);
+    const [selectedContractorForAssign, setSelectedContractorForAssign] = useState<Contractor | null>(null);
+    const [assignMode, setAssignMode] = useState<'existing' | 'new'>('new');
+    const [newTicketData, setNewTicketData] = useState({ propertyId: '', title: '', description: '', category: 'general', urgency: 'routine' });
     const { toast } = useToast();
     const queryClient = useQueryClient();
 
@@ -207,6 +221,71 @@ export default function ContractorManagement() {
         }
     });
 
+    // Managed properties for the property dropdown
+    const { data: managedProperties = [] } = useQuery({
+        queryKey: ["/api/crm/managed-properties"],
+        queryFn: async () => {
+            const res = await fetch("/api/crm/managed-properties");
+            if (!res.ok) return [];
+            return res.json();
+        },
+        enabled: showAssignDialog
+    });
+
+    // Unassigned maintenance tickets
+    const { data: unassignedTickets = [] } = useQuery({
+        queryKey: ["/api/crm/maintenance/tickets/unassigned"],
+        queryFn: async () => {
+            const res = await fetch("/api/crm/maintenance/tickets/unassigned");
+            if (!res.ok) return [];
+            return res.json();
+        },
+        enabled: showAssignDialog && assignMode === 'existing'
+    });
+
+    const assignTicketMutation = useMutation({
+        mutationFn: async ({ ticketId, contractorId }: { ticketId: number; contractorId: number }) => {
+            const res = await fetch(`/api/crm/maintenance/tickets/${ticketId}/assign-contractor`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contractorId, notify: true })
+            });
+            if (!res.ok) throw new Error("Failed to assign ticket");
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/crm/maintenance/tickets/unassigned"] });
+            toast({ title: "Ticket assigned", description: "Contractor has been notified by email." });
+            setShowAssignDialog(false);
+            setSelectedContractorForAssign(null);
+        },
+        onError: () => {
+            toast({ title: "Failed to assign ticket", variant: "destructive" });
+        }
+    });
+
+    const createAndAssignMutation = useMutation({
+        mutationFn: async (data: { propertyId: number; title: string; description: string; category: string; urgency: string; contractorId: number }) => {
+            const res = await fetch("/api/crm/maintenance/tickets/create-and-assign", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...data, notify: true })
+            });
+            if (!res.ok) throw new Error("Failed to create and assign ticket");
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["/api/crm/maintenance/tickets/unassigned"] });
+            toast({ title: "Ticket created & assigned", description: "Contractor has been notified by email." });
+            setShowAssignDialog(false);
+            setSelectedContractorForAssign(null);
+            setNewTicketData({ propertyId: '', title: '', description: '', category: 'general', urgency: 'routine' });
+        },
+        onError: () => {
+            toast({ title: "Failed to create ticket", variant: "destructive" });
+        }
+    });
+
     const closeWizard = () => {
         setShowWizard(false);
         setWizardStep(1);
@@ -258,7 +337,9 @@ export default function ContractorManagement() {
         const matchesSpecialization = specializationFilter === "all" ||
             specs.includes(specializationFilter);
 
-        return matchesSearch && matchesSpecialization;
+        const matchesType = typeFilter === "all" || (c.contractorType || 'trade') === typeFilter;
+
+        return matchesSearch && matchesSpecialization && matchesType;
     });
 
     const getSpecLabel = (spec: string) => {
@@ -352,6 +433,17 @@ export default function ContractorManagement() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </div>
+                <Select value={typeFilter} onValueChange={setTypeFilter}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Filter by type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Types</SelectItem>
+                        {CONTRACTOR_TYPES.map(t => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
                 <Select value={specializationFilter} onValueChange={setSpecializationFilter}>
                     <SelectTrigger className="w-[200px]">
                         <SelectValue placeholder="Filter by trade" />
@@ -399,6 +491,11 @@ export default function ContractorManagement() {
                                         <div>
                                             <div className="flex items-center gap-2">
                                                 <h3 className="font-semibold text-lg">{contractor.companyName}</h3>
+                                                {contractor.contractorType && contractor.contractorType !== 'trade' && (
+                                                    <Badge className="bg-purple-100 text-purple-800 capitalize">
+                                                        {contractor.contractorType}
+                                                    </Badge>
+                                                )}
                                                 {contractor.preferredContractor && (
                                                     <Badge className="bg-amber-100 text-amber-800">
                                                         <Star className="h-3 w-3 mr-1" /> Preferred
@@ -446,6 +543,19 @@ export default function ContractorManagement() {
                                                 £{contractor.hourlyRate}/hr
                                             </span>
                                         )}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-[#791E75] hover:bg-[#791E75]/10"
+                                            onClick={() => {
+                                                setSelectedContractorForAssign(contractor);
+                                                setAssignMode('new');
+                                                setNewTicketData({ propertyId: '', title: '', description: '', category: 'general', urgency: 'routine' });
+                                                setShowAssignDialog(true);
+                                            }}
+                                        >
+                                            <Wrench className="h-4 w-4 mr-1" /> Assign Job
+                                        </Button>
                                         <Button variant="outline" size="sm" onClick={() => openEditWizard(contractor)}>
                                             <Edit className="h-4 w-4" />
                                         </Button>
@@ -497,6 +607,20 @@ export default function ContractorManagement() {
                     {/* Step 1: Basic Information */}
                     {wizardStep === 1 && (
                         <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label>Contractor Type *</Label>
+                                <Select value={formData.contractorType || 'trade'} onValueChange={(v) => setFormData({ ...formData, contractorType: v })}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {CONTRACTOR_TYPES.map(t => (
+                                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">Trade = plumber, electrician etc. Valuers, surveyors and solicitors are separate types.</p>
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label htmlFor="companyName">Company Name *</Label>
@@ -770,6 +894,164 @@ export default function ContractorManagement() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* Assign Job Dialog */}
+            <Dialog open={showAssignDialog} onOpenChange={(open) => {
+                if (!open) { setShowAssignDialog(false); setSelectedContractorForAssign(null); }
+            }}>
+                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Wrench className="h-5 w-5 text-[#791E75]" />
+                            Assign Job to {selectedContractorForAssign?.companyName}
+                        </DialogTitle>
+                        <DialogDescription>
+                            Create a new maintenance ticket or assign an existing unassigned ticket to this contractor.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="flex gap-2 mb-4">
+                        <Button
+                            variant={assignMode === 'new' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setAssignMode('new')}
+                            className={assignMode === 'new' ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                        >
+                            Create New Ticket
+                        </Button>
+                        <Button
+                            variant={assignMode === 'existing' ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => setAssignMode('existing')}
+                            className={assignMode === 'existing' ? 'bg-[#791E75] hover:bg-[#60175d]' : ''}
+                        >
+                            Assign Existing Ticket
+                        </Button>
+                    </div>
+
+                    {assignMode === 'new' ? (
+                        <div className="space-y-4">
+                            <div>
+                                <Label className="text-xs font-medium">Property *</Label>
+                                <Select value={newTicketData.propertyId} onValueChange={(v) => setNewTicketData({ ...newTicketData, propertyId: v })}>
+                                    <SelectTrigger className="mt-1">
+                                        <SelectValue placeholder="Select property" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {managedProperties.map((p: any) => (
+                                            <SelectItem key={p.id} value={String(p.id)}>
+                                                {p.addressLine1}{p.postcode ? `, ${p.postcode}` : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <Label className="text-xs font-medium">Category *</Label>
+                                    <Select value={newTicketData.category} onValueChange={(v) => setNewTicketData({ ...newTicketData, category: v })}>
+                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="plumbing">Plumbing</SelectItem>
+                                            <SelectItem value="electrical">Electrical</SelectItem>
+                                            <SelectItem value="heating">Heating</SelectItem>
+                                            <SelectItem value="appliance">Appliance</SelectItem>
+                                            <SelectItem value="structural">Structural</SelectItem>
+                                            <SelectItem value="general">General</SelectItem>
+                                            <SelectItem value="other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label className="text-xs font-medium">Urgency *</Label>
+                                    <Select value={newTicketData.urgency} onValueChange={(v) => setNewTicketData({ ...newTicketData, urgency: v })}>
+                                        <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="emergency">Emergency</SelectItem>
+                                            <SelectItem value="urgent">Urgent</SelectItem>
+                                            <SelectItem value="routine">Routine</SelectItem>
+                                            <SelectItem value="low">Low</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div>
+                                <Label className="text-xs font-medium">Job Title *</Label>
+                                <Input
+                                    value={newTicketData.title}
+                                    onChange={(e) => setNewTicketData({ ...newTicketData, title: e.target.value })}
+                                    placeholder="Brief description of the issue"
+                                    className="mt-1"
+                                />
+                            </div>
+                            <div>
+                                <Label className="text-xs font-medium">Description *</Label>
+                                <Textarea
+                                    value={newTicketData.description}
+                                    onChange={(e) => setNewTicketData({ ...newTicketData, description: e.target.value })}
+                                    placeholder="Detailed description of the maintenance issue..."
+                                    rows={4}
+                                    className="mt-1"
+                                />
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setShowAssignDialog(false)}>Cancel</Button>
+                                <Button
+                                    className="bg-[#791E75] hover:bg-[#60175d] text-white"
+                                    disabled={
+                                        !newTicketData.propertyId || !newTicketData.title || newTicketData.description.length < 10 ||
+                                        createAndAssignMutation.isPending
+                                    }
+                                    onClick={() => createAndAssignMutation.mutate({
+                                        propertyId: Number(newTicketData.propertyId),
+                                        title: newTicketData.title,
+                                        description: newTicketData.description,
+                                        category: newTicketData.category,
+                                        urgency: newTicketData.urgency,
+                                        contractorId: selectedContractorForAssign!.id
+                                    })}
+                                >
+                                    {createAndAssignMutation.isPending ? "Creating..." : "Create & Assign Job"}
+                                </Button>
+                            </DialogFooter>
+                        </div>
+                    ) : (
+                        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                            {unassignedTickets.length === 0 ? (
+                                <p className="text-center py-8 text-muted-foreground">No unassigned tickets found.</p>
+                            ) : (
+                                unassignedTickets.map((ticket: any) => (
+                                    <Card key={ticket.id} className="hover:shadow-md transition-shadow">
+                                        <CardContent className="p-4 flex justify-between items-center">
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-medium text-sm truncate">{ticket.title}</h4>
+                                                <p className="text-xs text-muted-foreground truncate">{ticket.propertyAddress}</p>
+                                                <div className="flex gap-1.5 mt-1.5">
+                                                    <Badge variant="outline" className="text-[10px]">{ticket.category}</Badge>
+                                                    <Badge variant={ticket.urgency === 'emergency' ? 'destructive' : 'secondary'} className="text-[10px]">
+                                                        {ticket.urgency}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                className="bg-[#791E75] hover:bg-[#60175d] text-white ml-3"
+                                                disabled={assignTicketMutation.isPending}
+                                                onClick={() => assignTicketMutation.mutate({
+                                                    ticketId: ticket.id,
+                                                    contractorId: selectedContractorForAssign!.id
+                                                })}
+                                            >
+                                                Assign
+                                            </Button>
+                                        </CardContent>
+                                    </Card>
+                                ))
+                            )}
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

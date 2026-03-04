@@ -7,7 +7,7 @@
  */
 
 import { db } from '../../db';
-import { emailJobQueue, EmailJob, InsertEmailJob } from '@shared/schema';
+import { emailJobQueue as emailJobQueueTable, EmailJob, InsertEmailJob } from '@shared/schema';
 import { eq, and, lte, sql, or, isNull } from 'drizzle-orm';
 
 export type JobType =
@@ -85,8 +85,8 @@ export class EmailJobQueue {
     if (idempotencyKey) {
       const existing = await db
         .select()
-        .from(emailJobQueue)
-        .where(eq(emailJobQueue.idempotencyKey, idempotencyKey))
+        .from(emailJobQueueTable)
+        .where(eq(emailJobQueueTable.idempotencyKey, idempotencyKey))
         .limit(1);
 
       if (existing.length > 0) {
@@ -108,7 +108,7 @@ export class EmailJobQueue {
       userId: (payload as any).userId || null,
     };
 
-    const [job] = await db.insert(emailJobQueue).values(jobData).returning();
+    const [job] = await db.insert(emailJobQueueTable).values(jobData).returning();
 
     console.log(`Enqueued job ${job.id}: ${jobType}`);
     return job;
@@ -123,20 +123,20 @@ export class EmailJobQueue {
 
     // Build the query conditions
     const conditions = [
-      eq(emailJobQueue.status, 'pending'),
-      lte(emailJobQueue.scheduledFor, now),
+      eq(emailJobQueueTable.status, 'pending'),
+      lte(emailJobQueueTable.scheduledFor, now),
     ];
 
     // Use raw SQL for the FOR UPDATE SKIP LOCKED pattern
     const result = await db.execute(sql`
-      UPDATE ${emailJobQueue}
+      UPDATE ${emailJobQueueTable}
       SET
         status = 'processing',
         started_at = NOW(),
         attempts = attempts + 1,
         updated_at = NOW()
       WHERE id = (
-        SELECT id FROM ${emailJobQueue}
+        SELECT id FROM ${emailJobQueueTable}
         WHERE status = 'pending'
           AND scheduled_for <= NOW()
           ${workerTypes?.length ? sql`AND job_type = ANY(${workerTypes})` : sql``}
@@ -159,14 +159,14 @@ export class EmailJobQueue {
    */
   async completeJob(jobId: number, result?: any): Promise<void> {
     await db
-      .update(emailJobQueue)
+      .update(emailJobQueueTable)
       .set({
         status: 'completed',
         completedAt: new Date(),
         result: result || null,
         updatedAt: new Date(),
       })
-      .where(eq(emailJobQueue.id, jobId));
+      .where(eq(emailJobQueueTable.id, jobId));
 
     console.log(`Job ${jobId} completed successfully`);
   }
@@ -178,8 +178,8 @@ export class EmailJobQueue {
     // Get current job to check attempts
     const [job] = await db
       .select()
-      .from(emailJobQueue)
-      .where(eq(emailJobQueue.id, jobId));
+      .from(emailJobQueueTable)
+      .where(eq(emailJobQueueTable.id, jobId));
 
     if (!job) {
       console.error(`Job ${jobId} not found when trying to mark as failed`);
@@ -199,7 +199,7 @@ export class EmailJobQueue {
     }
 
     await db
-      .update(emailJobQueue)
+      .update(emailJobQueueTable)
       .set({
         status: newStatus === 'failed' ? 'pending' : 'dead', // Reset to pending for retry
         error: error.message,
@@ -207,7 +207,7 @@ export class EmailJobQueue {
         scheduledFor: scheduledFor,
         updatedAt: new Date(),
       })
-      .where(eq(emailJobQueue.id, jobId));
+      .where(eq(emailJobQueueTable.id, jobId));
 
     if (newStatus === 'dead') {
       console.error(`Job ${jobId} moved to dead letter queue after ${job.attempts} attempts`);
@@ -225,9 +225,9 @@ export class EmailJobQueue {
   ): Promise<EmailJob[]> {
     return db
       .select()
-      .from(emailJobQueue)
-      .where(eq(emailJobQueue.status, status))
-      .orderBy(sql`${emailJobQueue.createdAt} DESC`)
+      .from(emailJobQueueTable)
+      .where(eq(emailJobQueueTable.status, status))
+      .orderBy(sql`${emailJobQueueTable.createdAt} DESC`)
       .limit(limit);
   }
 
@@ -245,7 +245,7 @@ export class EmailJobQueue {
       SELECT
         status,
         COUNT(*)::int as count
-      FROM ${emailJobQueue}
+      FROM ${emailJobQueueTable}
       GROUP BY status
     `);
 
@@ -274,14 +274,14 @@ export class EmailJobQueue {
     cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
 
     const result = await db
-      .delete(emailJobQueue)
+      .delete(emailJobQueueTable)
       .where(
         and(
-          eq(emailJobQueue.status, 'completed'),
-          lte(emailJobQueue.completedAt, cutoffDate)
+          eq(emailJobQueueTable.status, 'completed'),
+          lte(emailJobQueueTable.completedAt, cutoffDate)
         )
       )
-      .returning({ id: emailJobQueue.id });
+      .returning({ id: emailJobQueueTable.id });
 
     console.log(`Cleaned up ${result.length} old completed jobs`);
     return result.length;
@@ -294,18 +294,18 @@ export class EmailJobQueue {
     const cutoffTime = new Date(Date.now() - staleMinutes * 60 * 1000);
 
     const result = await db
-      .update(emailJobQueue)
+      .update(emailJobQueueTable)
       .set({
         status: 'pending',
         updatedAt: new Date(),
       })
       .where(
         and(
-          eq(emailJobQueue.status, 'processing'),
-          lte(emailJobQueue.startedAt, cutoffTime)
+          eq(emailJobQueueTable.status, 'processing'),
+          lte(emailJobQueueTable.startedAt, cutoffTime)
         )
       )
-      .returning({ id: emailJobQueue.id });
+      .returning({ id: emailJobQueueTable.id });
 
     if (result.length > 0) {
       console.warn(`Recovered ${result.length} stale jobs`);
@@ -319,7 +319,7 @@ export class EmailJobQueue {
    */
   async retryDeadJob(jobId: number): Promise<void> {
     await db
-      .update(emailJobQueue)
+      .update(emailJobQueueTable)
       .set({
         status: 'pending',
         attempts: 0,
@@ -330,8 +330,8 @@ export class EmailJobQueue {
       })
       .where(
         and(
-          eq(emailJobQueue.id, jobId),
-          eq(emailJobQueue.status, 'dead')
+          eq(emailJobQueueTable.id, jobId),
+          eq(emailJobQueueTable.status, 'dead')
         )
       );
 
@@ -343,14 +343,14 @@ export class EmailJobQueue {
    */
   async cancelJob(jobId: number): Promise<boolean> {
     const result = await db
-      .delete(emailJobQueue)
+      .delete(emailJobQueueTable)
       .where(
         and(
-          eq(emailJobQueue.id, jobId),
-          eq(emailJobQueue.status, 'pending')
+          eq(emailJobQueueTable.id, jobId),
+          eq(emailJobQueueTable.status, 'pending')
         )
       )
-      .returning({ id: emailJobQueue.id });
+      .returning({ id: emailJobQueueTable.id });
 
     return result.length > 0;
   }

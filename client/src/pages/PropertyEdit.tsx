@@ -12,10 +12,11 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import {
-  ArrowLeft, Save, Loader2, Home, Building2, MapPin,
+  Save, Loader2, Home, Building2, MapPin,
   Bed, Bath, Square, Tag, Globe, Send, Share2, Upload, X, Image, FileText,
-  Key, Download, Trash2, ExternalLink, Calendar
+  Key, Download, Trash2, ExternalLink, Calendar, ArrowRightLeft, Shield
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -46,6 +47,8 @@ interface PropertyData {
   floorPlan?: string;
   isListed?: boolean;
   isManaged?: boolean;
+  isListedRental?: boolean;
+  isListedSale?: boolean;
   isPublishedWebsite?: boolean;
   isPublishedZoopla?: boolean;
   isPublishedRightmove?: boolean;
@@ -68,6 +71,9 @@ export default function PropertyEdit() {
   const [isUploadingFloorPlan, setIsUploadingFloorPlan] = useState(false);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [docType, setDocType] = useState('certificate');
+  const [showConvertManagedDialog, setShowConvertManagedDialog] = useState(false);
+  const [showConvertTypeDialog, setShowConvertTypeDialog] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
 
   const { data: property, isLoading, error } = useQuery({
     queryKey: [`/api/crm/properties/${propertyId}`],
@@ -141,6 +147,59 @@ export default function PropertyEdit() {
 
   const updateField = (field: keyof PropertyData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Convert listed property to managed/tenanted property
+  const handleConvertToManaged = async () => {
+    setIsConverting(true);
+    try {
+      await apiRequest(`/api/crm/properties/${propertyId}`, 'PATCH', {
+        isManaged: true,
+        isListedRental: false,
+        isListedSale: false,
+        isListed: false,
+        status: 'managed',
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/crm/properties/${propertyId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/properties'] });
+      setFormData(prev => ({ ...prev, isManaged: true, isListed: false, isListedRental: false, isListedSale: false, status: 'managed' }));
+      setShowConvertManagedDialog(false);
+      toast({ title: 'Property converted', description: 'This property is now a managed/tenanted property.' });
+    } catch (err: any) {
+      toast({ title: 'Conversion failed', description: err.message || 'Could not convert property.', variant: 'destructive' });
+    } finally {
+      setIsConverting(false);
+    }
+  };
+
+  // Convert between sale and rental listing
+  const handleConvertListingType = async () => {
+    setIsConverting(true);
+    const isCurrentlyRental = formData.isRental;
+    try {
+      await apiRequest(`/api/crm/properties/${propertyId}`, 'PATCH', {
+        isRental: !isCurrentlyRental,
+        isListedRental: !isCurrentlyRental,
+        isListedSale: isCurrentlyRental,
+      });
+      queryClient.invalidateQueries({ queryKey: [`/api/crm/properties/${propertyId}`] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/properties'] });
+      setFormData(prev => ({
+        ...prev,
+        isRental: !isCurrentlyRental,
+        isListedRental: !isCurrentlyRental,
+        isListedSale: !!isCurrentlyRental,
+      }));
+      setShowConvertTypeDialog(false);
+      toast({
+        title: 'Listing type changed',
+        description: `Property is now listed for ${!isCurrentlyRental ? 'rental' : 'sale'}.`,
+      });
+    } catch (err: any) {
+      toast({ title: 'Conversion failed', description: err.message || 'Could not change listing type.', variant: 'destructive' });
+    } finally {
+      setIsConverting(false);
+    }
   };
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -253,16 +312,7 @@ export default function PropertyEdit() {
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-6">
-      <Button
-        variant="ghost"
-        onClick={() => setLocation('/crm/properties')}
-        className="mb-4"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Properties
-      </Button>
-
+    <div className="p-6 max-w-4xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Edit Property</h1>
@@ -663,11 +713,24 @@ export default function PropertyEdit() {
         {/* Publishing Settings */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Globe className="h-5 w-5" />
-              Publishing Settings
-            </CardTitle>
-            <CardDescription>Control where this property is visible</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Globe className="h-5 w-5" />
+                  Publishing Settings
+                </CardTitle>
+                <CardDescription>Control where this property is visible</CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                onClick={() => setShowConvertTypeDialog(true)}
+              >
+                <ArrowRightLeft className="h-4 w-4 mr-1" />
+                {formData.isRental ? 'Convert to Sale' : 'Convert to Rental'}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center space-x-3">
@@ -746,11 +809,29 @@ export default function PropertyEdit() {
         {/* Tenancy History */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Key className="h-5 w-5" />
-              Tenancy History
-            </CardTitle>
-            <CardDescription>Current and past tenancies for this property</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5" />
+                  Tenancy History
+                </CardTitle>
+                <CardDescription>Current and past tenancies for this property</CardDescription>
+              </div>
+              {!formData.isManaged && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-purple-300 text-purple-700 hover:bg-purple-50"
+                  onClick={() => setShowConvertManagedDialog(true)}
+                >
+                  <Shield className="h-4 w-4 mr-1" />
+                  Convert to Managed
+                </Button>
+              )}
+              {formData.isManaged && (
+                <Badge className="bg-green-100 text-green-800">Managed Property</Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             {propertyTenancies.length === 0 ? (
@@ -972,6 +1053,68 @@ export default function PropertyEdit() {
           </Button>
         </div>
       </form>
+
+      {/* Convert to Managed Dialog */}
+      <Dialog open={showConvertManagedDialog} onOpenChange={setShowConvertManagedDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Convert to Managed Property</DialogTitle>
+            <DialogDescription>
+              This will mark the property as managed by John Barclay and remove it from the active listings.
+              The property will appear in the Property Management section where you can assign tenants and tenancies.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+            <p className="font-medium mb-1">This will:</p>
+            <ul className="list-disc ml-4 space-y-1">
+              <li>Set the property as <strong>Managed</strong></li>
+              <li>Remove it from sale/rental listings</li>
+              <li>Un-publish from all portals</li>
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConvertManagedDialog(false)} disabled={isConverting}>
+              Cancel
+            </Button>
+            <Button onClick={handleConvertToManaged} disabled={isConverting} className="bg-purple-700 hover:bg-purple-800">
+              {isConverting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Shield className="h-4 w-4 mr-2" />}
+              Convert to Managed
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Convert Sale/Rental Dialog */}
+      <Dialog open={showConvertTypeDialog} onOpenChange={setShowConvertTypeDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Convert to {formData.isRental ? 'Sale' : 'Rental'} Listing
+            </DialogTitle>
+            <DialogDescription>
+              This will change the property from a {formData.isRental ? 'rental' : 'sale'} listing
+              to a {formData.isRental ? 'sale' : 'rental'} listing.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+            <p className="font-medium mb-1">This will:</p>
+            <ul className="list-disc ml-4 space-y-1">
+              <li>Change listing type to <strong>{formData.isRental ? 'For Sale' : 'For Rent'}</strong></li>
+              <li>Update the listing category accordingly</li>
+              <li>You may need to update the price/{formData.isRental ? 'asking price' : 'rent amount'} after conversion</li>
+            </ul>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowConvertTypeDialog(false)} disabled={isConverting}>
+              Cancel
+            </Button>
+            <Button onClick={handleConvertListingType} disabled={isConverting}>
+              {isConverting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <ArrowRightLeft className="h-4 w-4 mr-2" />}
+              Convert to {formData.isRental ? 'Sale' : 'Rental'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

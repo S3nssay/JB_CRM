@@ -5,10 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Wrench, Shield, AlertCircle, CheckCircle, Clock, Calendar, Users, FileText, Plus, Eye, Send, AlertTriangle, Home, ArrowLeft, Building, User, Phone, Mail, CreditCard, ClipboardCheck, ExternalLink, UserCheck, Upload, Download, FileSpreadsheet, ChevronsUpDown, Check } from 'lucide-react';
+import { Loader2, Wrench, Shield, AlertCircle, CheckCircle, Clock, Calendar, Users, FileText, Plus, Eye, Send, AlertTriangle, Home, Building, User, Phone, Mail, CreditCard, ClipboardCheck, ExternalLink, UserCheck, Upload, Download, FileSpreadsheet, ChevronsUpDown, Check, ThumbsUp, ThumbsDown, Hammer, PoundSterling, MessageCircle, CircleDot, XCircle } from 'lucide-react';
 import { Link } from 'wouter';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Form, FormControl, FormField, FormItem, FormLabel } from "@/components/ui/form";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,13 +28,10 @@ import { cn } from "@/lib/utils";
 // Form schemas
 const maintenanceFormSchema = z.object({
   propertyId: z.string().min(1, "Property required"),
-  tenantName: z.string().min(2, "Tenant name required"),
-  tenantEmail: z.string().email("Valid email required"),
-  tenantPhone: z.string().min(10, "Phone required"),
-  issueType: z.string(),
-  priority: z.string(),
+  category: z.enum(["plumbing", "electrical", "heating", "appliance", "structural", "other"]),
+  urgency: z.enum(["emergency", "urgent", "routine", "low"]),
   title: z.string().min(5, "Title required"),
-  description: z.string().min(10, "Description required"),
+  description: z.string().min(20, "Please provide a detailed description"),
   location: z.string().optional()
 });
 
@@ -51,20 +48,23 @@ const certificationFormSchema = z.object({
 
 // Priority badges
 const PriorityBadge = ({ priority }: { priority: string }) => {
+  const p = priority || 'routine';
   const variants: { [key: string]: any } = {
     'emergency': { variant: 'destructive', icon: AlertTriangle },
     'high': { variant: 'default', className: 'bg-[#F8B324] text-black 500' },
+    'urgent': { variant: 'default', className: 'bg-[#F8B324] text-black 500' },
     'medium': { variant: 'secondary' },
+    'routine': { variant: 'secondary' },
     'low': { variant: 'outline' }
   };
 
-  const config = variants[priority] || variants.medium;
+  const config = variants[p] || variants.routine;
   const Icon = config.icon;
 
   return (
     <Badge variant={config.variant} className={config.className}>
       {Icon && <Icon className="h-3 w-3 mr-1" />}
-      {priority.toUpperCase()}
+      {p.toUpperCase()}
     </Badge>
   );
 };
@@ -106,6 +106,23 @@ export default function PropertyManagement() {
       return response.json();
     }
   });
+
+  // Auto-open ticket from URL param (e.g., ?ticket=123 from CRM Dashboard)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ticketId = params.get('ticket');
+    if (ticketId && maintenanceRequests) {
+      const ticket = maintenanceRequests.find((t: any) => String(t.id) === ticketId);
+      if (ticket) {
+        setSelectedRequest(ticket);
+        setShowRequestDetailsDialog(true);
+        // Clean up URL param
+        const url = new URL(window.location.href);
+        url.searchParams.delete('ticket');
+        window.history.replaceState({}, '', url.pathname);
+      }
+    }
+  }, [maintenanceRequests]);
 
   // Fetch certifications
   const { data: certifications, isLoading: loadingCertifications } = useQuery({
@@ -165,11 +182,8 @@ export default function PropertyManagement() {
     resolver: zodResolver(maintenanceFormSchema),
     defaultValues: {
       propertyId: '',
-      tenantName: '',
-      tenantEmail: '',
-      tenantPhone: '',
-      issueType: 'other',
-      priority: 'medium',
+      category: 'other' as const,
+      urgency: 'routine' as const,
       title: '',
       description: '',
       location: ''
@@ -195,23 +209,16 @@ export default function PropertyManagement() {
   useEffect(() => {
     if (selectedPropertyForMaintenance && showMaintenanceDialog) {
       maintenanceForm.setValue('propertyId', String(selectedPropertyForMaintenance.id));
-      // Auto-fill tenant info if available
-      if (selectedPropertyForMaintenance.tenantName) {
-        maintenanceForm.setValue('tenantName', selectedPropertyForMaintenance.tenantName);
-      }
-      if (selectedPropertyForMaintenance.tenantEmail) {
-        maintenanceForm.setValue('tenantEmail', selectedPropertyForMaintenance.tenantEmail);
-      }
-      if (selectedPropertyForMaintenance.tenantPhone) {
-        maintenanceForm.setValue('tenantPhone', selectedPropertyForMaintenance.tenantPhone);
-      }
     }
   }, [selectedPropertyForMaintenance, showMaintenanceDialog, maintenanceForm]);
 
   // Submit maintenance request
   const submitMaintenance = useMutation({
     mutationFn: async (data: any) => {
-      return apiRequest('/api/crm/maintenance/tickets', 'POST', data);
+      return apiRequest('/api/crm/maintenance/tickets', 'POST', {
+        ...data,
+        propertyId: Number(data.propertyId),
+      });
     },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets'] });
@@ -324,6 +331,164 @@ export default function PropertyManagement() {
   const [showContractorDialog, setShowContractorDialog] = useState(false);
   const [selectedTicketForContractor, setSelectedTicketForContractor] = useState<any>(null);
 
+  // Enhanced ticket detail state
+  const [detailTab, setDetailTab] = useState('overview');
+  const [scheduledDate, setScheduledDate] = useState('');
+  const [scheduledTimeSlot, setScheduledTimeSlot] = useState('');
+  const [approvalNotes, setApprovalNotes] = useState('');
+  const [completionNotes, setCompletionNotes] = useState('');
+  const [whatsappMessage, setWhatsappMessage] = useState('');
+  const [selectedContractorsForQuote, setSelectedContractorsForQuote] = useState<number[]>([]);
+  const [showQuoteRequestDialog, setShowQuoteRequestDialog] = useState(false);
+
+  // Fetch quotes for selected ticket
+  const { data: ticketQuotes } = useQuery({
+    queryKey: ['/api/crm/maintenance/tickets', selectedRequest?.id, 'quotes'],
+    queryFn: async () => {
+      const response = await fetch(`/api/crm/maintenance/tickets/${selectedRequest.id}/quotes`);
+      if (!response.ok) throw new Error('Failed to fetch quotes');
+      return response.json();
+    },
+    enabled: !!selectedRequest?.id && showRequestDetailsDialog
+  });
+
+  // Fetch workflow events for selected ticket
+  const { data: workflowEvents } = useQuery({
+    queryKey: ['/api/crm/maintenance/tickets', selectedRequest?.id, 'workflow'],
+    queryFn: async () => {
+      const response = await fetch(`/api/crm/maintenance/tickets/${selectedRequest.id}/workflow`);
+      if (!response.ok) throw new Error('Failed to fetch workflow');
+      return response.json();
+    },
+    enabled: !!selectedRequest?.id && showRequestDetailsDialog
+  });
+
+  // Fetch communications for selected ticket
+  const { data: ticketComms } = useQuery({
+    queryKey: ['/api/crm/maintenance/tickets', selectedRequest?.id, 'communications'],
+    queryFn: async () => {
+      const response = await fetch(`/api/crm/maintenance/tickets/${selectedRequest.id}/communications`);
+      if (!response.ok) throw new Error('Failed to fetch communications');
+      return response.json();
+    },
+    enabled: !!selectedRequest?.id && showRequestDetailsDialog
+  });
+
+  // Quote workflow mutations
+  const requestQuotesMutation = useMutation({
+    mutationFn: async ({ ticketId, contractorIds }: { ticketId: number; contractorIds: number[] }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/request-quotes`, 'POST', { contractorIds });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets'] });
+      toast({ title: "Quote requests sent", description: "Contractors have been notified" });
+      setShowQuoteRequestDialog(false);
+      setSelectedContractorsForQuote([]);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to request quotes", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const approveQuoteMutation = useMutation({
+    mutationFn: async ({ ticketId, quoteId, approvalNotes, scheduledDate, scheduledTimeSlot }: any) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/quotes/${quoteId}/approve`, 'POST', {
+        approvalNotes, scheduledDate, scheduledTimeSlot
+      });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets'] });
+      toast({ title: "Quote approved", description: "Work has been scheduled" });
+      setScheduledDate('');
+      setScheduledTimeSlot('');
+      setApprovalNotes('');
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to approve quote", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const rejectQuoteMutation = useMutation({
+    mutationFn: async ({ ticketId, quoteId }: { ticketId: number; quoteId: number }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/quotes/${quoteId}/reject`, 'POST', {});
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      toast({ title: "Quote rejected" });
+    }
+  });
+
+  const startWorkMutation = useMutation({
+    mutationFn: async ({ ticketId, quoteId }: { ticketId: number; quoteId: number }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/quotes/${quoteId}/start-work`, 'POST', {});
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets'] });
+      toast({ title: "Work started", description: "Contractor marked as working on this job" });
+    }
+  });
+
+  const completeWorkMutation = useMutation({
+    mutationFn: async ({ ticketId, quoteId, completionNotes }: { ticketId: number; quoteId: number; completionNotes: string }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/quotes/${quoteId}/complete`, 'POST', { completionNotes });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets'] });
+      toast({ title: "Work completed", description: "Ticket has been marked as resolved" });
+      setCompletionNotes('');
+    }
+  });
+
+  const sendToLandlordMutation = useMutation({
+    mutationFn: async ({ ticketId, quoteId }: { ticketId: number; quoteId: number }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/send-to-landlord`, 'POST', { quoteId });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      toast({ title: "Sent to landlord", description: "Quote details sent to the property landlord for approval" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send to landlord", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const createPaymentMutation = useMutation({
+    mutationFn: async ({ ticketId, quoteId }: { ticketId: number; quoteId: number }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/create-payment`, 'POST', { quoteId });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      toast({ title: "Payment created", description: "Payment has been recorded for this work" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to create payment", description: error.message, variant: "destructive" });
+    }
+  });
+
+  const sendWhatsAppMutation = useMutation({
+    mutationFn: async ({ ticketId, message, phoneNumber }: { ticketId: number; message: string; phoneNumber: string }) => {
+      return apiRequest(`/api/crm/maintenance/tickets/${ticketId}/send-whatsapp`, 'POST', { message, phoneNumber });
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'workflow'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/maintenance/tickets', variables.ticketId, 'history'] });
+      toast({ title: "Message sent", description: "WhatsApp message logged" });
+      setWhatsappMessage('');
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send message", description: error.message, variant: "destructive" });
+    }
+  });
+
   // Import managed properties mutation
   const importProperties = useMutation({
     mutationFn: async (file: File) => {
@@ -416,14 +581,7 @@ export default function PropertyManagement() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <Link href="/portal">
-            <Button variant="ghost" size="icon" data-testid="button-back-to-portal">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <h1 className="text-3xl font-bold">Property Management</h1>
-        </div>
+        <h1 className="text-2xl font-bold">Property Management</h1>
         <div className="flex gap-2">
           <Link href="/crm/properties/import">
             <Button variant="outline" className="bg-green-50 border-green-200 text-green-700 hover:bg-green-100">
@@ -776,11 +934,11 @@ export default function PropertyManagement() {
                         <CardTitle className="text-lg">{request.title}</CardTitle>
                         <CardDescription>
                           Property: {request.propertyAddress || `#${request.propertyId}`} |
-                          Reported: {format(new Date(request.reportedAt), 'dd MMM yyyy')}
+                          Reported: {request.createdAt ? format(new Date(request.createdAt), 'dd MMM yyyy') : 'N/A'}
                         </CardDescription>
                       </div>
                       <div className="flex gap-2">
-                        <PriorityBadge priority={request.priority} />
+                        <PriorityBadge priority={request.urgency || request.priority} />
                         <Badge variant="outline">{request.status}</Badge>
                       </div>
                     </div>
@@ -1091,16 +1249,6 @@ export default function PropertyManagement() {
                                     field.onChange(String(property.id));
                                     setSelectedPropertyForMaintenance(property);
                                     setPropertySelectOpen(false);
-                                    // Auto-fill tenant info if available
-                                    if (property.tenantName) {
-                                      maintenanceForm.setValue('tenantName', property.tenantName);
-                                    }
-                                    if (property.tenantEmail) {
-                                      maintenanceForm.setValue('tenantEmail', property.tenantEmail);
-                                    }
-                                    if (property.tenantPhone) {
-                                      maintenanceForm.setValue('tenantPhone', property.tenantPhone);
-                                    }
                                   }}
                                 >
                                   <Check
@@ -1124,13 +1272,14 @@ export default function PropertyManagement() {
                         </Command>
                       </PopoverContent>
                     </Popover>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={maintenanceForm.control}
-                  name="issueType"
+                  name="category"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Issue Type</FormLabel>
@@ -1146,8 +1295,6 @@ export default function PropertyManagement() {
                           <SelectItem value="heating">Heating</SelectItem>
                           <SelectItem value="appliance">Appliance</SelectItem>
                           <SelectItem value="structural">Structural</SelectItem>
-                          <SelectItem value="pest">Pest Control</SelectItem>
-                          <SelectItem value="cleaning">Cleaning</SelectItem>
                           <SelectItem value="other">Other</SelectItem>
                         </SelectContent>
                       </Select>
@@ -1156,7 +1303,7 @@ export default function PropertyManagement() {
                 />
                 <FormField
                   control={maintenanceForm.control}
-                  name="priority"
+                  name="urgency"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Priority</FormLabel>
@@ -1168,8 +1315,8 @@ export default function PropertyManagement() {
                         </FormControl>
                         <SelectContent>
                           <SelectItem value="emergency">Emergency</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
+                          <SelectItem value="urgent">Urgent</SelectItem>
+                          <SelectItem value="routine">Routine</SelectItem>
                           <SelectItem value="low">Low</SelectItem>
                         </SelectContent>
                       </Select>
@@ -1186,6 +1333,7 @@ export default function PropertyManagement() {
                     <FormControl>
                       <Input placeholder="Brief description" {...field} />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -1198,6 +1346,7 @@ export default function PropertyManagement() {
                     <FormControl>
                       <Textarea placeholder="Detailed description of the issue..." {...field} />
                     </FormControl>
+                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -1371,179 +1520,592 @@ export default function PropertyManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* Maintenance Request Details Dialog */}
-      <Dialog open={showRequestDetailsDialog} onOpenChange={setShowRequestDetailsDialog}>
-        <DialogContent className="max-w-lg">
+      {/* Enhanced Maintenance Request Details Dialog */}
+      <Dialog open={showRequestDetailsDialog} onOpenChange={(open) => {
+        setShowRequestDetailsDialog(open);
+        if (!open) setDetailTab('overview');
+      }}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Maintenance Request Details</DialogTitle>
-          </DialogHeader>
-          {selectedRequest && (
-            <div className="space-y-4">
-              <div className="flex justify-between items-start">
-                <h3 className="font-semibold text-lg">{selectedRequest.title}</h3>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Maintenance Ticket #{selectedRequest?.id}</span>
+              {selectedRequest && (
                 <div className="flex gap-2">
-                  <PriorityBadge priority={selectedRequest.priority} />
+                  <PriorityBadge priority={selectedRequest.urgency || selectedRequest.priority} />
                   <Badge variant="outline">{selectedRequest.status}</Badge>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-500">Property:</span>
-                  <p className="font-medium">{selectedRequest.propertyAddress || `#${selectedRequest.propertyId}`}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Location:</span>
-                  <p className="font-medium">{selectedRequest.location || 'Not specified'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Issue Type:</span>
-                  <p className="font-medium capitalize">{selectedRequest.issueType}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Reported:</span>
-                  <p className="font-medium">{selectedRequest.reportedAt ? format(new Date(selectedRequest.reportedAt), 'dd MMM yyyy HH:mm') : 'N/A'}</p>
-                </div>
-              </div>
-
-              <div>
-                <span className="text-gray-500 text-sm">Description:</span>
-                <p className="mt-1 p-3 bg-gray-50 rounded-lg">{selectedRequest.description}</p>
-              </div>
-
-              {selectedRequest.tenantName && (
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Tenant Information</h4>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-gray-500">Name:</span>
-                      <p className="font-medium">{selectedRequest.tenantName}</p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Phone:</span>
-                      <p className="font-medium">{selectedRequest.tenantPhone}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-gray-500">Email:</span>
-                      <p className="font-medium">{selectedRequest.tenantEmail}</p>
-                    </div>
-                  </div>
-                </div>
               )}
+            </DialogTitle>
+            {selectedRequest && (
+              <DialogDescription>{selectedRequest.title}</DialogDescription>
+            )}
+          </DialogHeader>
+          {selectedRequest && (
+            <Tabs value={detailTab} onValueChange={setDetailTab} className="flex-1 overflow-hidden flex flex-col">
+              <TabsList className="w-full grid grid-cols-4">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="quotes">
+                  Quotes {ticketQuotes?.length > 0 && <Badge variant="secondary" className="ml-1 text-xs h-5">{ticketQuotes.length}</Badge>}
+                </TabsTrigger>
+                <TabsTrigger value="timeline">Timeline</TabsTrigger>
+                <TabsTrigger value="communications">Comms</TabsTrigger>
+              </TabsList>
 
-              {selectedRequest.aiCategory && (
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">AI Assessment</h4>
-                  <div className="flex gap-2 flex-wrap">
-                    <Badge variant="secondary">Category: {selectedRequest.aiCategory}</Badge>
-                    {selectedRequest.aiSuggestedContractor && (
-                      <Badge variant="outline">Suggested: {selectedRequest.aiSuggestedContractor}</Badge>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Assigned Contractor Section */}
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <Wrench className="h-4 w-4" />
-                  Assigned Contractor
-                </h4>
-                {selectedRequest.assignedContractor ? (
-                  <div className="grid grid-cols-2 gap-4 text-sm bg-muted/50 rounded-lg p-3" data-testid="section-contractor-details">
-                    <div>
-                      <span className="text-muted-foreground">Company:</span>
-                      <p className="font-medium" data-testid="text-dialog-contractor-company">{selectedRequest.assignedContractor.companyName}</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Contact:</span>
-                      <p className="font-medium" data-testid="text-dialog-contractor-contact">{selectedRequest.assignedContractor.contactName || 'N/A'}</p>
-                    </div>
-                    {selectedRequest.assignedContractor.phone && (
+              {/* Tab 1: Overview */}
+              <TabsContent value="overview" className="flex-1 overflow-auto mt-4">
+                <ScrollArea className="h-[500px] pr-2">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-muted-foreground">Phone:</span>
-                        <p className="font-medium" data-testid="text-dialog-contractor-phone">{selectedRequest.assignedContractor.phone}</p>
+                        <span className="text-gray-500">Property:</span>
+                        <p className="font-medium">{selectedRequest.propertyAddress || `#${selectedRequest.propertyId}`}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Location:</span>
+                        <p className="font-medium">{selectedRequest.location || 'Not specified'}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Category:</span>
+                        <p className="font-medium capitalize">{selectedRequest.category || selectedRequest.issueType || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Reported:</span>
+                        <p className="font-medium">{selectedRequest.createdAt ? format(new Date(selectedRequest.createdAt), 'dd MMM yyyy HH:mm') : 'N/A'}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 text-sm">Description:</span>
+                      <p className="mt-1 p-3 bg-gray-50 rounded-lg text-sm">{selectedRequest.description}</p>
+                    </div>
+
+                    {selectedRequest.tenantName && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium mb-2">Tenant Information</h4>
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-500">Name:</span>
+                            <p className="font-medium">{selectedRequest.tenantName}</p>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Phone:</span>
+                            <p className="font-medium">{selectedRequest.tenantPhone || 'N/A'}</p>
+                          </div>
+                          <div className="col-span-2">
+                            <span className="text-gray-500">Email:</span>
+                            <p className="font-medium">{selectedRequest.tenantEmail || 'N/A'}</p>
+                          </div>
+                        </div>
                       </div>
                     )}
-                    {selectedRequest.assignedContractor.email && (
-                      <div>
-                        <span className="text-muted-foreground">Email:</span>
-                        <p className="font-medium" data-testid="text-dialog-contractor-email">{selectedRequest.assignedContractor.email}</p>
+
+                    {selectedRequest.aiCategory && (
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium mb-2">AI Assessment</h4>
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="secondary">Category: {selectedRequest.aiCategory}</Badge>
+                          {selectedRequest.aiSuggestedContractor && (
+                            <Badge variant="outline">Suggested: {selectedRequest.aiSuggestedContractor}</Badge>
+                          )}
+                        </div>
                       </div>
                     )}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground italic text-sm">No contractor assigned yet</p>
-                )}
-              </div>
 
-              {/* Property Manager Section */}
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <UserCheck className="h-4 w-4" />
-                  Property Manager
-                </h4>
-                {selectedRequest.propertyManager ? (
-                  <div className="grid grid-cols-2 gap-4 text-sm bg-muted/50 rounded-lg p-3" data-testid="section-property-manager-details">
-                    <div>
-                      <span className="text-muted-foreground">Name:</span>
-                      <p className="font-medium" data-testid="text-dialog-manager-name">{selectedRequest.propertyManager.fullName}</p>
+                    {/* Assigned Contractor Section */}
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <Wrench className="h-4 w-4" />
+                        Assigned Contractor
+                      </h4>
+                      {selectedRequest.assignedContractor ? (
+                        <div className="grid grid-cols-2 gap-4 text-sm bg-muted/50 rounded-lg p-3">
+                          <div>
+                            <span className="text-muted-foreground">Company:</span>
+                            <p className="font-medium">{selectedRequest.assignedContractor.companyName}</p>
+                          </div>
+                          <div>
+                            <span className="text-muted-foreground">Contact:</span>
+                            <p className="font-medium">{selectedRequest.assignedContractor.contactName || 'N/A'}</p>
+                          </div>
+                          {selectedRequest.assignedContractor.phone && (
+                            <div>
+                              <span className="text-muted-foreground">Phone:</span>
+                              <p className="font-medium">{selectedRequest.assignedContractor.phone}</p>
+                            </div>
+                          )}
+                          {selectedRequest.assignedContractor.email && (
+                            <div>
+                              <span className="text-muted-foreground">Email:</span>
+                              <p className="font-medium">{selectedRequest.assignedContractor.email}</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground italic text-sm">No contractor assigned yet</p>
+                      )}
                     </div>
-                    {selectedRequest.propertyManager.phone && (
-                      <div>
-                        <span className="text-muted-foreground">Phone:</span>
-                        <p className="font-medium" data-testid="text-dialog-manager-phone">{selectedRequest.propertyManager.phone}</p>
-                      </div>
-                    )}
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Email:</span>
-                      <p className="font-medium" data-testid="text-dialog-manager-email">{selectedRequest.propertyManager.email || 'N/A'}</p>
+
+                    {/* Property Manager Section */}
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <UserCheck className="h-4 w-4" />
+                        Property Manager
+                      </h4>
+                      {selectedRequest.propertyManager ? (
+                        <div className="grid grid-cols-2 gap-4 text-sm bg-muted/50 rounded-lg p-3">
+                          <div>
+                            <span className="text-muted-foreground">Name:</span>
+                            <p className="font-medium">{selectedRequest.propertyManager.fullName}</p>
+                          </div>
+                          {selectedRequest.propertyManager.phone && (
+                            <div>
+                              <span className="text-muted-foreground">Phone:</span>
+                              <p className="font-medium">{selectedRequest.propertyManager.phone}</p>
+                            </div>
+                          )}
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">Email:</span>
+                            <p className="font-medium">{selectedRequest.propertyManager.email || 'N/A'}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground italic text-sm">No property manager assigned</p>
+                      )}
+                    </div>
+
+                    {/* Activity History */}
+                    <div className="border-t pt-4">
+                      <h4 className="font-medium mb-2 flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Activity History
+                      </h4>
+                      {ticketHistory && ticketHistory.length > 0 ? (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                          {ticketHistory.map((update: any, index: number) => (
+                            <div key={update.id || index} className="flex gap-3 text-sm p-2 bg-muted/30 rounded-lg">
+                              <div className="flex-shrink-0">
+                                {update.updateType === 'status_change' && <AlertCircle className="h-4 w-4 text-blue-500" />}
+                                {update.updateType === 'assignment' && <UserCheck className="h-4 w-4 text-green-500" />}
+                                {update.updateType === 'comment' && <FileText className="h-4 w-4 text-gray-500" />}
+                                {update.updateType === 'cost_update' && <PoundSterling className="h-4 w-4 text-purple-500" />}
+                              </div>
+                              <div className="flex-1">
+                                <p className="font-medium">{update.message}</p>
+                                <p className="text-muted-foreground text-xs">
+                                  {update.userName} - {update.createdAt ? format(new Date(update.createdAt), 'dd MMM yyyy HH:mm') : 'N/A'}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground italic text-sm">No activity recorded yet</p>
+                      )}
                     </div>
                   </div>
-                ) : (
-                  <p className="text-muted-foreground italic text-sm">No property manager assigned</p>
-                )}
-              </div>
+                </ScrollArea>
+              </TabsContent>
 
-              {/* Status History / Audit Trail */}
-              <div className="border-t pt-4">
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <Clock className="h-4 w-4" />
-                  Activity History
-                </h4>
-                {ticketHistory && ticketHistory.length > 0 ? (
-                  <div className="space-y-2 max-h-48 overflow-y-auto" data-testid="section-ticket-history">
-                    {ticketHistory.map((update: any, index: number) => (
-                      <div
-                        key={update.id || index}
-                        className="flex gap-3 text-sm p-2 bg-muted/30 rounded-lg"
-                        data-testid={`history-item-${update.id || index}`}
+              {/* Tab 2: Quotes & Payment */}
+              <TabsContent value="quotes" className="flex-1 overflow-auto mt-4">
+                <ScrollArea className="h-[500px] pr-2">
+                  <div className="space-y-4">
+                    {/* Request Quotes Button */}
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-medium flex items-center gap-2">
+                        <PoundSterling className="h-4 w-4" />
+                        Contractor Quotes
+                      </h4>
+                      <Button
+                        size="sm"
+                        onClick={() => setShowQuoteRequestDialog(true)}
                       >
-                        <div className="flex-shrink-0">
-                          {update.updateType === 'status_change' && <AlertCircle className="h-4 w-4 text-blue-500" />}
-                          {update.updateType === 'assignment' && <UserCheck className="h-4 w-4 text-green-500" />}
-                          {update.updateType === 'comment' && <FileText className="h-4 w-4 text-gray-500" />}
-                        </div>
-                        <div className="flex-1">
-                          <p className="font-medium">{update.message}</p>
-                          <p className="text-muted-foreground text-xs">
-                            {update.userName} - {update.createdAt ? format(new Date(update.createdAt), 'dd MMM yyyy HH:mm') : 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground italic text-sm">No activity recorded yet</p>
-                )}
-              </div>
+                        <Plus className="h-4 w-4 mr-1" />
+                        Request Quotes
+                      </Button>
+                    </div>
 
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setShowRequestDetailsDialog(false)}>
-                  Close
-                </Button>
-              </div>
-            </div>
+                    {/* Quote Request Dialog (inline) */}
+                    {showQuoteRequestDialog && (() => {
+                      const categoryToSpecs: Record<string, string[]> = {
+                        'plumbing': ['plumbing', 'plumbing/gas', 'gas'],
+                        'electrical': ['electrical', 'electrician', 'electrician(epcs)'],
+                        'heating': ['heating', 'gas', 'plumbing/gas', 'boiler'],
+                        'appliance': ['appliance', 'appliance engineer'],
+                        'structural': ['structural', 'building', 'handyman', 'handyman/roofer', 'roofing'],
+                        'other': ['handyman', 'general'],
+                      };
+                      const cat = (selectedRequest.category || selectedRequest.aiCategorization || 'other').toLowerCase();
+                      const relevantSpecs = categoryToSpecs[cat] || categoryToSpecs['other'];
+                      const isMatch = (c: any) => c.specializations?.some((s: string) =>
+                        relevantSpecs.some(rs => s.toLowerCase().includes(rs) || rs.includes(s.toLowerCase()))
+                      );
+                      const matched = contractors?.filter(isMatch) || [];
+                      const others = contractors?.filter((c: any) => !isMatch(c)) || [];
+
+                      return (
+                        <div className="border-2 border-blue-200 bg-blue-50 rounded-lg p-4 space-y-3">
+                          <div className="flex justify-between items-center">
+                            <p className="text-sm font-medium">Select contractors to request quotes from:</p>
+                            <Button variant="ghost" size="sm" onClick={() => {
+                              setShowQuoteRequestDialog(false);
+                              setSelectedContractorsForQuote([]);
+                            }}>Cancel</Button>
+                          </div>
+                          <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {matched.length > 0 && <p className="text-xs font-medium text-green-700">Recommended for {cat}:</p>}
+                            {[...matched, ...others].map((c: any) => (
+                              <label key={c.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-white ${
+                                selectedContractorsForQuote.includes(c.id) ? 'bg-white border-2 border-[#791E75]' : 'border border-gray-200'
+                              } ${isMatch(c) ? 'border-green-300' : ''}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedContractorsForQuote.includes(c.id)}
+                                  onChange={(e) => {
+                                    if (e.target.checked) {
+                                      setSelectedContractorsForQuote(prev => [...prev, c.id]);
+                                    } else {
+                                      setSelectedContractorsForQuote(prev => prev.filter(id => id !== c.id));
+                                    }
+                                  }}
+                                  className="rounded"
+                                />
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium">{c.companyName}</p>
+                                  <div className="flex gap-1 flex-wrap">
+                                    {c.specializations?.slice(0, 3).map((s: string) => (
+                                      <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                          <Button
+                            className="w-full"
+                            disabled={selectedContractorsForQuote.length === 0 || requestQuotesMutation.isPending}
+                            onClick={() => requestQuotesMutation.mutate({
+                              ticketId: selectedRequest.id,
+                              contractorIds: selectedContractorsForQuote
+                            })}
+                          >
+                            {requestQuotesMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                            Request Quotes from {selectedContractorsForQuote.length} Contractor{selectedContractorsForQuote.length !== 1 ? 's' : ''}
+                          </Button>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Quote Cards */}
+                    {ticketQuotes && ticketQuotes.length > 0 ? (
+                      <div className="space-y-3">
+                        {ticketQuotes.map((quote: any) => (
+                          <div key={quote.id} className={`bg-white rounded-lg border p-4 ${
+                            quote.status === 'quoted' ? 'border-blue-300 shadow-sm' : ''
+                          }`}>
+                            <div className="flex justify-between items-start mb-2">
+                              <div>
+                                <p className="font-medium">{quote.contractor?.companyName || `Contractor #${quote.contractorId}`}</p>
+                                <p className="text-sm text-gray-500">Quote Ref: Q{quote.id}</p>
+                              </div>
+                              <Badge className={
+                                quote.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                                quote.status === 'quoted' ? 'bg-blue-100 text-blue-800' :
+                                quote.status === 'accepted' ? 'bg-green-100 text-green-800' :
+                                quote.status === 'approved' || quote.status === 'scheduled' ? 'bg-purple-100 text-purple-800' :
+                                quote.status === 'in_progress' ? 'bg-orange-100 text-orange-800' :
+                                quote.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                quote.status === 'declined' || quote.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                                'bg-gray-100 text-gray-800'
+                              }>
+                                {quote.status}
+                              </Badge>
+                            </div>
+
+                            {quote.quoteAmount && (
+                              <p className="text-2xl font-bold text-[#791E75] mb-2">
+                                £{(quote.quoteAmount / 100).toFixed(2)}
+                              </p>
+                            )}
+
+                            {quote.availableDate && (
+                              <p className="text-sm text-gray-600 flex items-center gap-1 mb-2">
+                                <Calendar className="h-4 w-4" />
+                                Available: {new Date(quote.availableDate).toLocaleDateString('en-GB')}
+                              </p>
+                            )}
+
+                            {quote.scheduledDate && (
+                              <p className="text-sm text-purple-600 flex items-center gap-1 mb-2">
+                                <Calendar className="h-4 w-4" />
+                                Scheduled: {new Date(quote.scheduledDate).toLocaleDateString('en-GB')} {quote.scheduledTimeSlot && `(${quote.scheduledTimeSlot})`}
+                              </p>
+                            )}
+
+                            {quote.contractorResponse && (
+                              <p className="text-sm bg-gray-50 p-2 rounded mb-3">{quote.contractorResponse}</p>
+                            )}
+
+                            {/* Send to Landlord button */}
+                            {(quote.status === 'quoted' || quote.status === 'accepted') && (
+                              <div className="mb-3">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full border-[#791E75] text-[#791E75] hover:bg-[#791E75]/10"
+                                  onClick={() => sendToLandlordMutation.mutate({ ticketId: selectedRequest.id, quoteId: quote.id })}
+                                  disabled={sendToLandlordMutation.isPending}
+                                >
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  Send Quote to Landlord
+                                </Button>
+                              </div>
+                            )}
+
+                            {/* Quote Actions */}
+                            {quote.status === 'quoted' || quote.status === 'accepted' ? (
+                              <div className="space-y-3 border-t pt-3 mt-3">
+                                <p className="text-xs text-blue-600 font-medium">Schedule work - tenant will be notified of date only</p>
+                                <div className="flex gap-2">
+                                  <Input
+                                    type="date"
+                                    value={scheduledDate}
+                                    onChange={(e) => setScheduledDate(e.target.value)}
+                                    className="flex-1"
+                                  />
+                                  <Select value={scheduledTimeSlot} onValueChange={setScheduledTimeSlot}>
+                                    <SelectTrigger className="w-[150px]">
+                                      <SelectValue placeholder="Time slot" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="morning">Morning (9-12)</SelectItem>
+                                      <SelectItem value="afternoon">Afternoon (12-5)</SelectItem>
+                                      <SelectItem value="all_day">All Day</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <Textarea
+                                  placeholder="Internal notes (not sent to tenant)"
+                                  value={approvalNotes}
+                                  onChange={(e) => setApprovalNotes(e.target.value)}
+                                  rows={2}
+                                />
+                                <div className="flex gap-2">
+                                  <Button
+                                    className="flex-1 bg-green-600 hover:bg-green-700"
+                                    onClick={() => approveQuoteMutation.mutate({
+                                      ticketId: selectedRequest.id,
+                                      quoteId: quote.id,
+                                      approvalNotes,
+                                      scheduledDate,
+                                      scheduledTimeSlot
+                                    })}
+                                    disabled={approveQuoteMutation.isPending}
+                                  >
+                                    <ThumbsUp className="h-4 w-4 mr-2" />
+                                    Approve & Schedule
+                                  </Button>
+                                  <Button
+                                    variant="destructive"
+                                    onClick={() => rejectQuoteMutation.mutate({
+                                      ticketId: selectedRequest.id,
+                                      quoteId: quote.id
+                                    })}
+                                    disabled={rejectQuoteMutation.isPending}
+                                  >
+                                    <ThumbsDown className="h-4 w-4 mr-2" />
+                                    Reject
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : quote.status === 'scheduled' || quote.status === 'approved' ? (
+                              <div className="space-y-3 border-t pt-3 mt-3">
+                                {/* Create Payment button */}
+                                <Button
+                                  variant="outline"
+                                  className="w-full"
+                                  onClick={() => createPaymentMutation.mutate({ ticketId: selectedRequest.id, quoteId: quote.id })}
+                                  disabled={createPaymentMutation.isPending}
+                                >
+                                  <CreditCard className="h-4 w-4 mr-2" />
+                                  Create Payment (£{quote.quoteAmount ? (quote.quoteAmount / 100).toFixed(2) : '0.00'})
+                                </Button>
+                                <Button
+                                  className="w-full bg-orange-600 hover:bg-orange-700"
+                                  onClick={() => startWorkMutation.mutate({ ticketId: selectedRequest.id, quoteId: quote.id })}
+                                  disabled={startWorkMutation.isPending}
+                                >
+                                  <Hammer className="h-4 w-4 mr-2" />
+                                  Mark Work Started
+                                </Button>
+                              </div>
+                            ) : quote.status === 'in_progress' ? (
+                              <div className="space-y-3 border-t pt-3 mt-3">
+                                <Textarea
+                                  placeholder="Completion notes (shared with tenant)..."
+                                  value={completionNotes}
+                                  onChange={(e) => setCompletionNotes(e.target.value)}
+                                  rows={2}
+                                />
+                                <Button
+                                  className="w-full bg-green-600 hover:bg-green-700"
+                                  onClick={() => completeWorkMutation.mutate({
+                                    ticketId: selectedRequest.id,
+                                    quoteId: quote.id,
+                                    completionNotes
+                                  })}
+                                  disabled={completeWorkMutation.isPending}
+                                >
+                                  <CheckCircle className="h-4 w-4 mr-2" />
+                                  Mark Work Completed
+                                </Button>
+                                <p className="text-xs text-gray-500">Tenant will be notified that work is complete</p>
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : !showQuoteRequestDialog ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <PoundSterling className="h-12 w-12 mx-auto mb-3 text-gray-300" />
+                        <p>No quotes yet</p>
+                        <p className="text-sm mt-1">Request quotes from contractors to get started</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              {/* Tab 3: Timeline */}
+              <TabsContent value="timeline" className="flex-1 overflow-auto mt-4">
+                <ScrollArea className="h-[500px] pr-2">
+                  <div className="relative">
+                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+                    <div className="space-y-4">
+                      {workflowEvents && workflowEvents.length > 0 ? (
+                        workflowEvents.map((event: any) => (
+                          <div key={event.id} className="relative pl-10">
+                            <div className={`absolute left-2 w-5 h-5 rounded-full flex items-center justify-center ${
+                              event.eventType?.includes('completed') ? 'bg-green-500' :
+                              event.eventType?.includes('rejected') || event.eventType?.includes('declined') ? 'bg-red-500' :
+                              event.eventType?.includes('approved') || event.eventType?.includes('scheduled') ? 'bg-purple-500' :
+                              event.eventType?.includes('started') ? 'bg-orange-500' :
+                              event.eventType?.includes('quote') || event.eventType?.includes('accepted') ? 'bg-blue-500' :
+                              event.eventType?.includes('payment') ? 'bg-emerald-500' :
+                              event.eventType?.includes('landlord') ? 'bg-indigo-500' :
+                              'bg-gray-400'
+                            }`}>
+                              {event.eventType?.includes('completed') ? <CheckCircle className="h-3 w-3 text-white" /> :
+                               event.eventType?.includes('rejected') ? <XCircle className="h-3 w-3 text-white" /> :
+                               event.eventType?.includes('scheduled') ? <Calendar className="h-3 w-3 text-white" /> :
+                               event.eventType?.includes('started') ? <Hammer className="h-3 w-3 text-white" /> :
+                               event.eventType?.includes('payment') ? <CreditCard className="h-3 w-3 text-white" /> :
+                               <CircleDot className="h-3 w-3 text-white" />}
+                            </div>
+                            <div className="bg-white rounded-lg p-3 shadow-sm border">
+                              <div className="flex justify-between items-start">
+                                <p className="font-medium text-sm">{event.title}</p>
+                                <span className="text-xs text-gray-400">
+                                  {event.createdAt ? new Date(event.createdAt).toLocaleString('en-GB', {
+                                    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                                  }) : ''}
+                                </span>
+                              </div>
+                              {event.description && (
+                                <p className="text-sm text-gray-600 mt-1">{event.description}</p>
+                              )}
+                              {event.notificationChannels?.length > 0 && (
+                                <div className="flex gap-1 mt-2">
+                                  {event.notificationChannels.map((ch: string) => (
+                                    <Badge key={ch} variant="outline" className="text-xs capitalize">{ch}</Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="pl-10">
+                          <div className="relative">
+                            <div className="absolute left-[-22px] w-5 h-5 rounded-full bg-blue-500 flex items-center justify-center">
+                              <CircleDot className="h-3 w-3 text-white" />
+                            </div>
+                          </div>
+                          <div className="bg-white rounded-lg p-3 shadow-sm border">
+                            <p className="font-medium text-sm">Ticket Created</p>
+                            <p className="text-xs text-gray-400">{selectedRequest.createdAt ? new Date(selectedRequest.createdAt).toLocaleString('en-GB') : 'N/A'}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </ScrollArea>
+              </TabsContent>
+
+              {/* Tab 4: Communications */}
+              <TabsContent value="communications" className="flex-1 overflow-hidden mt-4 flex flex-col">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 mb-4">
+                  <strong>All messages sent from here go to the tenant.</strong> Contractor communications are handled via the Quotes tab.
+                </div>
+
+                <ScrollArea className="flex-1 h-[350px]">
+                  <div className="space-y-3">
+                    {ticketComms && ticketComms.length > 0 ? (
+                      ticketComms.map((comm: any) => (
+                        <div
+                          key={comm.id}
+                          className={`p-3 rounded-lg ${comm.direction === 'inbound' ? 'bg-gray-100 ml-0 mr-12' : 'bg-[#791E75]/10 ml-12 mr-0'}`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            {comm.channel === 'whatsapp' && <MessageCircle className="h-3 w-3 text-green-600" />}
+                            {comm.channel === 'email' && <Mail className="h-3 w-3 text-blue-600" />}
+                            {comm.channel === 'phone' && <Phone className="h-3 w-3 text-gray-600" />}
+                            {comm.channel === 'sms' && <MessageCircle className="h-3 w-3 text-purple-600" />}
+                            <span className="text-xs text-gray-500 capitalize">{comm.channel || 'message'}</span>
+                            <span className="text-xs text-gray-400">
+                              {comm.timestamp ? new Date(comm.timestamp).toLocaleString('en-GB') :
+                               comm.createdAt ? new Date(comm.createdAt).toLocaleString('en-GB') : ''}
+                            </span>
+                            {comm.direction === 'outbound' && (
+                              <Badge variant="outline" className="text-xs">From Property Management</Badge>
+                            )}
+                          </div>
+                          <p className="text-sm">{comm.content || comm.body}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-center text-gray-500 py-8">No communications yet</p>
+                    )}
+                  </div>
+                </ScrollArea>
+
+                {/* Send WhatsApp to Tenant */}
+                <div className="mt-4 pt-4 border-t">
+                  <p className="text-xs text-gray-500 mb-2">Message tenant directly as John Barclay Property Management</p>
+                  <div className="flex gap-2">
+                    <Textarea
+                      placeholder="Type a message to tenant..."
+                      value={whatsappMessage}
+                      onChange={(e) => setWhatsappMessage(e.target.value)}
+                      className="flex-1"
+                      rows={2}
+                    />
+                    <Button
+                      onClick={() => sendWhatsAppMutation.mutate({
+                        ticketId: selectedRequest.id,
+                        message: whatsappMessage,
+                        phoneNumber: selectedRequest.tenantPhone || ''
+                      })}
+                      disabled={!whatsappMessage || sendWhatsAppMutation.isPending}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Send
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
           )}
         </DialogContent>
       </Dialog>
@@ -1695,73 +2257,153 @@ export default function PropertyManagement() {
               Select a contractor and optionally notify them about this ticket
             </DialogDescription>
           </DialogHeader>
-          {selectedTicketForContractor && (
-            <div className="space-y-4">
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="font-medium">{selectedTicketForContractor.title}</p>
-                <p className="text-sm text-muted-foreground">
-                  {selectedTicketForContractor.propertyAddress || `Property #${selectedTicketForContractor.propertyId}`}
-                </p>
-              </div>
+          {selectedTicketForContractor && (() => {
+            // Map ticket category to contractor specialization keywords
+            const categoryToSpecs: Record<string, string[]> = {
+              'plumbing': ['plumbing', 'plumbing/gas', 'gas'],
+              'electrical': ['electrical', 'electrician', 'electrician(epcs)'],
+              'heating': ['heating', 'gas', 'plumbing/gas', 'boiler'],
+              'appliance': ['appliance', 'appliance engineer'],
+              'structural': ['structural', 'building', 'handyman', 'handyman/roofer', 'roofing'],
+              'other': ['handyman', 'general'],
+            };
+            const ticketCategory = (selectedTicketForContractor.category || selectedTicketForContractor.aiCategorization || 'other').toLowerCase();
+            const relevantSpecs = categoryToSpecs[ticketCategory] || categoryToSpecs['other'];
 
-              <div className="space-y-3">
-                <p className="text-sm font-medium">Select Contractor:</p>
-                {contractors?.map((contractor: any) => (
-                  <div
-                    key={contractor.id}
-                    className="flex items-center justify-between p-3 border rounded-lg hover-elevate cursor-pointer"
-                    onClick={() => {
-                      assignContractor.mutate({
-                        ticketId: selectedTicketForContractor.id,
-                        contractorId: contractor.id,
-                        notify: true
-                      });
-                    }}
-                    data-testid={`contractor-option-${contractor.id}`}
-                  >
-                    <div>
-                      <p className="font-medium">{contractor.companyName}</p>
-                      <p className="text-sm text-muted-foreground">{contractor.contactName}</p>
-                      {contractor.specializations && (
-                        <div className="flex gap-1 mt-1">
-                          {contractor.specializations.slice(0, 2).map((spec: string) => (
-                            <Badge key={spec} variant="outline" className="text-xs">{spec}</Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <Button
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
+            const isMatch = (contractor: any) => {
+              if (!contractor.specializations?.length) return false;
+              return contractor.specializations.some((s: string) =>
+                relevantSpecs.some(rs => s.toLowerCase().includes(rs) || rs.includes(s.toLowerCase()))
+              );
+            };
+
+            const matched = contractors?.filter(isMatch) || [];
+            const others = contractors?.filter((c: any) => !isMatch(c)) || [];
+
+            return (
+              <div className="space-y-4">
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="font-medium">{selectedTicketForContractor.title}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedTicketForContractor.propertyAddress || `Property #${selectedTicketForContractor.propertyId}`}
+                  </p>
+                  <Badge variant="secondary" className="mt-1 text-xs">{ticketCategory}</Badge>
+                </div>
+
+                {matched.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium text-green-700">Recommended for {ticketCategory}:</p>
+                    {matched.map((contractor: any) => (
+                      <div
+                        key={contractor.id}
+                        className="flex items-center justify-between p-3 border-2 border-green-200 bg-green-50 rounded-lg hover:shadow-md cursor-pointer"
+                        onClick={() => {
                           assignContractor.mutate({
                             ticketId: selectedTicketForContractor.id,
                             contractorId: contractor.id,
                             notify: true
                           });
                         }}
-                        disabled={assignContractor.isPending}
-                        data-testid={`button-assign-notify-${contractor.id}`}
+                        data-testid={`contractor-option-${contractor.id}`}
                       >
-                        <Send className="h-3 w-3 mr-1" />
-                        Assign & Notify
-                      </Button>
-                    </div>
+                        <div>
+                          <p className="font-medium">{contractor.companyName}</p>
+                          <p className="text-sm text-muted-foreground">{contractor.contactName}</p>
+                          {contractor.specializations && (
+                            <div className="flex gap-1 mt-1 flex-wrap">
+                              {contractor.specializations.map((spec: string) => (
+                                <Badge key={spec} variant={relevantSpecs.some(rs => spec.toLowerCase().includes(rs) || rs.includes(spec.toLowerCase())) ? "default" : "outline"} className="text-xs">{spec}</Badge>
+                              ))}
+                            </div>
+                          )}
+                          {contractor.emergencyPhone && selectedTicketForContractor.urgency === 'emergency' && (
+                            <p className="text-xs text-red-600 mt-1">Emergency: {contractor.emergencyPhone}</p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Button
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              assignContractor.mutate({
+                                ticketId: selectedTicketForContractor.id,
+                                contractorId: contractor.id,
+                                notify: true
+                              });
+                            }}
+                            disabled={assignContractor.isPending}
+                            data-testid={`button-assign-notify-${contractor.id}`}
+                          >
+                            <Send className="h-3 w-3 mr-1" />
+                            Assign & Notify
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
 
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => {
-                  setShowContractorDialog(false);
-                  setSelectedTicketForContractor(null);
-                }}>
-                  Cancel
-                </Button>
+                {others.length > 0 && (
+                  <details className="group">
+                    <summary className="text-sm font-medium text-muted-foreground cursor-pointer hover:text-foreground">
+                      Other contractors ({others.length})
+                    </summary>
+                    <div className="space-y-2 mt-2">
+                      {others.map((contractor: any) => (
+                        <div
+                          key={contractor.id}
+                          className="flex items-center justify-between p-2 border rounded-lg hover:shadow-sm cursor-pointer"
+                          onClick={() => {
+                            assignContractor.mutate({
+                              ticketId: selectedTicketForContractor.id,
+                              contractorId: contractor.id,
+                              notify: true
+                            });
+                          }}
+                        >
+                          <div>
+                            <p className="text-sm font-medium">{contractor.companyName}</p>
+                            {contractor.specializations && (
+                              <div className="flex gap-1 mt-1 flex-wrap">
+                                {contractor.specializations.slice(0, 2).map((spec: string) => (
+                                  <Badge key={spec} variant="outline" className="text-xs">{spec}</Badge>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              assignContractor.mutate({
+                                ticketId: selectedTicketForContractor.id,
+                                contractorId: contractor.id,
+                                notify: true
+                              });
+                            }}
+                            disabled={assignContractor.isPending}
+                          >
+                            <Send className="h-3 w-3 mr-1" />
+                            Assign
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => {
+                    setShowContractorDialog(false);
+                    setSelectedTicketForContractor(null);
+                  }}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
@@ -2056,7 +2698,7 @@ export default function PropertyManagement() {
                 <Button variant="outline" onClick={() => setShowPropertyDetailsDialog(false)}>
                   Close
                 </Button>
-                <Button onClick={() => window.open(`/property/${selectedManagedProperty.id}`, '_blank')}>
+                <Button onClick={() => window.open(`/crm/properties/${selectedManagedProperty.id}`, '_blank')}>
                   <ExternalLink className="h-4 w-4 mr-2" />
                   View Property
                 </Button>

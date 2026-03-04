@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -159,8 +159,10 @@ interface BeneficialOwnerData {
   idDocumentNumber: string;
   idDocumentExpiry: string;
   idDocumentUploaded: boolean;
+  idDocumentUrl: string;
   proofOfAddressType: string;
   proofOfAddressUploaded: boolean;
+  proofOfAddressUrl: string;
 }
 
 const emptyBO: BeneficialOwnerData = {
@@ -169,8 +171,8 @@ const emptyBO: BeneficialOwnerData = {
   addressLine1: '', addressLine2: '', city: '', postcode: '', country: 'UK',
   ownershipPercentage: '', isDirector: false, isPsc: false, isTrustee: false,
   idDocumentType: 'passport', idDocumentNumber: '', idDocumentExpiry: '',
-  idDocumentUploaded: false,
-  proofOfAddressType: 'utility_bill', proofOfAddressUploaded: false
+  idDocumentUploaded: false, idDocumentUrl: '',
+  proofOfAddressType: 'utility_bill', proofOfAddressUploaded: false, proofOfAddressUrl: ''
 };
 
 interface CorporateFormData {
@@ -196,6 +198,7 @@ interface CorporateFormData {
   shareCapital: string;
   dateOfIncorporation: string;
   documentsChecked: Record<string, boolean>;
+  documentsUploaded: Record<string, { url: string; fileName: string }>;
   beneficialOwners: BeneficialOwnerData[];
 }
 
@@ -236,6 +239,7 @@ export default function CorporateOnboarding() {
     shareCapital: '',
     dateOfIncorporation: '',
     documentsChecked: {},
+    documentsUploaded: {},
     beneficialOwners: [{ ...emptyBO }]
   });
 
@@ -300,6 +304,61 @@ export default function CorporateOnboarding() {
     }));
     if (boIndex >= formData.beneficialOwners.length - 1) {
       setBoIndex(Math.max(0, formData.beneficialOwners.length - 2));
+    }
+  };
+
+  // File upload handling
+  const docFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const boFileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  const handleDocumentUpload = async (file: File, docName: string) => {
+    setUploading(docName);
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('document', file);
+      const res = await fetch('/api/crm/upload/document', {
+        method: 'POST',
+        body: uploadFormData,
+      });
+      if (!res.ok) throw new Error('Failed to upload');
+      const data = await res.json();
+      setFormData(prev => ({
+        ...prev,
+        documentsChecked: { ...prev.documentsChecked, [docName]: true },
+        documentsUploaded: { ...prev.documentsUploaded, [docName]: { url: data.url, fileName: file.name } },
+      }));
+      toast({ title: 'Document uploaded', description: `${file.name} uploaded successfully.` });
+    } catch {
+      toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const handleBODocUpload = async (file: File, idx: number, field: 'idDocumentUrl' | 'proofOfAddressUrl') => {
+    const uploadedField = field === 'idDocumentUrl' ? 'idDocumentUploaded' : 'proofOfAddressUploaded';
+    const key = `bo-${idx}-${field}`;
+    setUploading(key);
+    try {
+      const uploadFormData = new FormData();
+      uploadFormData.append('document', file);
+      const res = await fetch('/api/crm/upload/document', {
+        method: 'POST',
+        body: uploadFormData,
+      });
+      if (!res.ok) throw new Error('Failed to upload');
+      const data = await res.json();
+      setFormData(prev => {
+        const bos = [...prev.beneficialOwners];
+        bos[idx] = { ...bos[idx], [field]: data.url, [uploadedField]: true };
+        return { ...prev, beneficialOwners: bos };
+      });
+      toast({ title: 'Document uploaded', description: `${file.name} uploaded successfully.` });
+    } catch {
+      toast({ title: 'Upload failed', description: 'Please try again.', variant: 'destructive' });
+    } finally {
+      setUploading(null);
     }
   };
 
@@ -819,7 +878,12 @@ export default function CorporateOnboarding() {
               {jurisdictionConfig.documents.map((doc) => (
                 <div key={doc} className="border rounded-lg p-4">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium">{doc}</p>
+                    <div>
+                      <p className="font-medium">{doc}</p>
+                      {formData.documentsUploaded[doc] && (
+                        <p className="text-xs text-muted-foreground mt-1">{formData.documentsUploaded[doc].fileName}</p>
+                      )}
+                    </div>
                     <div className="flex items-center gap-2">
                       <Checkbox
                         checked={!!formData.documentsChecked[doc]}
@@ -830,9 +894,25 @@ export default function CorporateOnboarding() {
                           }));
                         }}
                       />
-                      <Button variant="outline" size="sm">
+                      <input
+                        type="file"
+                        className="hidden"
+                        ref={el => { docFileInputRefs.current[doc] = el; }}
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (file) handleDocumentUpload(file, doc);
+                          e.target.value = '';
+                        }}
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={uploading === doc}
+                        onClick={() => docFileInputRefs.current[doc]?.click()}
+                      >
                         <Upload className="h-4 w-4 mr-2" />
-                        Upload
+                        {uploading === doc ? 'Uploading...' : formData.documentsUploaded[doc] ? 'Replace' : 'Upload'}
                       </Button>
                     </div>
                   </div>
@@ -1044,15 +1124,36 @@ export default function CorporateOnboarding() {
                   </div>
                   <div className="border rounded-lg p-4">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium text-sm">Upload ID Document</p>
+                      <div>
+                        <p className="font-medium text-sm">Upload ID Document</p>
+                        {formData.beneficialOwners[boIndex].idDocumentUrl && (
+                          <p className="text-xs text-green-600 mt-1">Document uploaded</p>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Checkbox
                           checked={formData.beneficialOwners[boIndex].idDocumentUploaded}
                           onCheckedChange={checked => updateBO(boIndex, 'idDocumentUploaded', checked)}
                         />
-                        <Button variant="outline" size="sm">
+                        <input
+                          type="file"
+                          className="hidden"
+                          ref={el => { boFileInputRefs.current[`id-${boIndex}`] = el; }}
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBODocUpload(file, boIndex, 'idDocumentUrl');
+                            e.target.value = '';
+                          }}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={uploading === `bo-${boIndex}-idDocumentUrl`}
+                          onClick={() => boFileInputRefs.current[`id-${boIndex}`]?.click()}
+                        >
                           <Upload className="h-4 w-4 mr-2" />
-                          Upload
+                          {uploading === `bo-${boIndex}-idDocumentUrl` ? 'Uploading...' : formData.beneficialOwners[boIndex].idDocumentUrl ? 'Replace' : 'Upload'}
                         </Button>
                       </div>
                     </div>
@@ -1076,15 +1177,36 @@ export default function CorporateOnboarding() {
                   </div>
                   <div className="border rounded-lg p-4">
                     <div className="flex items-center justify-between">
-                      <p className="font-medium text-sm">Upload Proof of Address</p>
+                      <div>
+                        <p className="font-medium text-sm">Upload Proof of Address</p>
+                        {formData.beneficialOwners[boIndex].proofOfAddressUrl && (
+                          <p className="text-xs text-green-600 mt-1">Document uploaded</p>
+                        )}
+                      </div>
                       <div className="flex items-center gap-2">
                         <Checkbox
                           checked={formData.beneficialOwners[boIndex].proofOfAddressUploaded}
                           onCheckedChange={checked => updateBO(boIndex, 'proofOfAddressUploaded', checked)}
                         />
-                        <Button variant="outline" size="sm">
+                        <input
+                          type="file"
+                          className="hidden"
+                          ref={el => { boFileInputRefs.current[`poa-${boIndex}`] = el; }}
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                          onChange={e => {
+                            const file = e.target.files?.[0];
+                            if (file) handleBODocUpload(file, boIndex, 'proofOfAddressUrl');
+                            e.target.value = '';
+                          }}
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={uploading === `bo-${boIndex}-proofOfAddressUrl`}
+                          onClick={() => boFileInputRefs.current[`poa-${boIndex}`]?.click()}
+                        >
                           <Upload className="h-4 w-4 mr-2" />
-                          Upload
+                          {uploading === `bo-${boIndex}-proofOfAddressUrl` ? 'Uploading...' : formData.beneficialOwners[boIndex].proofOfAddressUrl ? 'Replace' : 'Upload'}
                         </Button>
                       </div>
                     </div>

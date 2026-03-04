@@ -36,7 +36,28 @@ import {
   unifiedContacts, companyDetails, beneficialOwner, kycDocuments,
   contactStatusHistory,
   jointTenants, salesProgression, communications,
-  conversations, messages, processedEmails, sentEmails
+  conversations, messages, processedEmails, sentEmails,
+  tasks, InsertTask, Task,
+  customerEnquiries, propertyInquiries, leads,
+  contractorQuotes, ContractorQuote, InsertContractorQuote,
+  ticketWorkflowEvents, TicketWorkflowEvent, InsertTicketWorkflowEvent,
+  payments,
+  invoices, Invoice, InsertInvoice,
+  arrears, Arrears, InsertArrears,
+  dunningActions, DunningAction, InsertDunningAction,
+  landlordStatements, LandlordStatement, InsertLandlordStatement,
+  statementLineItems, StatementLineItem, InsertStatementLineItem,
+  propertyTransactions, PropertyTransaction, InsertPropertyTransaction,
+  rentReviews, RentReview, InsertRentReview,
+  renewalReminders, RenewalReminder, InsertRenewalReminder,
+  screeningRequests, ScreeningRequest, InsertScreeningRequest,
+  contactTags, ContactTag, InsertContactTag,
+  contactTagAssignments, ContactTagAssignment, InsertContactTagAssignment,
+  tenancies, paymentSchedules,
+  bankTransactions, BankTransaction, InsertBankTransaction,
+  gocardlessMandates, GocardlessMandate, InsertGocardlessMandate,
+  gocardlessPayments, GocardlessPayment, InsertGocardlessPayment,
+  Payment, InsertPayment
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, ilike, and, or, desc, sql, gte, lte, inArray, count } from "drizzle-orm";
@@ -119,6 +140,19 @@ export interface IStorage {
   // Contractor methods
   getContractor(id: number): Promise<Contractor | undefined>;
   getAllContractors(): Promise<Contractor[]>;
+
+  // Contractor Quote methods
+  createContractorQuote(quote: InsertContractorQuote): Promise<ContractorQuote>;
+  getQuotesForTicket(ticketId: number): Promise<ContractorQuote[]>;
+  getContractorQuote(id: number): Promise<ContractorQuote | undefined>;
+  updateContractorQuote(id: number, data: Partial<InsertContractorQuote>): Promise<ContractorQuote | undefined>;
+
+  // Workflow Event methods
+  createWorkflowEvent(event: InsertTicketWorkflowEvent): Promise<TicketWorkflowEvent>;
+  getWorkflowEvents(ticketId: number): Promise<TicketWorkflowEvent[]>;
+
+  // Ticket Communications
+  getTicketCommunications(ticketId: number): Promise<any[]>;
 
   // Property Inquiry methods
   createPropertyInquiry(inquiry: InsertPropertyInquiry): Promise<PropertyInquiry>;
@@ -557,6 +591,81 @@ export class DatabaseStorage implements IStorage {
 
   async getAllContractors(): Promise<Contractor[]> {
     return await db.select().from(contractors).orderBy(desc(contractors.createdAt));
+  }
+
+  // ==========================================
+  // CONTRACTOR QUOTE METHODS
+  // ==========================================
+
+  async createContractorQuote(quote: InsertContractorQuote): Promise<ContractorQuote> {
+    const [created] = await db.insert(contractorQuotes).values(quote).returning();
+    return created;
+  }
+
+  async getQuotesForTicket(ticketId: number): Promise<ContractorQuote[]> {
+    return await db.select()
+      .from(contractorQuotes)
+      .where(eq(contractorQuotes.ticketId, ticketId))
+      .orderBy(desc(contractorQuotes.createdAt));
+  }
+
+  async getContractorQuote(id: number): Promise<ContractorQuote | undefined> {
+    const [quote] = await db.select()
+      .from(contractorQuotes)
+      .where(eq(contractorQuotes.id, id));
+    return quote;
+  }
+
+  async updateContractorQuote(id: number, data: Partial<InsertContractorQuote>): Promise<ContractorQuote | undefined> {
+    const [updated] = await db.update(contractorQuotes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(contractorQuotes.id, id))
+      .returning();
+    return updated;
+  }
+
+  // ==========================================
+  // WORKFLOW EVENT METHODS
+  // ==========================================
+
+  async createWorkflowEvent(event: InsertTicketWorkflowEvent): Promise<TicketWorkflowEvent> {
+    const [created] = await db.insert(ticketWorkflowEvents).values(event).returning();
+    return created;
+  }
+
+  async getWorkflowEvents(ticketId: number): Promise<TicketWorkflowEvent[]> {
+    return await db.select()
+      .from(ticketWorkflowEvents)
+      .where(eq(ticketWorkflowEvents.ticketId, ticketId))
+      .orderBy(desc(ticketWorkflowEvents.createdAt));
+  }
+
+  // ==========================================
+  // TICKET COMMUNICATIONS
+  // ==========================================
+
+  async getTicketCommunications(ticketId: number): Promise<any[]> {
+    const ticket = await this.getMaintenanceTicket(ticketId);
+    if (!ticket) return [];
+
+    const conditions = [];
+    if (ticket.propertyId) conditions.push(eq(conversations.propertyId, ticket.propertyId));
+    if (ticket.tenantId) conditions.push(eq(conversations.contactId, ticket.tenantId));
+    if (conditions.length === 0) return [];
+
+    const convos = await db.select()
+      .from(conversations)
+      .where(and(...conditions));
+
+    if (convos.length === 0) return [];
+
+    const convoIds = convos.map(c => c.id);
+    const msgs = await db.select()
+      .from(messages)
+      .where(inArray(messages.conversationId, convoIds))
+      .orderBy(desc(messages.createdAt));
+
+    return msgs;
   }
 
   // ==========================================
@@ -1399,10 +1508,28 @@ export class DatabaseStorage implements IStorage {
     startDate: Date,
     endDate: Date,
     allowedEventTypes: string[]
-  ): Promise<CalendarEvent[]> {
+  ): Promise<any[]> {
     const results = await db
-      .select()
+      .select({
+        id: calendarEvents.id,
+        title: calendarEvents.title,
+        description: calendarEvents.description,
+        eventType: calendarEvents.eventType,
+        startTime: calendarEvents.startTime,
+        endTime: calendarEvents.endTime,
+        allDay: calendarEvents.allDay,
+        location: calendarEvents.location,
+        propertyId: calendarEvents.propertyId,
+        isVirtual: calendarEvents.isVirtual,
+        virtualMeetingUrl: calendarEvents.virtualMeetingUrl,
+        organizerId: calendarEvents.organizerId,
+        attendees: calendarEvents.attendees,
+        status: calendarEvents.status,
+        notes: calendarEvents.notes,
+        organizerName: users.fullName,
+      })
       .from(calendarEvents)
+      .leftJoin(users, eq(calendarEvents.organizerId, users.id))
       .where(
         and(
           or(
@@ -1607,6 +1734,651 @@ export class DatabaseStorage implements IStorage {
       overview: { totalReceived, totalSent, totalUnread, openWhatsapp },
       byUser,
     };
+  }
+
+  // ==========================================
+  // TASK CRUD
+  // ==========================================
+
+  async createTask(data: InsertTask): Promise<Task> {
+    const [task] = await db.insert(tasks).values(data).returning();
+    return task;
+  }
+
+  async getTask(id: number): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
+  }
+
+  async getTasksForUser(userId: number, filters?: { status?: string; priority?: string; taskType?: string }): Promise<Task[]> {
+    const conditions: any[] = [eq(tasks.assignedToId, userId)];
+    if (filters?.status) conditions.push(eq(tasks.status, filters.status));
+    if (filters?.priority) conditions.push(eq(tasks.priority, filters.priority));
+    if (filters?.taskType) conditions.push(eq(tasks.taskType, filters.taskType));
+    return await db.select().from(tasks).where(and(...conditions)).orderBy(
+      sql`CASE ${tasks.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 END`,
+      tasks.dueDate
+    );
+  }
+
+  async getAllTasks(filters?: { assignedTo?: number; status?: string; priority?: string; taskType?: string }): Promise<Task[]> {
+    const conditions: any[] = [];
+    if (filters?.assignedTo) conditions.push(eq(tasks.assignedToId, filters.assignedTo));
+    if (filters?.status) conditions.push(eq(tasks.status, filters.status));
+    if (filters?.priority) conditions.push(eq(tasks.priority, filters.priority));
+    if (filters?.taskType) conditions.push(eq(tasks.taskType, filters.taskType));
+    return await db.select().from(tasks).where(conditions.length > 0 ? and(...conditions) : undefined).orderBy(
+      sql`CASE ${tasks.priority} WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 WHEN 'low' THEN 3 END`,
+      tasks.dueDate
+    );
+  }
+
+  async updateTask(id: number, data: Partial<InsertTask> & { completedAt?: Date }): Promise<Task | undefined> {
+    const [updated] = await db.update(tasks).set({ ...data, updatedAt: new Date() }).where(eq(tasks.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTask(id: number): Promise<boolean> {
+    const result = await db.delete(tasks).where(eq(tasks.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ==========================================
+  // DESK QUERIES
+  // ==========================================
+
+  async getDeskEnquiries(userId: number): Promise<any[]> {
+    // Get unresponded property inquiries (assigned to user or unassigned, status = 'new')
+    const propInquiries = await db
+      .select({
+        id: propertyInquiries.id,
+        type: sql<string>`'property_inquiry'`,
+        contactName: propertyInquiries.fullName,
+        contactEmail: propertyInquiries.email,
+        contactPhone: propertyInquiries.phone,
+        propertyId: propertyInquiries.propertyId,
+        message: propertyInquiries.message,
+        inquiryType: propertyInquiries.inquiryType,
+        status: propertyInquiries.status,
+        createdAt: propertyInquiries.createdAt,
+      })
+      .from(propertyInquiries)
+      .where(eq(propertyInquiries.status, 'new'))
+      .orderBy(desc(propertyInquiries.createdAt))
+      .limit(30);
+
+    // Get unresponded customer enquiries (assigned to user or unassigned, status = 'new')
+    const custEnquiries = await db
+      .select({
+        id: customerEnquiries.id,
+        type: sql<string>`'customer_enquiry'`,
+        contactName: customerEnquiries.customerName,
+        contactEmail: customerEnquiries.customerEmail,
+        contactPhone: customerEnquiries.customerPhone,
+        propertyId: customerEnquiries.propertyId,
+        message: customerEnquiries.message,
+        enquiryType: customerEnquiries.enquiryType,
+        status: customerEnquiries.status,
+        createdAt: customerEnquiries.createdAt,
+      })
+      .from(customerEnquiries)
+      .where(
+        and(
+          eq(customerEnquiries.status, 'new'),
+          or(eq(customerEnquiries.assignedToId, userId), sql`${customerEnquiries.assignedToId} IS NULL`)
+        )
+      )
+      .orderBy(desc(customerEnquiries.createdAt))
+      .limit(30);
+
+    // Combine and sort by date
+    return [...propInquiries, ...custEnquiries].sort((a, b) =>
+      new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+    );
+  }
+
+  async getUserLeads(userId: number): Promise<any[]> {
+    return await db
+      .select()
+      .from(leads)
+      .where(eq(leads.assignedTo, userId))
+      .orderBy(
+        sql`CASE ${leads.status} WHEN 'new' THEN 0 WHEN 'contacted' THEN 1 WHEN 'qualified' THEN 2 WHEN 'viewing_booked' THEN 3 WHEN 'offer_made' THEN 4 ELSE 5 END`,
+        desc(leads.updatedAt)
+      );
+  }
+
+  // ==========================================
+  // INVOICE METHODS
+  // ==========================================
+
+  async createInvoice(data: InsertInvoice): Promise<Invoice> {
+    const [invoice] = await db.insert(invoices).values(data).returning();
+    return invoice;
+  }
+
+  async getInvoice(id: number): Promise<Invoice | undefined> {
+    const [invoice] = await db.select().from(invoices).where(eq(invoices.id, id));
+    return invoice;
+  }
+
+  async getInvoicesByTenant(tenantId: number): Promise<Invoice[]> {
+    return db.select().from(invoices).where(eq(invoices.tenantId, tenantId)).orderBy(desc(invoices.createdAt));
+  }
+
+  async getInvoicesByLandlord(landlordId: number): Promise<Invoice[]> {
+    return db.select().from(invoices).where(eq(invoices.landlordId, landlordId)).orderBy(desc(invoices.createdAt));
+  }
+
+  async getInvoicesByProperty(propertyId: number): Promise<Invoice[]> {
+    return db.select().from(invoices).where(eq(invoices.propertyId, propertyId)).orderBy(desc(invoices.createdAt));
+  }
+
+  async updateInvoice(id: number, data: Partial<InsertInvoice>): Promise<Invoice | undefined> {
+    const [updated] = await db.update(invoices).set({ ...data, updatedAt: new Date() }).where(eq(invoices.id, id)).returning();
+    return updated;
+  }
+
+  async getOverdueInvoices(): Promise<Invoice[]> {
+    return db.select().from(invoices)
+      .where(and(
+        sql`${invoices.status} != 'paid'`,
+        sql`${invoices.status} != 'cancelled'`,
+        sql`${invoices.status} != 'credited'`,
+        sql`${invoices.dueDate} < NOW()`
+      ))
+      .orderBy(invoices.dueDate);
+  }
+
+  async getAllInvoices(filters?: { status?: string; tenantId?: number; landlordId?: number; propertyId?: number }): Promise<Invoice[]> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(invoices.status, filters.status));
+    if (filters?.tenantId) conditions.push(eq(invoices.tenantId, filters.tenantId));
+    if (filters?.landlordId) conditions.push(eq(invoices.landlordId, filters.landlordId));
+    if (filters?.propertyId) conditions.push(eq(invoices.propertyId, filters.propertyId));
+
+    return db.select().from(invoices)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(invoices.createdAt));
+  }
+
+  // ==========================================
+  // ARREARS METHODS
+  // ==========================================
+
+  async createArrears(data: InsertArrears): Promise<Arrears> {
+    const [record] = await db.insert(arrears).values(data).returning();
+    return record;
+  }
+
+  async getActiveArrears(): Promise<Arrears[]> {
+    return db.select().from(arrears).where(eq(arrears.status, "active")).orderBy(desc(arrears.daysOverdue));
+  }
+
+  async getArrearsByTenant(tenantId: number): Promise<Arrears[]> {
+    return db.select().from(arrears).where(eq(arrears.tenantId, tenantId)).orderBy(desc(arrears.createdAt));
+  }
+
+  async getAllArrears(filters?: { status?: string; propertyId?: number; tenantId?: number }): Promise<Arrears[]> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(arrears.status, filters.status));
+    if (filters?.propertyId) conditions.push(eq(arrears.propertyId, filters.propertyId));
+    if (filters?.tenantId) conditions.push(eq(arrears.tenantId, filters.tenantId));
+
+    return db.select().from(arrears)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(arrears.daysOverdue));
+  }
+
+  async updateArrears(id: number, data: Partial<InsertArrears>): Promise<Arrears | undefined> {
+    const [updated] = await db.update(arrears).set({ ...data, updatedAt: new Date() }).where(eq(arrears.id, id)).returning();
+    return updated;
+  }
+
+  async createDunningAction(data: InsertDunningAction): Promise<DunningAction> {
+    const [action] = await db.insert(dunningActions).values(data).returning();
+    return action;
+  }
+
+  async getDunningActionsByArrears(arrearsId: number): Promise<DunningAction[]> {
+    return db.select().from(dunningActions).where(eq(dunningActions.arrearsId, arrearsId)).orderBy(desc(dunningActions.createdAt));
+  }
+
+  // ==========================================
+  // LANDLORD STATEMENT METHODS
+  // ==========================================
+
+  async createStatement(data: InsertLandlordStatement): Promise<LandlordStatement> {
+    const [stmt] = await db.insert(landlordStatements).values(data).returning();
+    return stmt;
+  }
+
+  async getStatementsByLandlord(landlordId: number): Promise<LandlordStatement[]> {
+    return db.select().from(landlordStatements).where(eq(landlordStatements.landlordId, landlordId)).orderBy(desc(landlordStatements.statementPeriodEnd));
+  }
+
+  async getStatement(id: number): Promise<LandlordStatement | undefined> {
+    const [stmt] = await db.select().from(landlordStatements).where(eq(landlordStatements.id, id));
+    return stmt;
+  }
+
+  async updateStatement(id: number, data: Partial<InsertLandlordStatement>): Promise<LandlordStatement | undefined> {
+    const [updated] = await db.update(landlordStatements).set({ ...data, updatedAt: new Date() }).where(eq(landlordStatements.id, id)).returning();
+    return updated;
+  }
+
+  async createStatementLineItem(data: InsertStatementLineItem): Promise<StatementLineItem> {
+    const [item] = await db.insert(statementLineItems).values(data).returning();
+    return item;
+  }
+
+  async getStatementLineItems(statementId: number): Promise<StatementLineItem[]> {
+    return db.select().from(statementLineItems).where(eq(statementLineItems.statementId, statementId)).orderBy(statementLineItems.transactionDate);
+  }
+
+  // ==========================================
+  // PROPERTY TRANSACTION / P&L METHODS
+  // ==========================================
+
+  async createPropertyTransaction(data: InsertPropertyTransaction): Promise<PropertyTransaction> {
+    const [txn] = await db.insert(propertyTransactions).values(data).returning();
+    return txn;
+  }
+
+  async getPropertyTransactions(propertyId: number, fromDate?: Date, toDate?: Date): Promise<PropertyTransaction[]> {
+    const conditions: any[] = [eq(propertyTransactions.propertyId, propertyId)];
+    if (fromDate) conditions.push(gte(propertyTransactions.transactionDate, fromDate));
+    if (toDate) conditions.push(lte(propertyTransactions.transactionDate, toDate));
+
+    return db.select().from(propertyTransactions)
+      .where(and(...conditions))
+      .orderBy(desc(propertyTransactions.transactionDate));
+  }
+
+  async getPropertyPnL(propertyId: number, fromDate: Date, toDate: Date): Promise<{ totalIncome: number; totalExpenses: number; netProfit: number }> {
+    const result = await db.select({
+      totalIncome: sql<number>`COALESCE(SUM(CASE WHEN ${propertyTransactions.transactionType} = 'income' THEN ${propertyTransactions.amount} ELSE 0 END), 0)`,
+      totalExpenses: sql<number>`COALESCE(SUM(CASE WHEN ${propertyTransactions.transactionType} = 'expense' THEN ${propertyTransactions.amount} ELSE 0 END), 0)`,
+    }).from(propertyTransactions)
+      .where(and(
+        eq(propertyTransactions.propertyId, propertyId),
+        gte(propertyTransactions.transactionDate, fromDate),
+        lte(propertyTransactions.transactionDate, toDate)
+      ));
+
+    const { totalIncome, totalExpenses } = result[0] || { totalIncome: 0, totalExpenses: 0 };
+    return { totalIncome: Number(totalIncome), totalExpenses: Number(totalExpenses), netProfit: Number(totalIncome) - Number(totalExpenses) };
+  }
+
+  async getPortfolioPnL(fromDate: Date, toDate: Date): Promise<Array<{ propertyId: number; totalIncome: number; totalExpenses: number; netProfit: number }>> {
+    const result = await db.select({
+      propertyId: propertyTransactions.propertyId,
+      totalIncome: sql<number>`COALESCE(SUM(CASE WHEN ${propertyTransactions.transactionType} = 'income' THEN ${propertyTransactions.amount} ELSE 0 END), 0)`,
+      totalExpenses: sql<number>`COALESCE(SUM(CASE WHEN ${propertyTransactions.transactionType} = 'expense' THEN ${propertyTransactions.amount} ELSE 0 END), 0)`,
+    }).from(propertyTransactions)
+      .where(and(
+        gte(propertyTransactions.transactionDate, fromDate),
+        lte(propertyTransactions.transactionDate, toDate)
+      ))
+      .groupBy(propertyTransactions.propertyId);
+
+    return result.map(r => ({
+      propertyId: r.propertyId,
+      totalIncome: Number(r.totalIncome),
+      totalExpenses: Number(r.totalExpenses),
+      netProfit: Number(r.totalIncome) - Number(r.totalExpenses)
+    }));
+  }
+
+  // ==========================================
+  // RENT REVIEW METHODS
+  // ==========================================
+
+  async createRentReview(data: InsertRentReview): Promise<RentReview> {
+    const [review] = await db.insert(rentReviews).values(data).returning();
+    return review;
+  }
+
+  async getRentReviewsByProperty(propertyId: number): Promise<RentReview[]> {
+    return db.select().from(rentReviews).where(eq(rentReviews.propertyId, propertyId)).orderBy(desc(rentReviews.reviewDate));
+  }
+
+  async getAllRentReviews(filters?: { status?: string; propertyId?: number }): Promise<RentReview[]> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(rentReviews.status, filters.status));
+    if (filters?.propertyId) conditions.push(eq(rentReviews.propertyId, filters.propertyId));
+
+    return db.select().from(rentReviews)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(rentReviews.reviewDate));
+  }
+
+  async updateRentReview(id: number, data: Partial<InsertRentReview>): Promise<RentReview | undefined> {
+    const [updated] = await db.update(rentReviews).set({ ...data, updatedAt: new Date() }).where(eq(rentReviews.id, id)).returning();
+    return updated;
+  }
+
+  async getUpcomingRentReviews(): Promise<RentReview[]> {
+    return db.select().from(rentReviews)
+      .where(and(
+        eq(rentReviews.status, "scheduled"),
+        sql`${rentReviews.reviewDate} <= NOW() + INTERVAL '90 days'`
+      ))
+      .orderBy(rentReviews.reviewDate);
+  }
+
+  // ==========================================
+  // RENEWAL REMINDER METHODS
+  // ==========================================
+
+  async createRenewalReminder(data: InsertRenewalReminder): Promise<RenewalReminder> {
+    const [reminder] = await db.insert(renewalReminders).values(data).returning();
+    return reminder;
+  }
+
+  async getRenewalReminders(filters?: { status?: string; propertyId?: number }): Promise<RenewalReminder[]> {
+    const conditions: any[] = [];
+    if (filters?.status) conditions.push(eq(renewalReminders.status, filters.status));
+    if (filters?.propertyId) conditions.push(eq(renewalReminders.propertyId, filters.propertyId));
+
+    return db.select().from(renewalReminders)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(renewalReminders.expiryDate);
+  }
+
+  async updateRenewalReminder(id: number, data: Partial<InsertRenewalReminder>): Promise<RenewalReminder | undefined> {
+    const [updated] = await db.update(renewalReminders).set(data).where(eq(renewalReminders.id, id)).returning();
+    return updated;
+  }
+
+  async getExpiringTenancies(withinDays: number): Promise<any[]> {
+    return db.select().from(tenancies)
+      .where(and(
+        eq(tenancies.status, "active"),
+        sql`${tenancies.endDate} IS NOT NULL`,
+        sql`${tenancies.endDate} <= NOW() + INTERVAL '${sql.raw(String(withinDays))} days'`,
+        sql`${tenancies.endDate} > NOW()`
+      ))
+      .orderBy(tenancies.endDate);
+  }
+
+  // ==========================================
+  // SCREENING REQUEST METHODS
+  // ==========================================
+
+  async createScreeningRequest(data: InsertScreeningRequest): Promise<ScreeningRequest> {
+    const [request] = await db.insert(screeningRequests).values(data).returning();
+    return request;
+  }
+
+  async getScreeningByTenant(tenantId: number): Promise<ScreeningRequest[]> {
+    return db.select().from(screeningRequests).where(eq(screeningRequests.tenantId, tenantId)).orderBy(desc(screeningRequests.createdAt));
+  }
+
+  async updateScreeningRequest(id: number, data: Partial<InsertScreeningRequest>): Promise<ScreeningRequest | undefined> {
+    const [updated] = await db.update(screeningRequests).set({ ...data, updatedAt: new Date() }).where(eq(screeningRequests.id, id)).returning();
+    return updated;
+  }
+
+  // ==========================================
+  // CONTACT TAG METHODS
+  // ==========================================
+
+  async createTag(data: InsertContactTag): Promise<ContactTag> {
+    const [tag] = await db.insert(contactTags).values(data).returning();
+    return tag;
+  }
+
+  async getAllTags(): Promise<ContactTag[]> {
+    return db.select().from(contactTags).orderBy(contactTags.name);
+  }
+
+  async deleteTag(id: number): Promise<boolean> {
+    await db.delete(contactTagAssignments).where(eq(contactTagAssignments.tagId, id));
+    await db.delete(contactTags).where(eq(contactTags.id, id));
+    return true;
+  }
+
+  async assignTag(tagId: number, entityType: string, entityId: number, assignedBy?: number): Promise<ContactTagAssignment> {
+    const [assignment] = await db.insert(contactTagAssignments)
+      .values({ tagId, entityType, entityId, assignedBy })
+      .returning();
+    return assignment;
+  }
+
+  async removeTagAssignment(tagId: number, entityType: string, entityId: number): Promise<boolean> {
+    await db.delete(contactTagAssignments)
+      .where(and(
+        eq(contactTagAssignments.tagId, tagId),
+        eq(contactTagAssignments.entityType, entityType),
+        eq(contactTagAssignments.entityId, entityId)
+      ));
+    return true;
+  }
+
+  async getTagsByEntity(entityType: string, entityId: number): Promise<ContactTag[]> {
+    const assignments = await db.select()
+      .from(contactTagAssignments)
+      .innerJoin(contactTags, eq(contactTagAssignments.tagId, contactTags.id))
+      .where(and(
+        eq(contactTagAssignments.entityType, entityType),
+        eq(contactTagAssignments.entityId, entityId)
+      ));
+    return assignments.map(a => a.contact_tag);
+  }
+
+  // ==========================================
+  // UNIFIED CONTACT HISTORY
+  // ==========================================
+
+  async getUnifiedContactHistory(entityType: string, entityId: number): Promise<any[]> {
+    const pool = (await import('./db')).pool;
+    let query = '';
+    const params: any[] = [];
+
+    if (entityType === 'tenant') {
+      query = `
+        SELECT id, 'communication' as source, type as channel, direction, content as message,
+               created_at as timestamp, status, NULL as subject
+        FROM communication WHERE tenant_id = $1
+        UNION ALL
+        SELECT id, 'sent_email' as source, 'email' as channel, 'outbound' as direction,
+               body_text as message, sent_at as timestamp, status, subject
+        FROM sent_email WHERE linked_contact_id = $1
+        ORDER BY timestamp DESC LIMIT 100
+      `;
+      params.push(entityId);
+    } else if (entityType === 'landlord') {
+      query = `
+        SELECT id, 'communication' as source, type as channel, direction, content as message,
+               created_at as timestamp, status, NULL as subject
+        FROM communication WHERE landlord_id = $1
+        UNION ALL
+        SELECT id, 'sent_email' as source, 'email' as channel, 'outbound' as direction,
+               body_text as message, sent_at as timestamp, status, subject
+        FROM sent_email WHERE linked_contact_id = $1
+        ORDER BY timestamp DESC LIMIT 100
+      `;
+      params.push(entityId);
+    } else if (entityType === 'lead') {
+      query = `
+        SELECT id, 'lead_communication' as source, channel, direction, content as message,
+               created_at as timestamp, 'sent' as status, subject
+        FROM lead_communication WHERE lead_id = $1
+        ORDER BY timestamp DESC LIMIT 100
+      `;
+      params.push(entityId);
+    } else {
+      return [];
+    }
+
+    const result = await pool.query(query, params);
+    return result.rows;
+  }
+
+  // ==========================================
+  // CAMPAIGN METHODS
+  // ==========================================
+
+  async getCampaigns(): Promise<any[]> {
+    const pool = (await import('./db')).pool;
+    const result = await pool.query(`SELECT * FROM campaign ORDER BY created_at DESC`);
+    return result.rows;
+  }
+
+  async createCampaign(data: any): Promise<any> {
+    const pool = (await import('./db')).pool;
+    const result = await pool.query(
+      `INSERT INTO campaign (name, description, campaign_type, template_id, status, scheduled_at, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW()) RETURNING *`,
+      [data.name, data.description, data.campaignType, data.templateId, data.status || 'draft', data.scheduledAt, data.createdBy]
+    );
+    return result.rows[0];
+  }
+
+  async updateCampaign(id: number, data: any): Promise<any> {
+    const pool = (await import('./db')).pool;
+    const setClauses: string[] = [];
+    const params: any[] = [];
+    let i = 1;
+    for (const [key, value] of Object.entries(data)) {
+      const snakeKey = key.replace(/[A-Z]/g, (m) => '_' + m.toLowerCase());
+      setClauses.push(`${snakeKey} = $${i}`);
+      params.push(value);
+      i++;
+    }
+    setClauses.push(`updated_at = NOW()`);
+    params.push(id);
+    const result = await pool.query(
+      `UPDATE campaign SET ${setClauses.join(', ')} WHERE id = $${i} RETURNING *`,
+      params
+    );
+    return result.rows[0];
+  }
+
+  async addCampaignRecipients(campaignId: number, recipients: Array<{ recipientType: string; recipientId?: number; email?: string; phone?: string; name?: string }>): Promise<void> {
+    const pool = (await import('./db')).pool;
+    for (const r of recipients) {
+      await pool.query(
+        `INSERT INTO campaign_recipient (campaign_id, recipient_type, recipient_id, email, phone, name, status, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'pending', NOW())`,
+        [campaignId, r.recipientType, r.recipientId, r.email, r.phone, r.name]
+      );
+    }
+  }
+  // ==========================================
+  // PAYMENT RECORDS
+  // ==========================================
+
+  async createPayment(data: InsertPayment): Promise<Payment> {
+    const [payment] = await db.insert(payments).values(data).returning();
+    return payment;
+  }
+
+  // ==========================================
+  // BANK TRANSACTIONS
+  // ==========================================
+
+  async createBankTransaction(data: InsertBankTransaction): Promise<BankTransaction> {
+    const [txn] = await db.insert(bankTransactions).values(data).returning();
+    return txn;
+  }
+
+  async createBankTransactionBatch(data: InsertBankTransaction[]): Promise<BankTransaction[]> {
+    if (data.length === 0) return [];
+    const results = await db.insert(bankTransactions).values(data).returning();
+    return results;
+  }
+
+  async getUnmatchedBankTransactions(): Promise<BankTransaction[]> {
+    return await db.select()
+      .from(bankTransactions)
+      .where(eq(bankTransactions.matchStatus, 'unmatched'))
+      .orderBy(desc(bankTransactions.transactionDate));
+  }
+
+  async getAllBankTransactions(filters?: { matchStatus?: string; bankName?: string; fromDate?: Date; toDate?: Date }): Promise<BankTransaction[]> {
+    const conditions = [];
+    if (filters?.matchStatus) conditions.push(eq(bankTransactions.matchStatus, filters.matchStatus));
+    if (filters?.bankName) conditions.push(eq(bankTransactions.bankName, filters.bankName));
+    if (filters?.fromDate) conditions.push(gte(bankTransactions.transactionDate, filters.fromDate));
+    if (filters?.toDate) conditions.push(lte(bankTransactions.transactionDate, filters.toDate));
+
+    if (conditions.length > 0) {
+      return await db.select().from(bankTransactions).where(and(...conditions)).orderBy(desc(bankTransactions.transactionDate));
+    }
+    return await db.select().from(bankTransactions).orderBy(desc(bankTransactions.transactionDate));
+  }
+
+  async updateBankTransaction(id: number, data: Partial<InsertBankTransaction>): Promise<BankTransaction | undefined> {
+    const [txn] = await db.update(bankTransactions).set(data).where(eq(bankTransactions.id, id)).returning();
+    return txn;
+  }
+
+  // ==========================================
+  // GOCARDLESS MANDATES
+  // ==========================================
+
+  async createGocardlessMandate(data: InsertGocardlessMandate): Promise<GocardlessMandate> {
+    const [mandate] = await db.insert(gocardlessMandates).values(data).returning();
+    return mandate;
+  }
+
+  async getGocardlessMandateByTenant(tenantId: number): Promise<GocardlessMandate | undefined> {
+    const [mandate] = await db.select()
+      .from(gocardlessMandates)
+      .where(eq(gocardlessMandates.tenantId, tenantId));
+    return mandate;
+  }
+
+  async getGocardlessMandateByGcId(gcMandateId: string): Promise<GocardlessMandate | undefined> {
+    const [mandate] = await db.select()
+      .from(gocardlessMandates)
+      .where(eq(gocardlessMandates.gocardlessMandateId, gcMandateId));
+    return mandate;
+  }
+
+  async getAllGocardlessMandates(): Promise<GocardlessMandate[]> {
+    return await db.select().from(gocardlessMandates).orderBy(desc(gocardlessMandates.createdAt));
+  }
+
+  async updateGocardlessMandate(id: number, data: Partial<InsertGocardlessMandate>): Promise<GocardlessMandate | undefined> {
+    const [mandate] = await db.update(gocardlessMandates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(gocardlessMandates.id, id))
+      .returning();
+    return mandate;
+  }
+
+  // ==========================================
+  // GOCARDLESS PAYMENTS
+  // ==========================================
+
+  async createGocardlessPayment(data: InsertGocardlessPayment): Promise<GocardlessPayment> {
+    const [payment] = await db.insert(gocardlessPayments).values(data).returning();
+    return payment;
+  }
+
+  async getGocardlessPaymentByGcId(gcPaymentId: string): Promise<GocardlessPayment | undefined> {
+    const [payment] = await db.select()
+      .from(gocardlessPayments)
+      .where(eq(gocardlessPayments.gocardlessPaymentId, gcPaymentId));
+    return payment;
+  }
+
+  async updateGocardlessPayment(id: number, data: Partial<InsertGocardlessPayment>): Promise<GocardlessPayment | undefined> {
+    const [payment] = await db.update(gocardlessPayments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(gocardlessPayments.id, id))
+      .returning();
+    return payment;
+  }
+
+  async getGocardlessPaymentsByMandate(mandateId: number): Promise<GocardlessPayment[]> {
+    return await db.select()
+      .from(gocardlessPayments)
+      .where(eq(gocardlessPayments.mandateId, mandateId))
+      .orderBy(desc(gocardlessPayments.createdAt));
   }
 }
 

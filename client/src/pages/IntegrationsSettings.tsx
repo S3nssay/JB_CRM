@@ -10,12 +10,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { usePermissions, FEATURE_CLEARANCE } from '@/hooks/use-permissions';
 import { ClearanceBadge } from '@/components/ProtectedRoute';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import {
   Brain, MessageSquare, Phone, Building2, Globe, Megaphone,
   CheckCircle, XCircle, AlertCircle, Eye, EyeOff,
   Save, TestTube, Loader2, Shield, Lock, ArrowLeft,
-  CreditCard, Mail, MapPin, FileSignature, Settings,
-  MessageCircle, Facebook, Linkedin, Twitter
+  CreditCard, Banknote, Mail, MapPin, FileSignature, Settings,
+  MessageCircle, Facebook, Linkedin, Twitter,
+  Inbox, Trash2, RefreshCw, Plus
 } from 'lucide-react';
 
 interface EnvVariable {
@@ -72,6 +74,11 @@ const SECTION_CONFIG: Record<string, { icon: any; description: string; color: st
     description: 'Stripe payment processing credentials',
     color: 'text-indigo-600'
   },
+  gocardless: {
+    icon: Banknote,
+    description: 'GoCardless Direct Debit for recurring rent collection',
+    color: 'text-emerald-600'
+  },
   documents: {
     icon: FileSignature,
     description: 'DocuSign electronic signature integration',
@@ -91,6 +98,11 @@ const SECTION_CONFIG: Record<string, { icon: any; description: string; color: st
     icon: Settings,
     description: 'Base URL and encryption settings',
     color: 'text-gray-600'
+  },
+  mailboxes: {
+    icon: Inbox,
+    description: 'Department email inboxes (Sales, Lettings, Maintenance)',
+    color: 'text-violet-600'
   }
 };
 
@@ -102,7 +114,7 @@ export default function IntegrationsSettings() {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [hasChanges, setHasChanges] = useState(false);
   const [testingSection, setTestingSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('ai');
+  const [activeTab, setActiveTab] = useState('mailboxes');
 
   // Use proper permissions hook for auth check
   const { user, isLoading: authLoading, hasMinClearance, getClearanceLabel } = usePermissions();
@@ -172,10 +184,22 @@ export default function IntegrationsSettings() {
     }
   });
 
-  // Test section mutation
+  // Test section mutation - auto-saves before testing
   const testMutation = useMutation({
     mutationFn: async (section: string) => {
       setTestingSection(section);
+      // Auto-save current form values first so the test picks them up
+      if (hasChanges) {
+        const saveRes = await fetch('/api/crm/env-settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ values: formValues })
+        });
+        if (saveRes.ok) {
+          setHasChanges(false);
+          queryClient.invalidateQueries({ queryKey: ['/api/crm/env-settings'] });
+        }
+      }
       const res = await fetch(`/api/crm/env-settings/test/${section}`, {
         method: 'POST'
       });
@@ -199,6 +223,182 @@ export default function IntegrationsSettings() {
       setTestingSection(null);
     }
   });
+
+  // ---- Department Mailboxes ----
+  interface SystemMailbox {
+    id: number;
+    provider: string;
+    mailboxUpn: string;
+    mailboxCategory: string;
+    mailboxDisplayName: string;
+    status: string;
+    lastSyncAt: string | null;
+    errorCount: number;
+    lastError: string | null;
+    syncEnabled: boolean;
+  }
+
+  interface MailboxForm {
+    smtpHost: string;
+    smtpPort: number;
+    smtpUser: string;
+    smtpPassword: string;
+    imapHost: string;
+    imapPort: number;
+    imapUser: string;
+    imapPassword: string;
+    displayName: string;
+  }
+
+  const MAILBOX_DEFAULTS: Record<string, { email: string; displayName: string; color: string; description: string }> = {
+    sales: {
+      email: 'sales@johnbarclay.uk',
+      displayName: 'Sales Enquiries',
+      color: 'text-blue-600',
+      description: 'Property enquiries, viewing requests, offers',
+    },
+    lettings: {
+      email: 'lettings@johnbarclay.uk',
+      displayName: 'Lettings Enquiries',
+      color: 'text-purple-600',
+      description: 'Rental enquiries, viewing requests, landlord comms',
+    },
+    maintenance: {
+      email: 'maintenance@johnbarclay.uk',
+      displayName: 'Maintenance Requests',
+      color: 'text-orange-600',
+      description: 'Repair requests, contractor responses',
+    },
+    admin: {
+      email: 'admin@johnbarclay.uk',
+      displayName: 'Admin / General',
+      color: 'text-gray-600',
+      description: 'General enquiries, admin correspondence',
+    },
+  };
+
+  const [mailboxDialog, setMailboxDialog] = useState<string | null>(null); // category being configured
+  const [mailboxForm, setMailboxForm] = useState<MailboxForm>({
+    smtpHost: 'mail.johnbarclay.uk',
+    smtpPort: 465,
+    smtpUser: '',
+    smtpPassword: '',
+    imapHost: 'mail.johnbarclay.uk',
+    imapPort: 993,
+    imapUser: '',
+    imapPassword: '',
+    displayName: '',
+  });
+  const [showMailboxPassword, setShowMailboxPassword] = useState(false);
+  const [syncingCategory, setSyncingCategory] = useState<string | null>(null);
+
+  const { data: systemMailboxes = [], isLoading: mailboxesLoading } = useQuery<SystemMailbox[]>({
+    queryKey: ['/api/email-integration/system-mailboxes'],
+    queryFn: async () => {
+      const res = await fetch('/api/email-integration/system-mailboxes');
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const createMailboxMutation = useMutation({
+    mutationFn: async ({ category, form }: { category: string; form: MailboxForm }) => {
+      const res = await fetch('/api/email-integration/system-mailbox', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          smtpHost: form.smtpHost,
+          smtpPort: form.smtpPort,
+          smtpUser: form.smtpUser,
+          smtpPassword: form.smtpPassword,
+          smtpSecure: true,
+          imapHost: form.imapHost,
+          imapPort: form.imapPort,
+          imapUser: form.imapUser,
+          imapPassword: form.imapPassword,
+          imapTls: true,
+          category,
+          displayName: form.displayName,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || 'Failed to create mailbox');
+        } catch (parseErr) {
+          if (parseErr instanceof SyntaxError) {
+            throw new Error(`Server error (${res.status})`);
+          }
+          throw parseErr;
+        }
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/email-integration/system-mailboxes'] });
+      toast({ title: 'Mailbox Connected', description: `${data.category} mailbox is now active (${data.mailboxUpn})` });
+      setMailboxDialog(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Connection Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const deleteMailboxMutation = useMutation({
+    mutationFn: async (category: string) => {
+      const res = await fetch(`/api/email-integration/system-mailbox/${category}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to delete mailbox');
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/email-integration/system-mailboxes'] });
+      toast({ title: 'Mailbox Removed', description: 'Department mailbox has been disconnected.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const syncMailboxMutation = useMutation({
+    mutationFn: async (category: string) => {
+      setSyncingCategory(category);
+      const res = await fetch(`/api/email-integration/system-mailboxes/${category}/sync`, { method: 'POST' });
+      if (!res.ok) throw new Error('Sync failed');
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/email-integration/system-mailboxes'] });
+      toast({ title: 'Sync Complete', description: `Fetched ${data.newEmails || 0} new emails.` });
+      setSyncingCategory(null);
+    },
+    onError: () => {
+      toast({ title: 'Sync Failed', description: 'Could not sync mailbox.', variant: 'destructive' });
+      setSyncingCategory(null);
+    },
+  });
+
+  const openMailboxSetup = (category: string) => {
+    const defaults = MAILBOX_DEFAULTS[category];
+    setMailboxForm({
+      smtpHost: 'mail.johnbarclay.uk',
+      smtpPort: 465,
+      smtpUser: defaults.email,
+      smtpPassword: '',
+      imapHost: 'mail.johnbarclay.uk',
+      imapPort: 993,
+      imapUser: defaults.email,
+      imapPassword: '',
+      displayName: defaults.displayName,
+    });
+    setShowMailboxPassword(false);
+    setMailboxDialog(category);
+  };
+
+  const getMailbox = (category: string) => systemMailboxes.find((m) => m.mailboxCategory === category);
 
   const toggleSecret = (key: string) => {
     setShowSecrets(prev => ({ ...prev, [key]: !prev[key] }));
@@ -387,7 +587,26 @@ export default function IntegrationsSettings() {
       {/* Status Overview */}
       <Card className="mb-6">
         <CardContent className="pt-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            {/* Mailboxes quick-access card */}
+            <button
+              onClick={() => setActiveTab('mailboxes')}
+              className={`text-center p-3 rounded-lg transition-colors ${
+                activeTab === 'mailboxes' ? 'bg-[#791E75]/10 ring-2 ring-[#791E75]' : 'bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              <Inbox className="h-6 w-6 mx-auto mb-2 text-violet-600" />
+              <p className="text-sm font-medium truncate">Mailboxes</p>
+              <div className="mt-1">
+                {systemMailboxes.length === 3 ? (
+                  <span className="text-xs text-green-600">All Connected</span>
+                ) : systemMailboxes.length > 0 ? (
+                  <span className="text-xs text-yellow-600">{systemMailboxes.length}/3</span>
+                ) : (
+                  <span className="text-xs text-gray-400">Not Set</span>
+                )}
+              </div>
+            </button>
             {Object.entries(sections).slice(0, 6).map(([key, section]) => {
               const config = SECTION_CONFIG[key];
               if (!config) return null;
@@ -425,6 +644,11 @@ export default function IntegrationsSettings() {
       {/* Tabs for all sections */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-4 flex-wrap h-auto gap-1">
+          {/* Department Mailboxes tab first */}
+          <TabsTrigger value="mailboxes" className="flex items-center gap-2">
+            <Inbox className="h-4 w-4" />
+            <span className="hidden sm:inline">Dept Mailboxes</span>
+          </TabsTrigger>
           {Object.entries(sections).map(([key, section]) => {
             const config = SECTION_CONFIG[key];
             if (!config) return null;
@@ -438,6 +662,260 @@ export default function IntegrationsSettings() {
             );
           })}
         </TabsList>
+
+        {/* Department Mailboxes Tab Content */}
+        <TabsContent value="mailboxes" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-violet-100 text-violet-600">
+                    <Inbox className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg">Department Email Inboxes</CardTitle>
+                    <CardDescription>
+                      Configure shared email inboxes for Sales, Lettings, and Maintenance departments.
+                      Each inbox is monitored by AI for auto-routing and ticket creation.
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {(['sales', 'lettings', 'maintenance', 'admin'] as const).map((category) => {
+                  const defaults = MAILBOX_DEFAULTS[category];
+                  const mailbox = getMailbox(category);
+                  const isConnected = mailbox && mailbox.status === 'active';
+                  const hasError = mailbox && mailbox.errorCount > 0;
+
+                  return (
+                    <div
+                      key={category}
+                      className={`border rounded-lg p-4 ${
+                        isConnected
+                          ? hasError
+                            ? 'border-yellow-300 bg-yellow-50'
+                            : 'border-green-300 bg-green-50'
+                          : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Mail className={`h-5 w-5 ${defaults.color}`} />
+                          <div>
+                            <h4 className="font-medium capitalize">{category} Inbox</h4>
+                            <p className="text-sm text-gray-500">{defaults.email} — {defaults.description}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {isConnected ? (
+                            <>
+                              {hasError ? (
+                                <Badge className="bg-yellow-100 text-yellow-800">
+                                  <AlertCircle className="h-3 w-3 mr-1" />
+                                  Errors ({mailbox.errorCount})
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-green-100 text-green-800">
+                                  <CheckCircle className="h-3 w-3 mr-1" />
+                                  Connected
+                                </Badge>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => syncMailboxMutation.mutate(category)}
+                                disabled={syncingCategory === category}
+                              >
+                                {syncingCategory === category ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <RefreshCw className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                onClick={() => {
+                                  if (confirm(`Remove ${category} mailbox? This will disconnect ${defaults.email}.`)) {
+                                    deleteMailboxMutation.mutate(category);
+                                  }
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Badge variant="outline" className="text-gray-500">
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Not Configured
+                              </Badge>
+                              <Button
+                                size="sm"
+                                className="bg-[#791E75] hover:bg-[#60175d]"
+                                onClick={() => openMailboxSetup(category)}
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Connect
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {isConnected && mailbox.lastSyncAt && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          Last synced: {new Date(mailbox.lastSyncAt).toLocaleString()}
+                          {mailbox.lastError && (
+                            <span className="text-yellow-700 ml-2">Last error: {mailbox.lastError}</span>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Server info */}
+          <Card className="bg-violet-50 border-violet-200">
+            <CardContent className="pt-4">
+              <h4 className="font-medium text-violet-900 mb-2">Email Server Configuration</h4>
+              <ul className="text-sm text-violet-800 space-y-1">
+                <li>Server: <span className="font-mono">mail.johnbarclay.uk</span></li>
+                <li>IMAP: Port 993 (SSL/TLS)</li>
+                <li>SMTP: Port 465 (SSL/TLS)</li>
+                <li>AI monitoring is automatic — emails are analysed for routing, ticket creation, and auto-replies.</li>
+              </ul>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Mailbox Setup Dialog */}
+        <Dialog open={!!mailboxDialog} onOpenChange={(open) => !open && setMailboxDialog(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="capitalize">
+                Connect {mailboxDialog} Mailbox
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label>Display Name</Label>
+                <Input
+                  value={mailboxForm.displayName}
+                  onChange={(e) => setMailboxForm((f) => ({ ...f, displayName: e.target.value }))}
+                  placeholder="e.g. Sales Enquiries"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>SMTP Host</Label>
+                  <Input
+                    value={mailboxForm.smtpHost}
+                    onChange={(e) => setMailboxForm((f) => ({ ...f, smtpHost: e.target.value }))}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>SMTP Port</Label>
+                  <Input
+                    type="number"
+                    value={mailboxForm.smtpPort}
+                    onChange={(e) => setMailboxForm((f) => ({ ...f, smtpPort: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Email Address (SMTP & IMAP Username)</Label>
+                <Input
+                  value={mailboxForm.smtpUser}
+                  onChange={(e) =>
+                    setMailboxForm((f) => ({
+                      ...f,
+                      smtpUser: e.target.value,
+                      imapUser: e.target.value,
+                    }))
+                  }
+                  placeholder="sales@johnbarclay.uk"
+                  className="font-mono text-sm"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Password</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type={showMailboxPassword ? 'text' : 'password'}
+                    value={mailboxForm.smtpPassword}
+                    onChange={(e) =>
+                      setMailboxForm((f) => ({
+                        ...f,
+                        smtpPassword: e.target.value,
+                        imapPassword: e.target.value,
+                      }))
+                    }
+                    placeholder="••••••••"
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    type="button"
+                    onClick={() => setShowMailboxPassword(!showMailboxPassword)}
+                  >
+                    {showMailboxPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label>IMAP Host</Label>
+                  <Input
+                    value={mailboxForm.imapHost}
+                    onChange={(e) => setMailboxForm((f) => ({ ...f, imapHost: e.target.value }))}
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>IMAP Port</Label>
+                  <Input
+                    type="number"
+                    value={mailboxForm.imapPort}
+                    onChange={(e) => setMailboxForm((f) => ({ ...f, imapPort: Number(e.target.value) }))}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-500">
+                The connection will be tested before saving. SMTP and IMAP use the same credentials by default.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMailboxDialog(null)}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-[#791E75] hover:bg-[#60175d]"
+                disabled={createMailboxMutation.isPending || !mailboxForm.smtpUser || !mailboxForm.smtpPassword}
+                onClick={() => {
+                  if (mailboxDialog) {
+                    createMailboxMutation.mutate({ category: mailboxDialog, form: mailboxForm });
+                  }
+                }}
+              >
+                {createMailboxMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <TestTube className="h-4 w-4 mr-2" />
+                )}
+                Test & Connect
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {Object.entries(sections).map(([key, section]) => (
           <TabsContent key={key} value={key} className="space-y-4">
@@ -509,6 +987,21 @@ export default function IntegrationsSettings() {
                     <li>2. Meta Ads: Use the same credentials as Facebook integration</li>
                     <li>3. Taboola/Outbrain: Contact their partner teams for API access</li>
                     <li>4. Most platforms require OAuth authentication for full access</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {key === 'gocardless' && (
+              <Card className="bg-emerald-50 border-emerald-200">
+                <CardContent className="pt-4">
+                  <h4 className="font-medium text-emerald-900 mb-2">GoCardless Direct Debit Setup</h4>
+                  <ul className="text-sm text-emerald-800 space-y-1">
+                    <li>1. Create a GoCardless account at gocardless.com</li>
+                    <li>2. Go to Developers &gt; API Keys and create an access token</li>
+                    <li>3. Use "sandbox" environment for testing, "live" for production</li>
+                    <li>4. Set up a webhook endpoint pointing to your server's /api/crm/gocardless/webhooks URL</li>
+                    <li>5. Copy the webhook secret from GoCardless dashboard</li>
                   </ul>
                 </CardContent>
               </Card>

@@ -24,6 +24,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Link, useParams } from 'wouter';
+import EnquiryChatbot from '@/components/EnquiryChatbot';
 
 interface Property {
   id: number;
@@ -78,6 +79,7 @@ export default function PropertyDetailPage() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [thumbnailStartIndex, setThumbnailStartIndex] = useState(0);
   const [showFloorPlan, setShowFloorPlan] = useState(false);
+  const [enquiryChatOpen, setEnquiryChatOpen] = useState(false);
   const thumbnailContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<HTMLDivElement>(null);
 
@@ -229,15 +231,22 @@ export default function PropertyDetailPage() {
           <div className="px-6 py-4 bg-[#F8B324] text-black font-bold flex-grow text-center text-xl" data-testid="text-price">
             Price: {formatPrice(property.price)}
           </div>
-          <Button 
+          <Button
             className="bg-[#F8B324] hover:bg-[#d89b1f] text-black font-bold px-8 py-6 rounded-none h-full"
             data-testid="button-enquiry"
+            onClick={() => setEnquiryChatOpen(true)}
           >
             <Mail className="mr-2 h-5 w-5" />
             Make Enquiry
           </Button>
         </div>
       </div>
+
+      <EnquiryChatbot
+        property={property}
+        isOpen={enquiryChatOpen}
+        onClose={() => setEnquiryChatOpen(false)}
+      />
 
       {/* Main Image Gallery Section */}
       <div className="max-w-7xl mx-auto px-4 py-6">

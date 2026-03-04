@@ -19,6 +19,7 @@ import { graphAuthService } from '../microsoft/graphAuthService';
 import { createGraphClient, GraphMessage } from '../microsoft/graphApiClient';
 import { decryptToken } from '../../lib/encryption';
 import OpenAI from 'openai';
+import type { ImapParsedMessage } from './smtpTransport';
 
 // OpenAI client for AI processing
 let openai: OpenAI | null = null;
@@ -55,6 +56,10 @@ export interface AiAnalysisResult {
     details?: string;
   }[];
   classification: string;
+  // AI Agent fields
+  actionType: string; // create_support_ticket | add_ticket_comment | create_enquiry | create_viewing | process_contractor_response | route_to_pm | ignore
+  senderType: string; // tenant | landlord | contractor | prospect | unknown
+  existingTicketReference: string | null; // ticket number if mentioned e.g. JB240101ABCD
 }
 
 /**
@@ -150,6 +155,26 @@ export class EmailProcessor {
         } catch (aiError) {
           console.error('AI analysis failed:', aiError);
           // Don't fail the whole processing for AI errors
+        }
+      }
+
+      // AI Agent: take action based on analysis results
+      if (aiResults) {
+        try {
+          const { emailAIAgent } = await import('./emailAIAgent');
+          await emailAIAgent.processAction(processedEmail.id, aiResults, {
+            fromAddress: message.from?.emailAddress?.address || '',
+            fromName: message.from?.emailAddress?.name || '',
+            subject: message.subject || '',
+            bodyText: message.body?.contentType === 'text' ? message.body.content : '',
+            bodyHtml: message.body?.contentType === 'html' ? message.body.content : '',
+            connectionId,
+            userId,
+            graphMessageId,
+          });
+        } catch (agentError) {
+          console.error('[EmailAIAgent] Action execution failed:', agentError);
+          // Don't fail the whole processing if the agent fails
         }
       }
 
@@ -250,53 +275,37 @@ export class EmailProcessor {
   ): Promise<{ conversationId?: number; contactId?: number }> {
     const result: { conversationId?: number; contactId?: number } = {};
 
-    // Try to find existing conversation by email address
-    const existingConversations = await db
-      .select()
-      .from(conversations)
-      .where(
-        or(
-          ilike(conversations.contactEmail, email.fromAddress),
-          ilike(conversations.contactPhone, email.fromAddress)
-        )
-      )
-      .limit(1);
+    // Run all lookups in parallel
+    const [existingConversations, existingEnquiries, existingLeads] = await Promise.all([
+      db.select().from(conversations)
+        .where(or(ilike(conversations.contactEmail, email.fromAddress), ilike(conversations.contactPhone, email.fromAddress)))
+        .limit(1),
+      db.select().from(customerEnquiries)
+        .where(ilike(customerEnquiries.customerEmail, email.fromAddress))
+        .limit(1),
+      db.select().from(leads)
+        .where(ilike(leads.email, email.fromAddress))
+        .limit(1),
+    ]);
 
-    if (existingConversations.length > 0) {
+    // Batch all link updates into a single UPDATE
+    const linkUpdates: Record<string, number> = {};
+    if (existingConversations[0]) {
       result.conversationId = existingConversations[0].id;
-      await db
-        .update(processedEmails)
-        .set({ linkedConversationId: result.conversationId })
-        .where(eq(processedEmails.id, email.id));
+      linkUpdates.linkedConversationId = existingConversations[0].id;
     }
-
-    // Try to find existing lead/enquiry
-    const existingEnquiries = await db
-      .select()
-      .from(customerEnquiries)
-      .where(ilike(customerEnquiries.email, email.fromAddress))
-      .limit(1);
-
-    if (existingEnquiries.length > 0) {
+    if (existingEnquiries[0]) {
       result.contactId = existingEnquiries[0].id;
-      await db
-        .update(processedEmails)
-        .set({ linkedEnquiryId: existingEnquiries[0].id })
-        .where(eq(processedEmails.id, email.id));
+      linkUpdates.linkedEnquiryId = existingEnquiries[0].id;
+    }
+    if (existingLeads[0]) {
+      result.contactId = existingLeads[0].id;
+      linkUpdates.linkedContactId = existingLeads[0].id;
     }
 
-    // Try to find in leads table
-    const existingLeads = await db
-      .select()
-      .from(leads)
-      .where(ilike(leads.email, email.fromAddress))
-      .limit(1);
-
-    if (existingLeads.length > 0) {
-      result.contactId = existingLeads[0].id;
-      await db
-        .update(processedEmails)
-        .set({ linkedContactId: existingLeads[0].id })
+    if (Object.keys(linkUpdates).length > 0) {
+      await db.update(processedEmails)
+        .set(linkUpdates)
         .where(eq(processedEmails.id, email.id));
     }
 
@@ -304,52 +313,220 @@ export class EmailProcessor {
   }
 
   /**
-   * Performs AI analysis on the email content
+   * Processes an email received via IMAP (SMTP connections).
+   * Normalizes IMAP data and feeds it through the same AI pipeline.
+   */
+  async processSmtpEmail(
+    parsedMessage: ImapParsedMessage,
+    connectionId: number,
+    userId: number,
+    department?: string | null
+  ): Promise<ProcessEmailResult> {
+    const syntheticId = `imap://${connectionId}/${parsedMessage.uid}`;
+
+    try {
+      // Check idempotency
+      const existing = await db
+        .select()
+        .from(processedEmails)
+        .where(
+          and(
+            eq(processedEmails.graphMessageId, syntheticId),
+            eq(processedEmails.connectionId, connectionId)
+          )
+        )
+        .limit(1);
+
+      if (existing.length > 0) {
+        return { success: true, processedEmailId: existing[0].id };
+      }
+
+      // Store the email
+      const emailData: InsertProcessedEmail = {
+        connectionId,
+        userId,
+        graphMessageId: syntheticId,
+        graphConversationId: null,
+        internetMessageId: parsedMessage.messageId || null,
+        fromAddress: parsedMessage.from.address,
+        fromName: parsedMessage.from.name || null,
+        toAddresses: parsedMessage.to.map((t) => t.address),
+        ccAddresses: parsedMessage.cc.length > 0 ? parsedMessage.cc.map((c) => c.address) : null,
+        bccAddresses: null,
+        subject: parsedMessage.subject || null,
+        bodyPreview: (parsedMessage.bodyText || '').substring(0, 200) || null,
+        bodyText: parsedMessage.bodyText || null,
+        bodyHtml: parsedMessage.bodyHtml || null,
+        hasAttachments: parsedMessage.hasAttachments,
+        attachments: parsedMessage.attachments.length > 0
+          ? parsedMessage.attachments.map((a) => ({
+              name: a.name,
+              contentType: a.contentType,
+              size: a.size,
+            }))
+          : null,
+        receivedAt: parsedMessage.date,
+        sentAt: parsedMessage.date,
+        importance: parsedMessage.importance || 'normal',
+        categories: null,
+        isRead: false,
+        isDraft: false,
+        folderId: 'INBOX',
+        processingStatus: 'pending',
+      };
+
+      const [processedEmail] = await db
+        .insert(processedEmails)
+        .values(emailData)
+        .returning({ id: processedEmails.id });
+
+      console.log(`Stored SMTP email ${processedEmail.id} from ${emailData.fromAddress}`);
+
+      // Link to CRM (non-blocking — linking failure must not prevent AI processing)
+      let linkResult: { conversationId?: number; contactId?: number } = {};
+      try {
+        linkResult = await this.linkToCRM(
+          { id: processedEmail.id, fromAddress: emailData.fromAddress, subject: emailData.subject },
+          userId
+        );
+      } catch (linkError) {
+        console.error(`[EmailProcessor] CRM linking failed for email ${processedEmail.id}:`, linkError);
+      }
+
+      // AI analysis
+      let aiResults: AiAnalysisResult | undefined;
+      if (openai && (parsedMessage.bodyText || parsedMessage.bodyHtml)) {
+        try {
+          aiResults = await this.performAiAnalysisRaw(
+            parsedMessage.from.address,
+            parsedMessage.subject,
+            parsedMessage.bodyText || parsedMessage.bodyHtml,
+            department
+          );
+          await this.updateWithAiResults(processedEmail.id, aiResults);
+        } catch (aiError) {
+          console.error('AI analysis failed for SMTP email:', aiError);
+        }
+      }
+
+      // AI Agent action
+      if (aiResults) {
+        try {
+          const { emailAIAgent } = await import('./emailAIAgent');
+          await emailAIAgent.processAction(processedEmail.id, aiResults, {
+            fromAddress: parsedMessage.from.address,
+            fromName: parsedMessage.from.name,
+            subject: parsedMessage.subject,
+            bodyText: parsedMessage.bodyText,
+            bodyHtml: parsedMessage.bodyHtml,
+            connectionId,
+            userId,
+            graphMessageId: syntheticId,
+            department,
+          });
+        } catch (agentError) {
+          console.error('[EmailAIAgent] Action execution failed for SMTP email:', agentError);
+        }
+      }
+
+      // Update sync timestamp
+      await db
+        .update(emailConnections)
+        .set({
+          lastSyncAt: new Date(),
+          errorCount: 0,
+          lastError: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(emailConnections.id, connectionId));
+
+      return {
+        success: true,
+        processedEmailId: processedEmail.id,
+        linkedConversationId: linkResult.conversationId,
+        linkedContactId: linkResult.contactId,
+        aiResults,
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`Error processing SMTP email UID ${parsedMessage.uid}:`, errorMessage);
+
+      await db
+        .update(emailConnections)
+        .set({
+          errorCount: sql`${emailConnections.errorCount} + 1`,
+          lastError: errorMessage,
+          updatedAt: new Date(),
+        })
+        .where(eq(emailConnections.id, connectionId));
+
+      return { success: false, error: errorMessage };
+    }
+  }
+
+  /**
+   * Performs AI analysis on the email content (from GraphMessage)
    */
   private async performAiAnalysis(message: GraphMessage): Promise<AiAnalysisResult> {
+    const emailContent = message.body?.content || message.bodyPreview || '';
+    const subject = message.subject || '';
+    const from = message.from?.emailAddress?.address || '';
+    return this.performAiAnalysisRaw(from, subject, emailContent);
+  }
+
+  /**
+   * Performs AI analysis on raw email content (provider-agnostic)
+   */
+  private async performAiAnalysisRaw(from: string, subject: string, body: string, department?: string | null): Promise<AiAnalysisResult> {
     if (!openai) {
       throw new Error('OpenAI not configured');
     }
 
-    const emailContent = message.body?.content || message.bodyPreview || '';
-    const subject = message.subject || '';
-    const from = message.from?.emailAddress?.address || '';
+    const emailContent = body;
 
-    const systemPrompt = `You are an AI assistant for a real estate CRM (Customer Relationship Management) system for John Barclay Estate Agents in London, UK.
-Analyze incoming emails and extract structured information.
+    const systemPrompt = `You are an AI agent for John Barclay Estate Agents' CRM in London, UK.
+Analyze incoming emails and decide what action to take.
 
 The business handles:
 - Property sales and rentals
-- Property valuations
-- Viewings and appointments
+- Property valuations and viewings
 - Landlord and tenant relations
-- Property management
-- Maintenance requests
+- Property management and maintenance
+- Contractor management for repairs
 
-Respond with a JSON object containing:
+You MUST respond with a JSON object. Every field is required:
 {
-  "category": "string - one of: property_enquiry, viewing_request, valuation_request, maintenance, tenant_communication, landlord_communication, offer, contract, general_enquiry, spam, other",
+  "category": "string - one of: property_enquiry, viewing_request, valuation_request, maintenance, support_request, tenant_communication, landlord_communication, contractor_response, offer, contract, general_enquiry, spam, auto_reply, other",
   "sentiment": "string - one of: positive, neutral, negative",
-  "priority": "string - one of: urgent, high, normal, low",
+  "priority": "string - one of: urgent, high, normal, low. Use urgent for emergencies (flooding, gas leak, no heating, lock-out). Use high for time-sensitive issues.",
   "summary": "string - 1-2 sentence summary of the email",
   "extractedEntities": {
-    "names": ["array of person names mentioned"],
-    "emails": ["array of email addresses mentioned"],
-    "phones": ["array of phone numbers mentioned"],
-    "addresses": ["array of property addresses mentioned"],
-    "dates": ["array of dates mentioned"],
-    "amounts": ["array of monetary amounts mentioned"],
-    "propertyReferences": ["array of property IDs or references mentioned"]
+    "names": ["person names mentioned"],
+    "emails": ["email addresses mentioned"],
+    "phones": ["phone numbers mentioned"],
+    "addresses": ["property addresses mentioned"],
+    "dates": ["dates mentioned"],
+    "amounts": ["monetary amounts mentioned e.g. £500"],
+    "propertyReferences": ["property IDs or references"]
   },
   "suggestedActions": [
-    {
-      "action": "string - suggested action to take",
-      "confidence": "number 0-1",
-      "details": "string - optional additional details"
-    }
+    {"action": "string", "confidence": 0.0, "details": "string"}
   ],
-  "classification": "string - business classification for routing"
-}`;
+  "classification": "string - business classification for routing",
+  "actionType": "string - the action the system should take. One of: create_support_ticket (tenant reporting a problem/repair/complaint), add_ticket_comment (follow-up to an existing support ticket), create_enquiry (prospect asking about a property for sale/rent), create_viewing (someone requesting a property viewing), process_contractor_response (contractor replying about a job/quote), route_to_pm (landlord email or anything needing human review), ignore (spam, auto-replies, newsletters, marketing)",
+  "senderType": "string - who sent this email. One of: tenant (current tenant reporting issue or communicating), landlord (property owner), contractor (tradesperson replying about work), prospect (potential buyer/renter), unknown",
+  "existingTicketReference": "string or null - if the email mentions a ticket number like JB240101ABCD, extract it here. Otherwise null."
+}
+
+Rules for actionType:
+- If the email reports a problem (leak, broken, noise, pest, heating, electrical, plumbing etc) → create_support_ticket
+- If the email references an existing ticket number (JB...) or is a reply to a support conversation → add_ticket_comment
+- If someone asks about buying/renting a property → create_enquiry
+- If someone wants to view/visit a property → create_viewing
+- If a contractor mentions a quote, price, acceptance, availability, or job → process_contractor_response
+- If a landlord emails about their property, rent, tenants, or statements → route_to_pm
+- If it's spam, an automated bounce/out-of-office, newsletter, or marketing → ignore
+- If unsure → route_to_pm${this.getDepartmentInstructions(department)}`;
 
     const userPrompt = `Analyze this email:
 
@@ -376,6 +553,51 @@ ${emailContent.substring(0, 4000)}`;
     }
 
     return JSON.parse(content) as AiAnalysisResult;
+  }
+
+  /**
+   * Returns department-specific AI routing instructions
+   */
+  private getDepartmentInstructions(department?: string | null): string {
+    if (!department) return '';
+
+    const instructions: Record<string, string> = {
+      sales: `
+
+DEPARTMENT CONTEXT: This email was received on the SALES inbox (sales@johnbarclay.uk).
+This mailbox handles property purchase and sale enquiries.
+Prioritize these actionTypes:
+- create_enquiry: for property purchase/sale enquiries, price questions
+- create_viewing: for viewing requests on properties for sale
+- route_to_pm: for anything needing agent attention (offers, negotiations, solicitor comms)
+- ignore: for spam, auto-replies, newsletters
+Default senderType assumption: prospect (unless clearly an existing client or solicitor)`,
+
+      lettings: `
+
+DEPARTMENT CONTEXT: This email was received on the LETTINGS inbox (lettings@johnbarclay.uk).
+This mailbox handles rental property enquiries and landlord communications.
+Prioritize these actionTypes:
+- create_enquiry: for rental enquiries, availability questions
+- create_viewing: for viewing requests on rental properties
+- route_to_pm: for landlord communications, tenancy questions, rent queries
+- ignore: for spam, auto-replies, newsletters
+Default senderType assumption: prospect (unless clearly a landlord or existing tenant)`,
+
+      maintenance: `
+
+DEPARTMENT CONTEXT: This email was received on the MAINTENANCE inbox (maintenance@johnbarclay.uk).
+This mailbox handles property repairs, maintenance requests, and contractor communications.
+Prioritize these actionTypes:
+- create_support_ticket: for tenant repair/maintenance reports (leaks, heating, electrical, plumbing, pests, structural)
+- add_ticket_comment: for follow-ups referencing a ticket number (JB...)
+- process_contractor_response: for contractor quotes, availability, job acceptance/decline, invoices
+- route_to_pm: for anything else needing human review
+- ignore: for spam, auto-replies, newsletters
+Default senderType assumption: tenant (unless email matches a known contractor)`,
+    };
+
+    return instructions[department] || '';
   }
 
   /**

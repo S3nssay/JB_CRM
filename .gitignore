@@ -27,6 +27,9 @@ uploads/
 # Misc
 cookies.txt
 JB_CRM_Render_Environment_Variables.docx
+JB_CRM/
+client/dist_check/
+test-send.ts
 
 # Large video files are now handled by Git LFS
 # *.mp4 files are tracked by Git LFS - see .gitattributes

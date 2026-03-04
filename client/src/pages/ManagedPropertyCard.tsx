@@ -46,6 +46,7 @@ export default function ManagedPropertyCard() {
     const [, setLocation] = useLocation();
     const queryClient = useQueryClient();
     const { toast } = useToast();
+    const [activeTab, setActiveTab] = useState('tenancy-history');
     const [editDialogOpen, setEditDialogOpen] = useState(false);
     const [editTenancyDialogOpen, setEditTenancyDialogOpen] = useState(false);
     const [editForm, setEditForm] = useState({
@@ -827,8 +828,12 @@ export default function ManagedPropertyCard() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <div className="font-semibold text-lg">
-                                {landlord?.fullName || 'Not assigned'}
+                            <div
+                                className={`font-semibold text-lg ${landlord?.id ? 'text-[#791E75] cursor-pointer hover:underline' : ''}`}
+                                onClick={() => landlord?.id && setLocation(`/crm/landlords/${landlord.id}`)}
+                            >
+                                {landlord?.name || landlord?.fullName || 'Not assigned'}
+                                {landlord?.id && <ExternalLink className="inline h-4 w-4 ml-1 opacity-50" />}
                             </div>
                             {landlord?.mobile && (
                                 <div className="flex items-center gap-2 text-sm">
@@ -845,7 +850,7 @@ export default function ManagedPropertyCard() {
                             {landlord?.bankName && (
                                 <div className="flex items-center gap-2 text-sm">
                                     <CreditCard className="h-4 w-4 text-muted-foreground" />
-                                    {landlord.bankName} - ****{landlord.bankAccountNo?.slice(-4)}
+                                    {landlord.bankName} - ****{landlord.bankAccountNumber?.slice(-4)}
                                 </div>
                             )}
                         </CardContent>
@@ -878,7 +883,7 @@ export default function ManagedPropertyCard() {
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <Tabs defaultValue="tenancy-history" className="w-full">
+                            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                                 <TabsList className="grid grid-cols-5 w-full mb-4">
                                     <TabsTrigger value="tenancy-history" className="text-xs">Tenancy History</TabsTrigger>
                                     <TabsTrigger value="financial" className="text-xs">Checklist</TabsTrigger>
@@ -1135,19 +1140,19 @@ export default function ManagedPropertyCard() {
                         </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <Button variant="outline" className="h-20 flex-col gap-2">
+                                <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => setActiveTab('financial')}>
                                     <Shield className="h-5 w-5" />
                                     <span className="text-xs">Compliance</span>
                                 </Button>
-                                <Button variant="outline" className="h-20 flex-col gap-2">
+                                <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => setActiveTab('documents')}>
                                     <FileText className="h-5 w-5" />
                                     <span className="text-xs">Documents</span>
                                 </Button>
-                                <Button variant="outline" className="h-20 flex-col gap-2">
+                                <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => setActiveTab('financial')}>
                                     <PoundSterling className="h-5 w-5" />
                                     <span className="text-xs">Payments</span>
                                 </Button>
-                                <Button variant="outline" className="h-20 flex-col gap-2">
+                                <Button variant="outline" className="h-20 flex-col gap-2" onClick={() => setActiveTab('maintenance')}>
                                     <Home className="h-5 w-5" />
                                     <span className="text-xs">Maintenance</span>
                                 </Button>
