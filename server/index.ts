@@ -56,10 +56,14 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (process.env.NODE_ENV !== "production") {
-    // Dynamic import via variable so esbuild cannot statically resolve and bundle vite
-    const vitePath = "./vite";
-    const mod = await import(vitePath);
-    await mod.setupVite(app, server);
+    try {
+      const vitePath = "./vite";
+      const mod = await import(vitePath);
+      await mod.setupVite(app, server);
+    } catch {
+      // vite not available (production build), serve static files instead
+      serveStatic(app);
+    }
   } else {
     serveStatic(app);
   }
