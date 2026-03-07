@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, Link } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -18,6 +18,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PropertyCard, type PropertyCardData } from '@/components/PropertyCard';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -183,6 +184,36 @@ export default function CRMDashboard() {
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<number>>(new Set());
   const [showBulkPublishDialog, setShowBulkPublishDialog] = useState(false);
   const [isBulkPublishing, setIsBulkPublishing] = useState(false);
+
+  // Demo email mode
+  const { data: demoModeData } = useQuery({
+    queryKey: ['/api/crm/demo-email-mode'],
+    queryFn: async () => {
+      const res = await fetch('/api/crm/demo-email-mode');
+      return res.json();
+    }
+  });
+  const demoEmailMode = demoModeData?.enabled ?? false;
+
+  const toggleDemoMode = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetch('/api/crm/demo-email-mode', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/demo-email-mode'] });
+      toast({
+        title: data.enabled ? 'Demo Email Mode ON' : 'Demo Email Mode OFF',
+        description: data.enabled
+          ? 'All emails will be redirected to test addresses'
+          : 'Emails will be sent to real recipients',
+      });
+    },
+  });
 
   // Fetch properties from API
   const { data: properties = [], isLoading: loadingProperties, refetch: refetchProperties } = useQuery({
@@ -496,6 +527,16 @@ export default function CRMDashboard() {
             <div className="space-y-6">
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Dashboard Overview</h2>
+                <div className="flex items-center gap-3 px-4 py-2 rounded-lg border" style={{ borderColor: demoEmailMode ? '#dc2626' : '#e5e7eb', backgroundColor: demoEmailMode ? '#fef2f2' : 'transparent' }}>
+                  <Mail className="h-4 w-4" style={{ color: demoEmailMode ? '#dc2626' : '#6b7280' }} />
+                  <span className="text-sm font-medium" style={{ color: demoEmailMode ? '#dc2626' : '#374151' }}>
+                    {demoEmailMode ? 'DEMO EMAILS ON' : 'Demo Emails'}
+                  </span>
+                  <Switch
+                    checked={demoEmailMode}
+                    onCheckedChange={(checked) => toggleDemoMode.mutate(checked)}
+                  />
+                </div>
               </div>
 
               {/* Stats Grid - Managed Properties */}

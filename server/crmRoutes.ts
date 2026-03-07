@@ -1,4 +1,5 @@
 import { Router } from 'express';
+
 import { storage } from './storage';
 import { db, pool } from './db';
 import {
@@ -111,6 +112,32 @@ import { websiteImport } from './websiteImportService';
 import { parsePdfToStaging, importFromStaging } from './pdfPropertyImportService';
 
 export const crmRouter = Router();
+
+// Demo email mode settings
+crmRouter.get('/demo-email-mode', async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT value FROM system_setting WHERE key = 'demo_email_mode'");
+    const enabled = result.rows[0]?.value === 'true';
+    res.json({ enabled });
+  } catch (error) {
+    res.json({ enabled: false });
+  }
+});
+
+crmRouter.put('/demo-email-mode', async (req, res) => {
+  try {
+    const { enabled } = req.body;
+    await pool.query(
+      "INSERT INTO system_setting (key, value, updated_at) VALUES ('demo_email_mode', $1, NOW()) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = NOW()",
+      [String(enabled)]
+    );
+    res.json({ enabled });
+  } catch (error) {
+    console.error('Failed to update demo email mode:', error);
+    res.status(500).json({ error: 'Failed to update setting' });
+  }
+});
+
 
 // Configure multer for property image uploads
 const uploadDir = path.join(process.cwd(), 'uploads', 'properties');

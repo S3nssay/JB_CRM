@@ -50,6 +50,11 @@ export async function setupVite(app: Express, server: Server) {
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
 
+    // Skip API routes - let Express handle them
+    if (url.startsWith("/api")) {
+      return next();
+    }
+
     // Skip serving HTML for static files (images, videos, etc.)
     if (url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|mp4|webm|ogg|mp3|wav|woff|woff2|ttf|eot)$/)) {
       return next();

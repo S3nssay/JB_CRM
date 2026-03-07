@@ -173,6 +173,7 @@ function parsePrice(priceStr: string): number {
 
 import { crmRouter } from './crmRoutes';
 import { financeRouter } from './financeRoutes';
+import { pmWorkflowRouter } from './pmWorkflowRoutes';
 import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
 import path from 'path';
 import express from 'express';
@@ -186,6 +187,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register CRM router
   app.use('/api/crm', crmRouter);
   app.use('/api/crm', financeRouter);
+  app.use('/api/crm', pmWorkflowRouter);
 
   // ==========================================
   // TWILIO VOICE WEBHOOKS (at /api/voice/*)

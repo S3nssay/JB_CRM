@@ -6680,3 +6680,15 @@ export const gocardlessPayments = pgTable("gocardless_payment", {
 export const insertGocardlessPaymentSchema = createInsertSchema(gocardlessPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export type GocardlessPayment = typeof gocardlessPayments.$inferSelect;
 export type InsertGocardlessPayment = z.infer<typeof insertGocardlessPaymentSchema>;
+
+// ==========================================
+// SYSTEM SETTINGS (key/value store)
+// ==========================================
+export const systemSettings = pgTable("system_setting", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type SystemSetting = typeof systemSettings.$inferSelect;

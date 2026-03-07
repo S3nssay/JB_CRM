@@ -5,7 +5,7 @@
  * Routes to the correct transport based on connection provider.
  */
 
-import { db } from '../../db';
+import { db, pool } from '../../db';
 import {
   emailConnections,
   sentEmails,
@@ -53,12 +53,44 @@ export interface SendEmailResult {
  * Email Sender Service
  */
 export class EmailSender {
+
+  // Demo email mode config
+  private static DEMO_EMAILS: Record<string, string> = {
+    contractor: 'a.contractor@johnbarclay.uk',
+    landlord: 'a.landlord@johnbarclay.uk',
+    tenant: 'a.tenant@johnbarclay.uk',
+  };
+
+  private async isDemoMode(): Promise<boolean> {
+    try {
+      const result = await pool.query("SELECT value FROM system_setting WHERE key = 'demo_email_mode'");
+      return result.rows[0]?.value === 'true';
+    } catch { return false; }
+  }
+
+  private applyDemoMode(request: SendEmailRequest): SendEmailRequest {
+    const demoTo = Object.values(EmailSender.DEMO_EMAILS);
+    return {
+      ...request,
+      to: demoTo,
+      cc: [],
+      bcc: [],
+      subject: `[DEMO] ${request.subject} (original to: ${request.to.join(", ")})`,
+    };
+  }
+
   /**
    * Queues an email for sending.
    * Creates a database record and enqueues a job.
    */
   async queueEmail(request: SendEmailRequest): Promise<SendEmailResult> {
     try {
+      // Demo mode: redirect all emails to test addresses
+      if (await this.isDemoMode()) {
+        request = this.applyDemoMode(request);
+        console.log("[DEMO MODE] Redirecting email to:", request.to.join(", "));
+      }
+
       // Validate connection
       const [connection] = await db
         .select()
