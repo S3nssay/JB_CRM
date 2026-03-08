@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -48,6 +48,11 @@ export default function Login() {
   const logoRef = useRef<HTMLImageElement>(null);
   const [mousePos, setMousePos] = useState({ x: 0.5, y: 0.5 });
   const [isVideoLoaded, setIsVideoLoaded] = useState(false);
+  const heroVideoClips = useMemo(() => ['/hero-1.mp4', '/hero-2.mp4', '/hero-3.mp4'], []);
+  const videoRefA = useRef<HTMLVideoElement>(null);
+  const videoRefB = useRef<HTMLVideoElement>(null);
+  const [activeVideo, setActiveVideo] = useState<'A' | 'B'>('A');
+  const videoIndexRef = useRef(0);
 
   useEffect(() => {
     if (logoRef.current) {
@@ -148,18 +153,48 @@ export default function Login() {
         pointerSize={0.4}
       />
       
-      {/* Video Background - Fades in once loaded */}
+      {/* Video Background - Crossfading clips */}
       <video
-        autoPlay
+        ref={videoRefA}
         muted
-        loop
         playsInline
-        className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${isVideoLoaded ? 'opacity-100' : 'opacity-0'}`}
-        style={{ zIndex: 1 }}
-        onLoadedData={() => setIsVideoLoaded(true)}
-      >
-        <source src="/hero-video.mp4" type="video/mp4" />
-      </video>
+        src={heroVideoClips[0]}
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        style={{ zIndex: 1, transition: 'opacity 1.5s ease-in-out', opacity: activeVideo === 'A' && isVideoLoaded ? 1 : 0 }}
+        onLoadedData={() => { if (activeVideo === 'A') { setIsVideoLoaded(true); videoRefA.current?.play(); } }}
+        onTimeUpdate={() => {
+          const v = videoRefA.current;
+          if (activeVideo === 'A' && v && v.duration && v.currentTime >= v.duration - 1.5) {
+            const nextIdx = (videoIndexRef.current + 1) % heroVideoClips.length;
+            videoIndexRef.current = nextIdx;
+            if (videoRefB.current && !videoRefB.current.src.includes(heroVideoClips[nextIdx])) {
+              videoRefB.current.src = heroVideoClips[nextIdx];
+              videoRefB.current.load();
+            }
+            setActiveVideo('B');
+          }
+        }}
+      />
+      <video
+        ref={videoRefB}
+        muted
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+        style={{ zIndex: 1, transition: 'opacity 1.5s ease-in-out', opacity: activeVideo === 'B' && isVideoLoaded ? 1 : 0 }}
+        onLoadedData={() => { if (activeVideo === 'B') { setIsVideoLoaded(true); videoRefB.current?.play(); } }}
+        onTimeUpdate={() => {
+          const v = videoRefB.current;
+          if (activeVideo === 'B' && v && v.duration && v.currentTime >= v.duration - 1.5) {
+            const nextIdx = (videoIndexRef.current + 1) % heroVideoClips.length;
+            videoIndexRef.current = nextIdx;
+            if (videoRefA.current && !videoRefA.current.src.includes(heroVideoClips[nextIdx])) {
+              videoRefA.current.src = heroVideoClips[nextIdx];
+              videoRefA.current.load();
+            }
+            setActiveVideo('A');
+          }
+        }}
+      />
       
       {/* Video Overlay */}
       <div className="absolute inset-0 bg-[#2A0A2A]/50" style={{ zIndex: 2 }}></div>

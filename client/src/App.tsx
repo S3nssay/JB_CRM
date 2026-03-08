@@ -15,6 +15,7 @@ import CommercialLettingsPage from "@/pages/CommercialLettingsPage";
 import InvestmentOpportunitiesPage from "@/pages/InvestmentOpportunitiesPage";
 import PortfolioManagementPage from "@/pages/PortfolioManagementPage";
 import ValuationPage from "@/pages/ValuationPage";
+import ContactPage from "@/pages/ContactPage";
 import RegisterRentalPage from "@/pages/RegisterRentalPage";
 import AreaPage from "@/pages/AreaPage";
 import ScrollToTop from "@/components/ScrollToTop";
@@ -104,6 +105,14 @@ import SalesInbox from "@/pages/SalesInbox";
 import LettingsInbox from "@/pages/LettingsInbox";
 import MaintenanceInbox from "@/pages/MaintenanceInbox";
 import AdminInbox from "@/pages/AdminInbox";
+
+// PM Workflow Pages
+import PMTrackingDashboard from "@/pages/PMTrackingDashboard";
+import RentCollection from "@/pages/RentCollection";
+import DepositManagement from "@/pages/DepositManagement";
+import ComplianceCalendar from "@/pages/ComplianceCalendar";
+import EndOfTenancy from "@/pages/EndOfTenancy";
+import InventoryTracking from "@/pages/InventoryTracking";
 
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
@@ -202,6 +211,7 @@ function Router() {
         <Route path="/investment-opportunities" component={InvestmentOpportunitiesPage} />
         <Route path="/portfolio-management" component={PortfolioManagementPage} />
         <Route path="/valuation" component={ValuationPage} />
+        <Route path="/contact" component={ContactPage} />
         <Route path="/register-rental" component={RegisterRentalPage} />
         <Route path="/area/:postcode" component={AreaPage} />
         <Route path="/property/:id" component={PropertyDetailPage} />
@@ -296,6 +306,12 @@ function Router() {
         <Route path="/crm/inbox/lettings"><CRMLayout><LettingsInbox /></CRMLayout></Route>
         <Route path="/crm/inbox/maintenance"><CRMLayout><MaintenanceInbox /></CRMLayout></Route>
         <Route path="/crm/inbox/admin"><CRMLayout><AdminInbox /></CRMLayout></Route>
+        <Route path="/crm/pm-dashboard"><CRMLayout><PMTrackingDashboard /></CRMLayout></Route>
+        <Route path="/crm/rent-collection"><CRMLayout><RentCollection /></CRMLayout></Route>
+        <Route path="/crm/deposit-management"><CRMLayout><DepositManagement /></CRMLayout></Route>
+        <Route path="/crm/compliance-calendar"><CRMLayout><ComplianceCalendar /></CRMLayout></Route>
+        <Route path="/crm/end-of-tenancy"><CRMLayout><EndOfTenancy /></CRMLayout></Route>
+        <Route path="/crm/inventory"><CRMLayout><InventoryTracking /></CRMLayout></Route>
         <Route path="/crm/tenant/:id">{(params: any) => <CRMLayout><TenantDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/security-matrix">
           <CRMLayout>
