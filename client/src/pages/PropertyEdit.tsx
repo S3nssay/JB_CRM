@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   Save, Loader2, Home, Building2, MapPin,
   Bed, Bath, Square, Tag, Globe, Send, Share2, Upload, X, Image, FileText,
-  Key, Download, Trash2, ExternalLink, Calendar, ArrowRightLeft, Shield
+  Key, Download, Trash2, ExternalLink, Calendar, ArrowRightLeft, Shield, Eye
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -71,6 +71,7 @@ export default function PropertyEdit() {
   const [isUploadingFloorPlan, setIsUploadingFloorPlan] = useState(false);
   const [isUploadingDoc, setIsUploadingDoc] = useState(false);
   const [docType, setDocType] = useState('certificate');
+  const [showPreview, setShowPreview] = useState(false);
   const [showConvertManagedDialog, setShowConvertManagedDialog] = useState(false);
   const [showConvertTypeDialog, setShowConvertTypeDialog] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
@@ -318,6 +319,9 @@ export default function PropertyEdit() {
           <h1 className="text-3xl font-bold tracking-tight">Edit Property</h1>
           <p className="text-muted-foreground">Update property details and settings</p>
         </div>
+        <Button variant="outline" onClick={() => setShowPreview(true)} className="border-[#791E75] text-[#791E75] hover:bg-purple-50">
+          <Eye className="h-4 w-4 mr-2" /> Preview Card
+        </Button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
@@ -1113,6 +1117,119 @@ export default function PropertyEdit() {
               Convert to {formData.isRental ? 'Sale' : 'Rental'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Property Card Preview Dialog */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="sm:max-w-lg p-0 overflow-hidden">
+          <div className="bg-white rounded-lg overflow-hidden">
+            {/* Image */}
+            <div className="relative h-64 bg-gray-200">
+              {formData.images && formData.images.length > 0 ? (
+                <img src={formData.images[0]} alt={formData.title} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <div className="text-center text-gray-400">
+                    <Image className="w-12 h-12 mx-auto mb-2" />
+                    <p className="text-sm">No images uploaded</p>
+                  </div>
+                </div>
+              )}
+              {/* Listing Type Badge */}
+              <div className={`absolute top-3 left-3 px-3 py-1 rounded text-sm font-semibold text-white ${!formData.isRental ? 'bg-[#791E75]' : 'bg-[#F8B324] text-black'}`}>
+                {formData.isRental ? 'TO LET' : 'FOR SALE'}
+              </div>
+              {/* Image count */}
+              {formData.images && formData.images.length > 1 && (
+                <div className="absolute bottom-3 right-3 bg-black/70 text-white px-3 py-1 rounded text-sm">
+                  1/{formData.images.length}
+                </div>
+              )}
+            </div>
+
+            {/* Details */}
+            <div className="p-5">
+              <h3 className="text-lg font-semibold text-gray-900 mb-1">{formData.title || 'Untitled Property'}</h3>
+              <div className="flex items-center text-sm text-gray-500 mb-2">
+                <MapPin className="h-4 w-4 mr-1" />
+                {formData.addressLine1 ? `${formData.addressLine1}, ` : ''}{formData.postcode || 'No postcode'}
+              </div>
+
+              {/* Price */}
+              <div className="mb-3">
+                <span className="text-2xl font-bold text-[#791E75]">
+                  {formData.isRental
+                    ? `£${Number(formData.rentAmount || formData.price || 0).toLocaleString()} pcm`
+                    : `£${Number(formData.price || 0).toLocaleString()}`}
+                </span>
+              </div>
+
+              {/* Stats */}
+              <div className="grid grid-cols-4 gap-2 mb-4 pb-4 border-b">
+                <div className="text-center">
+                  <div className="text-xs text-gray-500 mb-1">TYPE</div>
+                  <div className="flex items-center justify-center gap-1">
+                    <Home className="w-4 h-4 text-[#791E75]" />
+                    <span className="text-sm font-semibold capitalize">{formData.propertyType || 'N/A'}</span>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-500 mb-1">BEDS</div>
+                  <div className="flex items-center justify-center gap-1">
+                    <Bed className="w-4 h-4 text-[#791E75]" />
+                    <span className="text-sm font-semibold">{formData.bedrooms || 0}</span>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-500 mb-1">BATHS</div>
+                  <div className="flex items-center justify-center gap-1">
+                    <Bath className="w-4 h-4 text-[#791E75]" />
+                    <span className="text-sm font-semibold">{formData.bathrooms || 0}</span>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-xs text-gray-500 mb-1">TENURE</div>
+                  <div className="flex items-center justify-center gap-1">
+                    <Tag className="w-4 h-4 text-[#791E75]" />
+                    <span className="text-sm font-semibold capitalize">{formData.tenure || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Features */}
+              {formData.features && formData.features.length > 0 && (
+                <div className="mb-4 pb-4 border-b">
+                  <h4 className="text-sm font-bold mb-2">Key features</h4>
+                  <ul className="grid grid-cols-2 gap-1.5">
+                    {formData.features.slice(0, 4).map((f, i) => (
+                      <li key={i} className="text-sm text-gray-700 flex items-start">
+                        <span className="text-[#791E75] mr-2">•</span>{f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Description */}
+              {formData.description && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-bold mb-2">Description</h4>
+                  <p className="text-sm text-gray-700 line-clamp-3">{formData.description}</p>
+                </div>
+              )}
+
+              {/* Action buttons (preview only) */}
+              <div className="flex flex-col gap-2">
+                <Button className="w-full bg-[#791E75] hover:bg-[#5d1759] text-white" disabled>
+                  View Full Details
+                </Button>
+                <Button variant="outline" className="w-full border-[#791E75] text-[#791E75]" disabled>
+                  Contact Agent
+                </Button>
+              </div>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

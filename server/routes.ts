@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyInquirySchema, insertContactSchema, insertValuationSchema, cmsPages, cmsContentBlocks, staffProfiles, users } from '@shared/schema';
+import { insertPropertySchema, insertPropertyInquirySchema, insertContactSchema, insertValuationSchema, cmsPages, cmsContentBlocks, staffProfiles, users, leads } from '@shared/schema';
 import { db } from './db';
 import { eq, and, desc } from 'drizzle-orm';
 import { ZodError } from "zod";
@@ -17,6 +17,7 @@ import { parseNaturalLanguageQuery } from './openai';
 import { parseWithOpenAI } from './aiPropertySearch';
 import { SearchFilters, ParsedIntent } from '@shared/schema';
 import { aiPhone } from './aiPhoneService';
+import tenantRouter from './tenantRoutes';
 
 // Basic pattern matching for property queries (fallback)
 function parseBasicQuery(query: string): ParsedIntent {
@@ -256,6 +257,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     res.status(401).json({ error: "Not authenticated" });
   };
+  // Register Tenant Portal router
+  app.use("/api/tenant", isAuthenticated, tenantRouter);
+
 
   // User valuations endpoints
   app.get('/api/user/valuations', isAuthenticated, async (req: Request, res: Response) => {
@@ -887,6 +891,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     try {
       const contact = await storage.createContact(data);
+
+      // Also create a lead in the pipeline
+      try {
+        const inquiryType = req.body.inquiryType || 'general';
+        const leadType = inquiryType === 'valuation' ? 'seller' : 'rental';
+        await db.insert(leads).values({
+          fullName: data.fullName,
+          email: data.email || null,
+          phone: data.phone || null,
+          source: 'website',
+          sourceDetail: inquiryType === 'valuation' ? 'Valuation Request' : 'Contact Form',
+          leadType,
+          preferredPropertyType: req.body.propertyType || null,
+          preferredBedrooms: req.body.bedrooms ? parseInt(req.body.bedrooms) : null,
+          requirements: data.message || null,
+          status: 'new',
+          priority: inquiryType === 'valuation' ? 'warm' : 'medium',
+        });
+      } catch (leadErr) {
+        console.error('Failed to create lead from contact:', leadErr);
+      }
+
       res.status(201).json(contact);
     } catch (err) {
       res.status(500).json({ error: 'Failed to create contact' });

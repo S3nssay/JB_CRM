@@ -20,7 +20,7 @@ import {
   Phone, Send, Inbox, Plus, Play, Check, X, UserPlus,
   ClipboardList, ListTodo, Target, ChevronRight, Eye,
   PhoneCall, MessagesSquare, Plug, RefreshCw, Trash2,
-  Loader2, Wrench, FileText, CalendarPlus,
+  Loader2, Wrench, FileText, CalendarPlus, BarChart3,
   Reply, Forward, Paperclip, Star, MailPlus, ChevronLeft
 } from 'lucide-react';
 
@@ -601,9 +601,9 @@ export default function MyDesk() {
                 <CalendarPlus className="h-5 w-5" />
                 <span className="text-xs">Schedule Viewing</span>
               </Button>
-              <Button variant="outline" className="h-auto py-4 flex flex-col gap-2 hover:bg-gray-50" onClick={() => setLocation('/crm/analytics')}>
+              <Button variant="outline" className="h-auto py-4 flex flex-col gap-2 hover:bg-gray-50" onClick={() => setLocation('/crm/reports')}>
                 <FileText className="h-5 w-5" />
-                <span className="text-xs">Generate Report</span>
+                <span className="text-xs">Generate Reports</span>
               </Button>
             </div>
           </CardContent>
@@ -873,8 +873,8 @@ export default function MyDesk() {
                               {prop.price ? `£${Number(prop.price).toLocaleString()}` : prop.rentAmount ? `£${Number(prop.rentAmount).toLocaleString()} ${prop.rentPeriod || 'pcm'}` : 'N/A'}
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className={`text-xs ${prop.role === 'both' ? 'bg-purple-50 text-purple-700' : prop.role === 'agent' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
-                                {prop.role === 'both' ? 'Agent & PM' : prop.role === 'agent' ? 'Agent' : 'PM'}
+                              <Badge variant="outline" className={`text-xs ${prop.role === 'admin' ? 'bg-red-50 text-red-700' : prop.role === 'both' ? 'bg-purple-50 text-purple-700' : prop.role === 'agent' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'}`}>
+                                {prop.role === 'admin' ? 'Admin' : prop.role === 'both' ? 'Agent & PM' : prop.role === 'agent' ? 'Agent' : 'PM'}
                               </Badge>
                             </TableCell>
                             {canAssign && (

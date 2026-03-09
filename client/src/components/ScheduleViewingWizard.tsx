@@ -67,7 +67,12 @@ interface Property {
   images?: string[];
   status?: string;
   listingType?: string;
+  isManaged?: boolean;
+  isListed?: boolean;
+  isRental?: boolean;
 }
+
+type ListingCategory = "lettings" | "sales";
 
 interface ScheduleViewingWizardProps {
   isOpen: boolean;
@@ -106,6 +111,7 @@ export function ScheduleViewingWizard({
   const [step, setStep] = useState<WizardStep>("property");
   const [selectedProperty, setSelectedProperty] = useState<Property | null>(null);
   const [propertySearch, setPropertySearch] = useState("");
+  const [listingCategory, setListingCategory] = useState<ListingCategory>("lettings");
 
   const form = useForm<ViewingFormValues>({
     resolver: zodResolver(viewingFormSchema),
@@ -147,6 +153,7 @@ export function ScheduleViewingWizard({
         setStep("datetime");
       }
       setPropertySearch("");
+      setListingCategory("lettings");
       form.reset({
         viewingDate: "",
         viewingTime: "10:00",
@@ -159,6 +166,12 @@ export function ScheduleViewingWizard({
   }, [isOpen, preselectedPropertyId, form]);
 
   const filteredProperties = properties.filter((p) => {
+    // Only show listed properties (not managed-only)
+    if (!p.isListed) return false;
+    // Filter by category
+    if (listingCategory === "lettings" && !p.isRental) return false;
+    if (listingCategory === "sales" && p.isRental) return false;
+
     const searchLower = propertySearch.toLowerCase();
     return (
       p.title?.toLowerCase().includes(searchLower) ||
@@ -326,6 +339,27 @@ export function ScheduleViewingWizard({
 
   const renderPropertyStep = () => (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <Button
+          variant={listingCategory === "lettings" ? "default" : "outline"}
+          size="sm"
+          className="flex-1"
+          onClick={() => { setListingCategory("lettings"); setSelectedProperty(null); }}
+          data-testid="button-category-lettings"
+        >
+          Lettings
+        </Button>
+        <Button
+          variant={listingCategory === "sales" ? "default" : "outline"}
+          size="sm"
+          className="flex-1"
+          onClick={() => { setListingCategory("sales"); setSelectedProperty(null); }}
+          data-testid="button-category-sales"
+        >
+          Sales
+        </Button>
+      </div>
+
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input

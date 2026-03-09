@@ -2185,7 +2185,20 @@ export const contacts = pgTable("contact", {
   timeframe: text("timeframe"),
 
   status: text("status").notNull().default("new"),
-  createdAt: timestamp("created_at").notNull().defaultNow()
+  workflowStage: text("workflow_stage").default("new"),
+  workflowUpdatedAt: timestamp("workflow_updated_at"),
+  assignedAgentId: integer("assigned_agent_id"),
+  linkedPropertyId: integer("linked_property_id"),
+
+  // Valuation workflow fields
+  valuationScheduledDate: timestamp("valuation_scheduled_date"),
+  valuationCompletedDate: timestamp("valuation_completed_date"),
+  valuationAmount: integer("valuation_amount"),
+  instructionSignedDate: timestamp("instruction_signed_date"),
+
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
 });
 
 // Property inquiry relations
@@ -6692,3 +6705,59 @@ export const systemSettings = pgTable("system_setting", {
 });
 
 export type SystemSetting = typeof systemSettings.$inferSelect;
+
+// ==========================================
+// COMPANY SETTINGS (business details for invoices, quotes, branding)
+// ==========================================
+export const companySettings = pgTable("company_settings", {
+  id: serial("id").primaryKey(),
+
+  // Company Identity
+  companyName: text("company_name"),
+  tradingName: text("trading_name"),
+  companyRegistrationNumber: text("company_registration_number"),
+  vatNumber: text("vat_number"),
+  taxReference: text("tax_reference"),
+
+  // Contact Details
+  email: text("email"),
+  phone: text("phone"),
+  website: text("website"),
+
+  // Registered Address
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country").default("United Kingdom"),
+
+  // Bank Details (for invoices)
+  bankName: text("bank_name"),
+  bankAccountName: text("bank_account_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankSortCode: text("bank_sort_code"),
+  bankIban: text("bank_iban"),
+  bankSwift: text("bank_swift"),
+
+  // Invoice Settings
+  invoicePrefix: text("invoice_prefix").default("INV"),
+  invoiceNextNumber: integer("invoice_next_number").default(1),
+  invoicePaymentTermsDays: integer("invoice_payment_terms_days").default(30),
+  invoiceFooterText: text("invoice_footer_text"),
+  invoiceNotes: text("invoice_notes"),
+
+  // Quote Settings
+  quotePrefix: text("quote_prefix").default("QTE"),
+  quoteNextNumber: integer("quote_next_number").default(1),
+  quoteValidityDays: integer("quote_validity_days").default(30),
+
+  // Branding
+  logoUrl: text("logo_url"),
+  primaryColor: text("primary_color").default("#791E75"),
+  secondaryColor: text("secondary_color"),
+
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type CompanySettings = typeof companySettings.$inferSelect;
+export type InsertCompanySettings = typeof companySettings.$inferInsert;

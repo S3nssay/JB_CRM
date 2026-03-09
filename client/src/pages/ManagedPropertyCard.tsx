@@ -10,7 +10,7 @@ import {
     ArrowLeft, Building2, User, FileText, PoundSterling,
     Calendar, Shield, CheckCircle2, AlertTriangle, Key,
     Phone, Mail, CreditCard, Home, Pencil, Upload, ExternalLink,
-    Loader2, FileUp
+    Loader2, FileUp, Megaphone
 } from 'lucide-react';
 import {
     Dialog,
@@ -72,6 +72,8 @@ export default function ManagedPropertyCard() {
     });
     const [editingTenancyId, setEditingTenancyId] = useState<number | null>(null);
     const [saving, setSaving] = useState(false);
+    const [marketDialogOpen, setMarketDialogOpen] = useState(false);
+    const [preparingMarket, setPreparingMarket] = useState(false);
 
     // Fetch property details
     const { data: property, isLoading: propertyLoading } = useQuery({
@@ -373,6 +375,36 @@ export default function ManagedPropertyCard() {
         );
     }
 
+
+    // Prepare property for market (To Let or For Sale)
+    const handlePrepareForMarket = async (listingType: 'rental' | 'sale') => {
+        setPreparingMarket(true);
+        try {
+            const updates = listingType === 'rental'
+                ? { isListedRental: true, isListed: true }
+                : { isListedSale: true, isListed: true };
+
+            const res = await fetch(`/api/crm/properties/${id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+            if (!res.ok) throw new Error('Failed to update property');
+
+            queryClient.invalidateQueries({ queryKey: ['/api/crm/properties', id] });
+            setMarketDialogOpen(false);
+            toast({
+                title: 'Property ready for market',
+                description: `Property flagged as ${listingType === 'rental' ? 'To Let' : 'For Sale'}. Opening property card to complete details.`
+            });
+            // Navigate to property edit page to fill in marketing details
+            setLocation(`/crm/properties/${id}/edit`);
+        } catch (error) {
+            toast({ title: 'Error', description: 'Failed to prepare property for market', variant: 'destructive' });
+        } finally {
+            setPreparingMarket(false);
+        }
+    };
     return (
         <div className="min-h-screen bg-background p-6">
             {/* Header */}
@@ -397,12 +429,56 @@ export default function ManagedPropertyCard() {
                         {property?.postcode} • {property?.city}
                     </p>
                 </div>
-                <Button onClick={openEditDialog} variant="outline">
+                <div className="flex gap-2">
+                    <Button onClick={() => setMarketDialogOpen(true)} variant="default">
+                        <Megaphone className="h-4 w-4 mr-2" />
+                        Prepare for Market
+                    </Button>
+                    <Button onClick={openEditDialog} variant="outline">
                     <Pencil className="h-4 w-4 mr-2" />
                     Edit Property
-                </Button>
+                    </Button>
+                </div>
             </div>
 
+
+            {/* Prepare for Market Dialog */}
+            <Dialog open={marketDialogOpen} onOpenChange={setMarketDialogOpen}>
+                <DialogContent className="sm:max-w-[450px]">
+                    <DialogHeader>
+                        <DialogTitle>Prepare for Market</DialogTitle>
+                        <DialogDescription>
+                            Choose how you'd like to list this property. It will be flagged and you'll be taken to the property card to complete the marketing details.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid grid-cols-2 gap-4 py-6">
+                        <button
+                            onClick={() => handlePrepareForMarket('rental')}
+                            disabled={preparingMarket}
+                            className="flex flex-col items-center gap-3 p-6 rounded-lg border-2 border-muted hover:border-primary hover:bg-primary/5 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                            <Key className="h-10 w-10 text-blue-600" />
+                            <span className="font-semibold text-lg">To Let</span>
+                            <span className="text-sm text-muted-foreground text-center">List as a rental property</span>
+                        </button>
+                        <button
+                            onClick={() => handlePrepareForMarket('sale')}
+                            disabled={preparingMarket}
+                            className="flex flex-col items-center gap-3 p-6 rounded-lg border-2 border-muted hover:border-primary hover:bg-primary/5 transition-all cursor-pointer disabled:opacity-50"
+                        >
+                            <PoundSterling className="h-10 w-10 text-green-600" />
+                            <span className="font-semibold text-lg">For Sale</span>
+                            <span className="text-sm text-muted-foreground text-center">List as a sale property</span>
+                        </button>
+                    </div>
+                    {preparingMarket && (
+                        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Preparing property...
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
             {/* Edit Property Dialog */}
             <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
                 <DialogContent className="sm:max-w-[500px]">

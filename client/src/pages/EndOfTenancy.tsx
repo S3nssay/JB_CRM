@@ -33,28 +33,28 @@ export default function EndOfTenancy() {
   const [startTenancyId, setStartTenancyId] = useState('');
 
   const { data: endingTenancies } = useQuery({
-    queryKey: ['/api/crm/pm/pm-dashboard/tenancies', 'ending'],
-    queryFn: () => apiRequest('GET', '/api/crm/pm/pm-dashboard/tenancies?status=ending'),
+    queryKey: ['/api/crm/pm-dashboard/tenancies', 'ending'],
+    queryFn: () => apiRequest('/api/crm/pm-dashboard/tenancies?status=ending'),
   });
 
   const { data: activeTenancies } = useQuery({
-    queryKey: ['/api/crm/pm/pm-dashboard/tenancies', 'active'],
-    queryFn: () => apiRequest('GET', '/api/crm/pm/pm-dashboard/tenancies?status=active'),
+    queryKey: ['/api/crm/pm-dashboard/tenancies', 'active'],
+    queryFn: () => apiRequest('/api/crm/pm-dashboard/tenancies?status=active'),
     enabled: showStartDialog,
   });
 
   const { data: tenancyDetails } = useQuery({
     queryKey: ['/api/crm/pm/end-of-tenancy', selectedTenancyId],
-    queryFn: () => apiRequest('GET', '/api/crm/pm/end-of-tenancy/' + selectedTenancyId),
+    queryFn: () => apiRequest('/api/crm/pm/end-of-tenancy/' + selectedTenancyId),
     enabled: selectedTenancyId !== null,
   });
 
   const startMutation = useMutation({
     mutationFn: (tenancyId: string) =>
-      apiRequest('POST', '/api/crm/pm/end-of-tenancy/' + tenancyId + '/start'),
+      apiRequest('/api/crm/pm/end-of-tenancy/' + tenancyId + '/start', "POST"),
     onSuccess: () => {
       toast({ title: 'End of tenancy process started' });
-      queryClient.invalidateQueries({ queryKey: ['/api/crm/pm/pm-dashboard/tenancies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/pm-dashboard/tenancies'] });
       setShowStartDialog(false);
       setStartTenancyId('');
     },
@@ -65,7 +65,7 @@ export default function EndOfTenancy() {
 
   const toggleMutation = useMutation({
     mutationFn: ({ id, isCompleted }: { id: number; isCompleted: boolean }) =>
-      apiRequest('PATCH', '/api/crm/pm/checklist/' + id, { isCompleted }),
+      apiRequest('/api/crm/pm/checklist/' + id, "PATCH", { isCompleted }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/crm/pm/end-of-tenancy', selectedTenancyId] });
     },
@@ -76,10 +76,10 @@ export default function EndOfTenancy() {
 
   const completeMutation = useMutation({
     mutationFn: (tenancyId: number) =>
-      apiRequest('POST', '/api/crm/pm/end-of-tenancy/' + tenancyId + '/complete'),
+      apiRequest('/api/crm/pm/end-of-tenancy/' + tenancyId + '/complete', "POST"),
     onSuccess: () => {
       toast({ title: 'Tenancy closed successfully' });
-      queryClient.invalidateQueries({ queryKey: ['/api/crm/pm/pm-dashboard/tenancies'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/pm-dashboard/tenancies'] });
       queryClient.invalidateQueries({ queryKey: ['/api/crm/pm/end-of-tenancy', selectedTenancyId] });
       setSelectedTenancyId(null);
     },
@@ -128,9 +128,9 @@ export default function EndOfTenancy() {
                 onClick={() => setSelectedTenancyId(tenancy.id)}
               >
                 <CardContent className="p-4 space-y-2">
-                  <p className="font-medium">{tenancy.property_address}</p>
+                  <p className="font-medium">{tenancy.propertyAddress}</p>
                   <p className="text-sm text-muted-foreground">
-                    Tenant: {tenancy.tenant_name}
+                    Tenant: {tenancy.tenantName}
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Landlord: {tenancy.landlord_name}
@@ -214,7 +214,7 @@ export default function EndOfTenancy() {
               <SelectContent>
                 {activeTenancies && activeTenancies.map((tenancy: any) => (
                   <SelectItem key={tenancy.id} value={String(tenancy.id)}>
-                    {tenancy.property_address} - {tenancy.tenant_name}
+                    {tenancy.propertyAddress} - {tenancy.tenantName}
                   </SelectItem>
                 ))}
               </SelectContent>

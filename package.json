@@ -129,6 +129,7 @@
     "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.30.4",
     "esbuild": "^0.25.0",
+    "pdfkit": "^0.17.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.21.0",

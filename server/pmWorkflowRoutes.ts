@@ -199,7 +199,7 @@ pmWorkflowRouter.get("/rent-collection/commission-report", requireAgent, async (
 pmWorkflowRouter.get("/deposits", requireAgent, async (req, res) => {
   try {
     const { status } = req.query;
-    let sql = "SELECT t.id as tenancy_id, t.deposit_amount, t.deposit_scheme, t.deposit_certificate_number, t.deposit_protected_date, t.deposit_holder_type, t.start_date, t.end_date, t.status as tenancy_status, p.address as property_address, p.postcode as property_postcode, te.name as tenant_name, te.email as tenant_email FROM tenancy t LEFT JOIN property p ON t.property_id = p.id LEFT JOIN tenant te ON t.tenant_id = te.id WHERE t.deposit_amount IS NOT NULL";
+    let sql = "SELECT t.id as tenancy_id, t.deposit_amount, t.deposit_scheme, t.deposit_certificate_number, t.deposit_protected_date, t.deposit_holder_type, t.start_date, t.end_date, t.status as tenancy_status, p.address as property_address, p.postcode as property_postcode, te.name as tenant_name, te.email as tenant_email, l.name as landlord_name FROM tenancy t LEFT JOIN property p ON t.property_id = p.id LEFT JOIN tenant te ON t.tenant_id = te.id LEFT JOIN landlord l ON t.landlord_id = l.id WHERE t.deposit_amount IS NOT NULL";
     const params: any[] = [];
 
     if (status === "protected") {
@@ -211,7 +211,35 @@ pmWorkflowRouter.get("/deposits", requireAgent, async (req, res) => {
     sql += " ORDER BY t.created_at DESC";
 
     const result = await pool.query(sql, params);
-    res.json(result.rows);
+    const rows = result.rows;
+
+    // Compute stats
+    const protectedCount = rows.filter((r: any) => r.deposit_certificate_number).length;
+    const totalValue = rows.reduce((sum: number, r: any) => sum + parseFloat(r.deposit_amount || '0'), 0);
+
+    // Map rows to expected shape
+    const deposits = rows.map((r: any) => ({
+      tenancy_id: r.tenancy_id,
+      tenant_name: r.tenant_name || '',
+      tenant_email: r.tenant_email || '',
+      property_address: r.property_address || '',
+      landlord_name: r.landlord_name || '',
+      deposit_amount: Math.round(parseFloat(r.deposit_amount || '0') * 100),
+      deposit_scheme: r.deposit_scheme,
+      deposit_holder_type: r.deposit_holder_type,
+      deposit_certificate_number: r.deposit_certificate_number,
+      protected_date: r.deposit_protected_date,
+    }));
+
+    res.json({
+      deposits,
+      stats: {
+        total: rows.length,
+        protected: protectedCount,
+        unprotected: rows.length - protectedCount,
+        totalValue: Math.round(totalValue * 100),
+      },
+    });
   } catch (error: any) {
     console.error("Error fetching deposits:", error);
     res.status(500).json({ error: error.message });
@@ -221,11 +249,16 @@ pmWorkflowRouter.get("/deposits", requireAgent, async (req, res) => {
 pmWorkflowRouter.put("/deposits/:tenancyId/protect", requireAgent, async (req, res) => {
   try {
     const { tenancyId } = req.params;
-    const { depositScheme, depositCertificateNumber, depositProtectedDate, depositHolderType } = req.body;
+    const { depositScheme, depositCertificateNumber, depositProtectedDate, depositHolderType,
+      deposit_scheme, deposit_holder_type, deposit_certificate_number, protected_date } = req.body;
+    const finalScheme = depositScheme || deposit_scheme;
+    const finalCert = depositCertificateNumber || deposit_certificate_number;
+    const finalDate = depositProtectedDate || protected_date;
+    const finalHolder = depositHolderType || deposit_holder_type;
 
     const result = await pool.query(
       "UPDATE tenancy SET deposit_scheme = $1, deposit_certificate_number = $2, deposit_protected_date = $3, deposit_holder_type = $4, updated_at = NOW() WHERE id = $5 RETURNING *",
-      [depositScheme, depositCertificateNumber, depositProtectedDate, depositHolderType, tenancyId]
+      [finalScheme, finalCert, finalDate, finalHolder, tenancyId]
     );
 
     if (result.rows.length === 0) {
@@ -515,6 +548,91 @@ pmWorkflowRouter.get("/inventory/:inventoryId/damage-summary", requireAgent, asy
     });
   } catch (error: any) {
     console.error("Error fetching damage summary:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+// ============================================================
+// Viewings Calendar
+// ============================================================
+
+pmWorkflowRouter.get("/viewings/calendar", requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        lv.id,
+        lv.lead_id,
+        lv.property_id,
+        lv.scheduled_at,
+        lv.duration,
+        lv.viewing_type,
+        lv.status,
+        lv.cancelled_reason,
+        lv.agent_notes,
+        l.name as lead_name,
+        l.email as lead_email,
+        l.phone as lead_phone,
+        COALESCE(p.address, p.address_line1, p.title) as property_address,
+        p.postcode as property_postcode,
+        u.full_name as conducted_by_name
+      FROM lead_viewing lv
+      LEFT JOIN lead l ON lv.lead_id = l.id
+      LEFT JOIN property p ON lv.property_id = p.id
+      LEFT JOIN "user" u ON lv.conducted_by = u.id
+      ORDER BY lv.scheduled_at ASC
+    `);
+
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error("Error fetching viewings calendar:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================
+// Tenancy Contracts Expiry Calendar
+// ============================================================
+
+pmWorkflowRouter.get("/tenancy-expiry/calendar", requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        tc.id,
+        tc.property_id,
+        tc.landlord_id,
+        tc.tenant_id,
+        tc.start_date,
+        tc.end_date,
+        tc.period_months,
+        tc.is_periodic,
+        tc.rent_amount,
+        tc.rent_frequency,
+        tc.status,
+        COALESCE(p.address, p.address_line1, p.title) as property_address,
+        p.postcode as property_postcode,
+        t.name as tenant_name,
+        t.email as tenant_email,
+        t.phone as tenant_phone,
+        ll.name as landlord_name,
+        CASE
+          WHEN tc.end_date IS NULL THEN 'periodic'
+          WHEN tc.end_date < CURRENT_DATE THEN 'expired'
+          WHEN tc.end_date < CURRENT_DATE + INTERVAL '30 days' THEN 'critical'
+          WHEN tc.end_date < CURRENT_DATE + INTERVAL '60 days' THEN 'warning'
+          WHEN tc.end_date < CURRENT_DATE + INTERVAL '90 days' THEN 'upcoming'
+          ELSE 'active'
+        END as urgency
+      FROM tenancy_contract tc
+      LEFT JOIN property p ON tc.property_id = p.id
+      LEFT JOIN tenant t ON tc.tenant_id = t.id
+      LEFT JOIN landlord ll ON tc.landlord_id = ll.id
+      ORDER BY tc.end_date ASC NULLS LAST
+    `);
+
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error("Error fetching tenancy expiry calendar:", error);
     res.status(500).json({ error: error.message });
   }
 });

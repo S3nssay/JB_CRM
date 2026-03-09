@@ -103,7 +103,7 @@ export default function ComplianceCalendar() {
   const { data: certificates = [], isLoading: loadingCerts } = useQuery<Certificate[]>({
     queryKey: ['/api/crm/compliance/calendar'],
     queryFn: async () => {
-      const res = await fetch('/api/crm/compliance/calendar');
+      const res = await fetch('/api/crm/compliance/calendar', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch compliance calendar');
       return res.json();
     },
@@ -112,7 +112,7 @@ export default function ComplianceCalendar() {
   const { data: summary = [], isLoading: loadingSummary } = useQuery<SummaryItem[]>({
     queryKey: ['/api/crm/compliance/summary'],
     queryFn: async () => {
-      const res = await fetch('/api/crm/compliance/summary');
+      const res = await fetch('/api/crm/compliance/summary', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch compliance summary');
       return res.json();
     },

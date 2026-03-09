@@ -841,6 +841,10 @@ router.get('/system-mailboxes', requireAgent, async (req: Request, res: Response
         errorCount: emailConnections.errorCount,
         lastError: emailConnections.lastError,
         syncEnabled: emailConnections.syncEnabled,
+        smtpHost: emailConnections.smtpHost,
+        smtpPort: emailConnections.smtpPort,
+        imapHost: emailConnections.imapHost,
+        imapPort: emailConnections.imapPort,
       })
       .from(emailConnections)
       .where(eq(emailConnections.isSystemMailbox, true))
@@ -989,6 +993,120 @@ router.post('/system-mailbox', requireAgent, async (req: Request, res: Response)
 });
 
 /**
+ * PATCH /api/email-integration/system-mailbox/:category
+ * Update an existing system/department mailbox (admin only)
+ */
+router.patch('/system-mailbox/:category', requireAgent, async (req: Request, res: Response) => {
+  try {
+    const user = req.user as any;
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { category } = req.params;
+    if (!['sales', 'lettings', 'maintenance', 'admin'].includes(category)) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+
+    const {
+      smtpHost, smtpPort, smtpUser, smtpPassword, smtpSecure,
+      imapHost, imapPort, imapUser, imapPassword, imapTls,
+      displayName,
+    } = req.body;
+
+    // Find existing mailbox
+    const [existing] = await db
+      .select()
+      .from(emailConnections)
+      .where(
+        and(
+          eq(emailConnections.isSystemMailbox, true),
+          eq(emailConnections.mailboxCategory, category)
+        )
+      )
+      .limit(1);
+
+    if (!existing) {
+      return res.status(404).json({ error: `No ${category} system mailbox found` });
+    }
+
+    // Validate required fields
+    if (!smtpHost || !smtpUser || !smtpPassword) {
+      return res.status(400).json({ error: 'SMTP host, user, and password are required' });
+    }
+    if (!imapHost || !imapUser || !imapPassword) {
+      return res.status(400).json({ error: 'IMAP host, user, and password are required' });
+    }
+
+    // Test SMTP connection
+    const sender = new SmtpSender();
+    const smtpResult = await sender.testRawConnection({
+      host: smtpHost,
+      port: smtpPort || 465,
+      user: smtpUser,
+      password: smtpPassword,
+      secure: smtpSecure !== false,
+    });
+    if (!smtpResult.success) {
+      return res.status(400).json({ error: `SMTP connection failed: ${smtpResult.error}` });
+    }
+
+    // Test IMAP connection
+    const poller = new ImapPoller();
+    const imapResult = await poller.testRawConnection({
+      host: imapHost,
+      port: imapPort || 993,
+      user: imapUser,
+      password: imapPassword,
+      tls: imapTls !== false,
+    });
+    if (!imapResult.success) {
+      return res.status(400).json({ error: `IMAP connection failed: ${imapResult.error}` });
+    }
+
+    // Encrypt credentials
+    const encryptedSmtpPassword = encryptToken(smtpPassword);
+    const encryptedImapPassword = encryptToken(imapPassword);
+
+    // Update connection record
+    const [updated] = await db
+      .update(emailConnections)
+      .set({
+        mailboxUpn: smtpUser,
+        smtpHost,
+        smtpPort: smtpPort || 465,
+        smtpUser,
+        smtpPassword: encryptedSmtpPassword,
+        smtpSecure: smtpSecure !== false,
+        imapHost,
+        imapPort: imapPort || 993,
+        imapUser,
+        imapPassword: encryptedImapPassword,
+        imapTls: imapTls !== false,
+        mailboxDisplayName: displayName || existing.mailboxDisplayName,
+        status: 'active',
+        errorCount: 0,
+        lastError: null,
+      })
+      .where(eq(emailConnections.id, existing.id))
+      .returning();
+
+    console.log(`Updated system mailbox ${updated.id}: ${category} (${smtpUser})`);
+
+    res.json({
+      success: true,
+      connectionId: updated.id,
+      mailboxUpn: updated.mailboxUpn,
+      category: updated.mailboxCategory,
+      displayName: updated.mailboxDisplayName,
+    });
+  } catch (error) {
+    console.error('Error updating system mailbox:', error);
+    res.status(500).json({ error: 'Failed to update system mailbox' });
+  }
+});
+
+/**
  * DELETE /api/email-integration/system-mailbox/:category
  * Removes a system/department mailbox (admin only)
  */
@@ -1000,7 +1118,7 @@ router.delete('/system-mailbox/:category', requireAgent, async (req: Request, re
     }
 
     const { category } = req.params;
-    if (!['sales', 'lettings', 'maintenance'].includes(category)) {
+    if (!['sales', 'lettings', 'maintenance', 'admin'].includes(category)) {
       return res.status(400).json({ error: 'Invalid category' });
     }
 

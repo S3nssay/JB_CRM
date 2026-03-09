@@ -138,6 +138,60 @@ crmRouter.put('/demo-email-mode', async (req, res) => {
   }
 });
 
+// Company settings
+crmRouter.get('/company-settings', async (_req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM company_settings LIMIT 1");
+    res.json(result.rows[0] || {});
+  } catch (error) {
+    console.error('Failed to fetch company settings:', error);
+    res.status(500).json({ error: 'Failed to fetch company settings' });
+  }
+});
+
+crmRouter.put('/company-settings', async (req, res) => {
+  try {
+    const fields = [
+      'company_name', 'trading_name', 'company_registration_number', 'vat_number', 'tax_reference',
+      'email', 'phone', 'website',
+      'address_line1', 'address_line2', 'city', 'postcode', 'country',
+      'bank_name', 'bank_account_name', 'bank_account_number', 'bank_sort_code', 'bank_iban', 'bank_swift',
+      'invoice_prefix', 'invoice_next_number', 'invoice_payment_terms_days', 'invoice_footer_text', 'invoice_notes',
+      'quote_prefix', 'quote_next_number', 'quote_validity_days',
+      'logo_url', 'primary_color', 'secondary_color'
+    ];
+    
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+    
+    for (const field of fields) {
+      const camelCase = field.replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase());
+      if (req.body[camelCase] !== undefined) {
+        setClauses.push(`${field} = $${paramIndex}`);
+        values.push(req.body[camelCase]);
+        paramIndex++;
+      }
+    }
+    
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    setClauses.push('updated_at = NOW()');
+    
+    const result = await pool.query(
+      `UPDATE company_settings SET ${setClauses.join(', ')} WHERE id = 1 RETURNING *`,
+      values
+    );
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to update company settings:', error);
+    res.status(500).json({ error: 'Failed to update company settings' });
+  }
+});
+
 
 // Configure multer for property image uploads
 const uploadDir = path.join(process.cwd(), 'uploads', 'properties');
@@ -368,7 +422,7 @@ const VALID_PROPERTY_FIELDS = new Set([
   'rentAmount', 'leaseLength', 'groundRent', 'serviceCharge',
   'isPublishedWebsite', 'isPublishedZoopla', 'isPublishedRightmove',
   'isPublishedOnthemarket', 'isPublishedSocial', 'publishedToPortals',
-  'notes', 'isListedRental', 'isListedSale'
+  'notes', 'isListed', 'isRental'
 ]);
 
 // Field name mappings: frontend alias -> schema column name
@@ -7180,8 +7234,10 @@ crmRouter.put('/env-settings', requireAdmin, async (req, res) => {
     for (const [key, value] of Object.entries(values)) {
       // Skip masked values - user didn't change them
       if (value === '••••••••') continue;
-      // Only include non-empty values or values that override existing
-      if (value || existingValues[key]) {
+      // Skip empty values that would blank out existing settings
+      if (!value && existingValues[key]) continue;
+      // Only include non-empty values
+      if (value) {
         updatedValues[key] = value as string;
       }
     }
@@ -10553,8 +10609,8 @@ crmRouter.post('/workflows/valuation', requireAgent, async (req, res) => {
         address: propertyAddress,
         addressLine1: propertyAddress,
         status: 'valuation_pending',
-        isListedSale: false,
-        isListedRental: false,
+        isListed: false,
+        isRental: false,
       } as any).returning();
       propertyId = newProp.id;
     }
@@ -11977,7 +12033,7 @@ crmRouter.delete('/pm/properties/:id', requireAgent, async (req, res) => {
 // Get all tenancies
 crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
   try {
-    const { propertyId, landlordId, status } = req.query;
+    const { propertyId, landlordId, tenantId, status } = req.query;
 
     let query = db.select().from(tenancies);
     const conditions = [];
@@ -11987,6 +12043,9 @@ crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
     }
     if (landlordId) {
       conditions.push(eq(tenancies.landlordId, parseInt(landlordId as string)));
+    }
+    if (tenantId) {
+      conditions.push(eq(tenancies.tenantId, parseInt(tenantId as string)));
     }
     if (status) {
       conditions.push(eq(tenancies.status, status as string));
@@ -12161,6 +12220,40 @@ crmRouter.get('/pm/tenancies/:tenancyId/checklist', requireAgent, async (req, re
   } catch (error) {
     console.error('Error fetching checklist:', error);
     res.status(500).json({ error: 'Failed to fetch checklist' });
+  }
+});
+
+// Create a single checklist item for a tenancy
+crmRouter.post('/pm/tenancies/:tenancyId/checklist', requireAgent, async (req, res) => {
+  try {
+    const tenancyId = parseInt(req.params.tenancyId);
+    const { itemType } = req.body;
+
+    if (!itemType) {
+      return res.status(400).json({ error: 'itemType is required' });
+    }
+
+    // Check if item already exists
+    const existing = await db.select().from(tenancyChecklist)
+      .where(and(
+        eq(tenancyChecklist.tenancyId, tenancyId),
+        eq(tenancyChecklist.itemType, itemType)
+      ));
+
+    if (existing.length > 0) {
+      return res.json(existing[0]);
+    }
+
+    const [item] = await db.insert(tenancyChecklist).values({
+      tenancyId,
+      itemType,
+      isCompleted: false
+    }).returning();
+
+    res.json(item);
+  } catch (error) {
+    console.error('Error creating checklist item:', error);
+    res.status(500).json({ error: 'Failed to create checklist item' });
   }
 });
 
@@ -14168,9 +14261,20 @@ crmRouter.get('/my-desk/communications', requireAgent, async (req: any, res) => 
 crmRouter.get('/my-desk/properties', requireAgent, async (req: any, res) => {
   try {
     const userId = req.user.id;
-    const userProperties = await storage.getPropertiesByStaffUser(userId);
+    const isAdmin = req.user.role === 'admin';
 
-    const enriched = userProperties.map((p) => ({
+    // Admins see all properties; agents see only their assigned ones
+    let userProperties;
+    if (isAdmin) {
+      userProperties = await db
+        .select()
+        .from(properties)
+        .orderBy(desc(properties.createdAt));
+    } else {
+      userProperties = await storage.getPropertiesByStaffUser(userId);
+    }
+
+    const enriched = userProperties.map((p: any) => ({
       id: p.id,
       title: p.title,
       address: p.address,
@@ -14183,12 +14287,14 @@ crmRouter.get('/my-desk/properties', requireAgent, async (req: any, res) => {
       rentAmount: p.rentAmount,
       rentPeriod: p.rentPeriod,
       isManaged: p.isManaged,
-      isListedRental: p.isListedRental,
-      isListedSale: p.isListedSale,
+      isListed: p.isListed,
+      isRental: p.isRental,
       bedrooms: p.bedrooms,
       bathrooms: p.bathrooms,
       images: p.images,
-      role: p.agentId === userId && p.propertyManagerId === userId
+      role: isAdmin
+        ? 'admin'
+        : p.agentId === userId && p.propertyManagerId === userId
         ? 'both'
         : p.agentId === userId
         ? 'agent'
@@ -14227,11 +14333,11 @@ crmRouter.get('/dashboard-overview/stats', requireClearance(8), async (req: any,
       .from(properties)
       .where(eq(properties.isManaged, true));
 
-    // Listed properties
+    // Listed properties (isListed = true means listed for sale or rent)
     const listedResult = await db
       .select({ count: count(properties.id) })
       .from(properties)
-      .where(or(eq(properties.isListedRental, true), eq(properties.isListedSale, true)));
+      .where(eq(properties.isListed, true));
 
     // Today's events (org-wide)
     const todayEventsResult = await db
@@ -14372,8 +14478,8 @@ crmRouter.get('/dashboard-overview/properties', requireClearance(8), async (req:
         rentAmount: properties.rentAmount,
         rentPeriod: properties.rentPeriod,
         isManaged: properties.isManaged,
-        isListedRental: properties.isListedRental,
-        isListedSale: properties.isListedSale,
+        isListed: properties.isListed,
+        isRental: properties.isRental,
         bedrooms: properties.bedrooms,
         bathrooms: properties.bathrooms,
         agentId: properties.agentId,
@@ -15075,5 +15181,194 @@ crmRouter.get('/tenancies/:id/checklist-progress', requireAgent, async (req: any
   } catch (error) {
     console.error('Error fetching checklist progress:', error);
     res.status(500).json({ error: 'Failed to fetch checklist progress' });
+  }
+});
+
+// ==========================================
+// PM DASHBOARD ENDPOINTS
+// ==========================================
+
+crmRouter.get('/pm-dashboard/summary', requireAgent, async (req, res) => {
+  try {
+    // Active & pending tenancies
+    const tenancyCounts = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'active') as active,
+        COUNT(*) FILTER (WHERE status = 'pending') as pending
+      FROM tenancy
+    `);
+
+    // Rent totals from active tenancies (rent_amount is stored as decimal text)
+    const rentData = await pool.query(`
+      SELECT COALESCE(SUM(rent_amount::numeric), 0) as total_rent
+      FROM tenancy WHERE status = 'active'
+    `);
+
+    // Deposits
+    const depositData = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE deposit_certificate_number IS NOT NULL AND deposit_certificate_number != '') as protected,
+        COUNT(*) FILTER (WHERE deposit_amount IS NOT NULL AND deposit_amount::numeric > 0 AND (deposit_certificate_number IS NULL OR deposit_certificate_number = '')) as unprotected
+      FROM tenancy WHERE status = 'active'
+    `);
+
+    // Compliance from property certificates
+    const complianceData = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE expiry_date > NOW()) as valid,
+        COUNT(*) FILTER (WHERE expiry_date BETWEEN NOW() AND NOW() + INTERVAL '30 days') as expiring,
+        COUNT(*) FILTER (WHERE expiry_date < NOW()) as expired
+      FROM property_certificate
+    `);
+
+    // Ending soon (within 90 days)
+    const endingSoon = await pool.query(`
+      SELECT COUNT(*) as count FROM tenancy
+      WHERE status = 'active' AND end_date IS NOT NULL
+        AND end_date BETWEEN NOW() AND NOW() + INTERVAL '90 days'
+    `);
+
+    const totalRent = parseFloat(rentData.rows[0].total_rent) || 0;
+
+    res.json({
+      activeTenancies: parseInt(tenancyCounts.rows[0].active) || 0,
+      pendingTenancies: parseInt(tenancyCounts.rows[0].pending) || 0,
+      rentCollectedThisMonth: 0,
+      rentOutstandingThisMonth: Math.round(totalRent * 100),
+      depositsProtected: parseInt(depositData.rows[0].protected) || 0,
+      depositsUnprotected: parseInt(depositData.rows[0].unprotected) || 0,
+      complianceValid: parseInt(complianceData.rows[0].valid) || 0,
+      complianceExpiring: parseInt(complianceData.rows[0].expiring) || 0,
+      complianceExpired: parseInt(complianceData.rows[0].expired) || 0,
+      arrearsCases: 0,
+      arrearsTotal: 0,
+      endingSoon: parseInt(endingSoon.rows[0].count) || 0,
+    });
+  } catch (error) {
+    console.error('Error fetching PM dashboard summary:', error);
+    res.status(500).json({ error: 'Failed to fetch PM dashboard summary' });
+  }
+});
+
+crmRouter.get('/pm-dashboard/tenancies', requireAgent, async (req, res) => {
+  try {
+    const { status } = req.query;
+
+    let whereClause = "WHERE t.status = 'active'";
+    if (status === 'ending_soon') {
+      whereClause = "WHERE t.status = 'active' AND t.end_date IS NOT NULL AND t.end_date BETWEEN NOW() AND NOW() + INTERVAL '90 days'";
+    } else if (status === 'pending') {
+      whereClause = "WHERE t.status = 'pending'";
+    }
+
+    const result = await pool.query(`
+      SELECT
+        t.id,
+        COALESCE(p.address_line1, '') as "propertyAddress",
+        COALESCE(tn.name, '') as "tenantName",
+        COALESCE(l.name, '') as "landlordName",
+        COALESCE(t.rent_amount::numeric, 0) as "rentAmount",
+        t.start_date as "startDate",
+        t.end_date as "endDate",
+        COALESCE(p.management_fee_value::numeric, 0) as "commissionPercent",
+        t.status,
+        CASE WHEN t.end_date IS NOT NULL THEN EXTRACT(DAY FROM t.end_date - NOW())::integer ELSE NULL END as "daysRemaining"
+      FROM tenancy t
+      LEFT JOIN property p ON t.property_id = p.id
+      LEFT JOIN tenant tn ON t.tenant_id = tn.id
+      LEFT JOIN landlord l ON t.landlord_id = l.id
+      ${whereClause}
+      ORDER BY t.start_date DESC
+    `);
+
+    const rows = result.rows.map(r => ({
+      ...r,
+      rentAmount: Math.round(parseFloat(r.rentAmount) * 100),
+      commissionPercent: parseFloat(r.commissionPercent) || 0,
+    }));
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching PM dashboard tenancies:', error);
+    res.status(500).json({ error: 'Failed to fetch PM dashboard tenancies' });
+  }
+});
+
+// ==========================================
+// COMPLIANCE CALENDAR ENDPOINTS
+// ==========================================
+
+crmRouter.get('/compliance/calendar', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        pc.id,
+        pc.property_id as "propertyId",
+        COALESCE(p.address_line1, '') as "propertyAddress",
+        pc.certificate_type as "certificateType",
+        pc.certificate_number as "certificateNumber",
+        pc.issued_by as "issuedBy",
+        pc.issue_date as "issueDate",
+        pc.expiry_date as "expiryDate",
+        pc.document_url as "documentUrl",
+        CASE
+          WHEN pc.expiry_date IS NULL THEN NULL
+          ELSE EXTRACT(DAY FROM pc.expiry_date - NOW())::integer
+        END as "daysUntilExpiry",
+        CASE
+          WHEN pc.expiry_date IS NULL THEN 'no_expiry'
+          WHEN pc.expiry_date < NOW() THEN 'expired'
+          WHEN pc.expiry_date < NOW() + INTERVAL '30 days' THEN 'critical'
+          WHEN pc.expiry_date < NOW() + INTERVAL '60 days' THEN 'warning'
+          WHEN pc.expiry_date < NOW() + INTERVAL '90 days' THEN 'upcoming'
+          ELSE 'valid'
+        END as "urgency"
+      FROM property_certificate pc
+      LEFT JOIN property p ON pc.property_id = p.id
+      ORDER BY
+        CASE
+          WHEN pc.expiry_date IS NULL THEN 3
+          WHEN pc.expiry_date < NOW() THEN 0
+          WHEN pc.expiry_date < NOW() + INTERVAL '30 days' THEN 1
+          ELSE 2
+        END,
+        pc.expiry_date ASC
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching compliance calendar:', error);
+    res.status(500).json({ error: 'Failed to fetch compliance calendar' });
+  }
+});
+
+crmRouter.get('/compliance/summary', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        pc.certificate_type as type,
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE pc.expiry_date IS NULL OR pc.expiry_date > NOW() + INTERVAL '60 days') as valid,
+        COUNT(*) FILTER (WHERE pc.expiry_date BETWEEN NOW() + INTERVAL '30 days' AND NOW() + INTERVAL '60 days') as upcoming,
+        COUNT(*) FILTER (WHERE pc.expiry_date BETWEEN NOW() AND NOW() + INTERVAL '30 days') as critical,
+        COUNT(*) FILTER (WHERE pc.expiry_date < NOW()) as expired
+      FROM property_certificate pc
+      GROUP BY pc.certificate_type
+      ORDER BY pc.certificate_type
+    `);
+
+    const rows = result.rows.map(r => ({
+      type: r.type,
+      total: parseInt(r.total),
+      valid: parseInt(r.valid),
+      upcoming: parseInt(r.upcoming),
+      critical: parseInt(r.critical),
+      expired: parseInt(r.expired),
+    }));
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching compliance summary:', error);
+    res.status(500).json({ error: 'Failed to fetch compliance summary' });
   }
 });

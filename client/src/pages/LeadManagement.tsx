@@ -240,6 +240,7 @@ export default function LeadManagement() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
+  const [leadTypeFilter, setLeadTypeFilter] = useState<string>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showCommunicationDialog, setShowCommunicationDialog] = useState(false);
@@ -283,7 +284,7 @@ export default function LeadManagement() {
   const { data: leads = [], isLoading, refetch } = useQuery<Lead[]>({
     queryKey: ['/api/crm/leads'],
     queryFn: async () => {
-      const response = await fetch('/api/crm/leads');
+      const response = await fetch('/api/crm/leads', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch leads');
       return response.json();
     }
@@ -293,7 +294,7 @@ export default function LeadManagement() {
   const { data: stats } = useQuery({
     queryKey: ['/api/crm/leads/stats/dashboard'],
     queryFn: async () => {
-      const response = await fetch('/api/crm/leads/stats/dashboard');
+      const response = await fetch('/api/crm/leads/stats/dashboard', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch stats');
       return response.json();
     }
@@ -303,7 +304,7 @@ export default function LeadManagement() {
   const { data: leadDetails, isLoading: detailsLoading, refetch: refetchDetails } = useQuery<LeadWithDetails>({
     queryKey: ['/api/crm/leads', selectedLead?.id],
     queryFn: async () => {
-      const response = await fetch(`/api/crm/leads/${selectedLead?.id}`);
+      const response = await fetch(`/api/crm/leads/${selectedLead?.id}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch lead details');
       return response.json();
     },
@@ -322,7 +323,8 @@ export default function LeadManagement() {
       const response = await fetch('/api/crm/leads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to create lead');
       return response.json();
@@ -344,7 +346,8 @@ export default function LeadManagement() {
       const response = await fetch(`/api/crm/leads/${id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to update lead');
       return response.json();
@@ -362,7 +365,7 @@ export default function LeadManagement() {
   // Delete lead mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      const response = await fetch(`/api/crm/leads/${id}`, { method: 'DELETE' });
+      const response = await fetch(`/api/crm/leads/${id}`, { method: 'DELETE', credentials: 'include' });
       if (!response.ok) throw new Error('Failed to delete lead');
       return response.json();
     },
@@ -387,7 +390,8 @@ export default function LeadManagement() {
       const response = await fetch(`/api/crm/leads/${leadId}/communications`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to log communication');
       return response.json();
@@ -411,7 +415,8 @@ export default function LeadManagement() {
       const response = await fetch(`/api/crm/leads/${leadId}/convert`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ convertAs })
+        body: JSON.stringify({ convertAs }),
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to convert lead');
       return response.json();
@@ -476,7 +481,8 @@ export default function LeadManagement() {
     const matchesStatus = statusFilter === 'all' || lead.status === statusFilter;
     const matchesSource = sourceFilter === 'all' || lead.source === sourceFilter;
     const matchesPriority = priorityFilter === 'all' || lead.priority === priorityFilter;
-    return matchesSearch && matchesStatus && matchesSource && matchesPriority;
+    const matchesLeadType = leadTypeFilter === 'all' || lead.leadType === leadTypeFilter;
+    return matchesSearch && matchesStatus && matchesSource && matchesPriority && matchesLeadType;
   });
 
   const openLeadDetail = (lead: Lead) => {
@@ -548,7 +554,7 @@ export default function LeadManagement() {
         <div className="space-y-6">
           {/* Stats Cards - Primary: Rental vs Sales */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <Card className="bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
+            <Card className={`bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200 cursor-pointer transition-all ${leadTypeFilter === 'rental' ? 'ring-2 ring-blue-500 shadow-lg' : 'hover:shadow-md'}`} onClick={() => setLeadTypeFilter(leadTypeFilter === 'rental' ? 'all' : 'rental')}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -563,7 +569,7 @@ export default function LeadManagement() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-r from-green-50 to-green-100 border-green-200">
+            <Card className={`bg-gradient-to-r from-green-50 to-green-100 border-green-200 cursor-pointer transition-all ${leadTypeFilter === 'purchase' ? 'ring-2 ring-green-500 shadow-lg' : 'hover:shadow-md'}`} onClick={() => setLeadTypeFilter(leadTypeFilter === 'purchase' ? 'all' : 'purchase')}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -623,7 +629,7 @@ export default function LeadManagement() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setLocation('/crm/viewings-calendar')}>
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1768,8 +1774,15 @@ export default function LeadManagement() {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {leadDetails.viewings.map((viewing) => (
-                          <Card key={viewing.id}>
+                        {leadDetails.viewings.map((viewing: any) => (
+                          <Card
+                            key={viewing.id}
+                            className="cursor-pointer hover:shadow-md transition-shadow"
+                            onClick={() => {
+                              const date = viewing.scheduled_at ? new Date(viewing.scheduled_at).toISOString().slice(0, 10) : '';
+                              setLocation(`/crm/calendar?date=${date}`);
+                            }}
+                          >
                             <CardContent className="p-4">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -1785,9 +1798,9 @@ export default function LeadManagement() {
                                     }`} />
                                   </div>
                                   <div>
-                                    <p className="font-medium">Property #{viewing.propertyId}</p>
+                                    <p className="font-medium">{viewing.propertyTitle || `Property #${viewing.property_id || viewing.propertyId}`}</p>
                                     <p className="text-sm text-gray-500">
-                                      {formatDateTime(viewing.scheduledAt)} • {viewing.duration} min • {viewing.viewingType}
+                                      {formatDateTime(viewing.scheduled_at || viewing.scheduledAt)} • {viewing.duration} min • {(viewing.viewing_type || viewing.viewingType || '').replace('_', ' ')}
                                     </p>
                                   </div>
                                 </div>
@@ -1806,9 +1819,9 @@ export default function LeadManagement() {
                                   )}
                                 </div>
                               </div>
-                              {viewing.feedback && (
+                              {(viewing.feedback || viewing.agent_notes) && (
                                 <p className="text-sm text-gray-600 mt-2 pl-11">
-                                  Feedback: {viewing.feedback}
+                                  Feedback: {viewing.feedback || viewing.agent_notes}
                                 </p>
                               )}
                             </CardContent>

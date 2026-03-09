@@ -26,6 +26,7 @@ import {
   CheckCircle,
   XCircle,
   Home,
+  ArrowLeft,
   FileText,
   Calendar,
   PoundSterling,
@@ -271,6 +272,9 @@ export default function TenantPortal() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-4">
+              <Button variant="ghost" size="icon" onClick={() => setLocation('/portal')}>
+                <ArrowLeft className="h-5 w-5" />
+              </Button>
               <Home className="h-8 w-8 text-[#791E75]600" />
               <h1 className="text-xl font-bold">Tenant Portal</h1>
             </div>

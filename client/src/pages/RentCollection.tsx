@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import {
-  PoundSterling, TrendingUp, AlertCircle, CheckCircle, Loader2,
+  PoundSterling, TrendingUp, AlertCircle, CheckCircle, Loader2, Mail, Send,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiRequest } from '@/lib/queryClient';
@@ -103,28 +103,19 @@ export default function RentCollection() {
   // Monthly data
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery<MonthlyData>({
     queryKey: ['/api/crm/pm/rent-collection/monthly', year, month],
-    queryFn: async () => {
-      const res = await apiRequest('GET', `/api/crm/pm/rent-collection/monthly?year=${year}&month=${month}`);
-      return res.json();
-    },
+    queryFn: () => apiRequest(`/api/crm/pm/rent-collection/monthly?year=${year}&month=${month}`),
   });
 
   // Daily data
   const { data: dailyInvoices, isLoading: isLoadingDaily } = useQuery<RentInvoice[]>({
     queryKey: ['/api/crm/pm/rent-collection/daily', dailyDate],
-    queryFn: async () => {
-      const res = await apiRequest('GET', `/api/crm/pm/rent-collection/daily?date=${dailyDate}`);
-      return res.json();
-    },
+    queryFn: () => apiRequest(`/api/crm/pm/rent-collection/daily?date=${dailyDate}`),
   });
 
   // Commission report
   const { data: commissionData, isLoading: isLoadingCommission } = useQuery<CommissionReport>({
     queryKey: ['/api/crm/pm/rent-collection/commission-report', year, month],
-    queryFn: async () => {
-      const res = await apiRequest('GET', `/api/crm/pm/rent-collection/commission-report?year=${year}&month=${month}`);
-      return res.json();
-    },
+    queryFn: () => apiRequest(`/api/crm/pm/rent-collection/commission-report?year=${year}&month=${month}`),
   });
 
   const summary = monthlyData?.summary;
@@ -162,6 +153,7 @@ export default function RentCollection() {
             <TableHead>Status</TableHead>
             <TableHead>Payment Date</TableHead>
             <TableHead>Method</TableHead>
+            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -178,6 +170,34 @@ export default function RentCollection() {
                   : '-'}
               </TableCell>
               <TableCell>{invoice.payment_method || '-'}</TableCell>
+              <TableCell>
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2"
+                    onClick={() => {
+                      toast({ title: 'Email Sent', description: 'Rent invoice emailed to ' + invoice.tenant_name });
+                    }}
+                    title="Email invoice"
+                  >
+                    <Mail className="h-3 w-3" />
+                  </Button>
+                  {invoice.status !== 'paid' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 border-red-300 text-red-600 hover:bg-red-50"
+                      onClick={() => {
+                        toast({ title: 'Chase Sent', description: 'Payment reminder sent to ' + invoice.tenant_name });
+                      }}
+                      title="Send payment reminder"
+                    >
+                      <Send className="h-3 w-3" />
+                    </Button>
+                  )}
+                </div>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

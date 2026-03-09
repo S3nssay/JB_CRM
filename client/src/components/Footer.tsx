@@ -12,16 +12,16 @@ const Footer = () => {
             <p className="text-neutral-300 mb-2">22 Bank Street,<br/>Castleford WF10 1JD</p>
             <p className="text-neutral-300 mb-4">Tel: 01977 285 111</p>
             <div className="flex space-x-4">
-              <a href="#" className="text-white hover:text-accent transition">
+              <a href="https://facebook.com/johnbarclayestates" target="_blank" rel="noopener noreferrer" className="text-white hover:text-accent transition">
                 <Facebook className="h-5 w-5" />
               </a>
-              <a href="#" className="text-white hover:text-accent transition">
+              <a href="https://twitter.com/johnbarclayestates" target="_blank" rel="noopener noreferrer" className="text-white hover:text-accent transition">
                 <Twitter className="h-5 w-5" />
               </a>
-              <a href="#" className="text-white hover:text-accent transition">
+              <a href="https://instagram.com/johnbarclayestateandmanagement" target="_blank" rel="noopener noreferrer" className="text-white hover:text-accent transition">
                 <Instagram className="h-5 w-5" />
               </a>
-              <a href="#" className="text-white hover:text-accent transition">
+              <a href="https://linkedin.com/company/johnbarclayestates" target="_blank" rel="noopener noreferrer" className="text-white hover:text-accent transition">
                 <Linkedin className="h-5 w-5" />
               </a>
             </div>

@@ -97,7 +97,6 @@ import LandlordStatements from "@/pages/LandlordStatements";
 import PortfolioFinancials from "@/pages/PortfolioFinancials";
 import RentReviewManager from "@/pages/RentReviewManager";
 import TenancyRenewals from "@/pages/TenancyRenewals";
-import BulkMessaging from "@/pages/BulkMessaging";
 import TaskManager from "@/pages/TaskManager";
 import BankReconciliation from "@/pages/BankReconciliation";
 import DirectDebitManagement from "@/pages/DirectDebitManagement";
@@ -111,8 +110,11 @@ import PMTrackingDashboard from "@/pages/PMTrackingDashboard";
 import RentCollection from "@/pages/RentCollection";
 import DepositManagement from "@/pages/DepositManagement";
 import ComplianceCalendar from "@/pages/ComplianceCalendar";
+import ViewingsCalendar from "@/pages/ViewingsCalendar";
+import TenancyExpiryCalendar from "@/pages/TenancyExpiryCalendar";
 import EndOfTenancy from "@/pages/EndOfTenancy";
 import InventoryTracking from "@/pages/InventoryTracking";
+import CompanySettings from "@/pages/CompanySettings";
 
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
@@ -132,6 +134,11 @@ function App() {
   const [location] = useLocation();
   const lenisRef = useRef<Lenis | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  // Clean up stuck Radix Dialog overlays on route change
+  useEffect(() => {
+    document.body.style.pointerEvents = '';
+  }, [location]);
 
   useEffect(() => {
     // Check if this is a CRM/admin page
@@ -298,7 +305,6 @@ function Router() {
         <Route path="/crm/financials"><CRMLayout><PortfolioFinancials /></CRMLayout></Route>
         <Route path="/crm/rent-reviews"><CRMLayout><RentReviewManager /></CRMLayout></Route>
         <Route path="/crm/tenancy-renewals"><CRMLayout><TenancyRenewals /></CRMLayout></Route>
-        <Route path="/crm/bulk-messaging"><CRMLayout><BulkMessaging /></CRMLayout></Route>
         <Route path="/crm/task-manager"><CRMLayout><TaskManager /></CRMLayout></Route>
         <Route path="/crm/bank-reconciliation"><CRMLayout><BankReconciliation /></CRMLayout></Route>
         <Route path="/crm/direct-debits"><CRMLayout><DirectDebitManagement /></CRMLayout></Route>
@@ -310,8 +316,11 @@ function Router() {
         <Route path="/crm/rent-collection"><CRMLayout><RentCollection /></CRMLayout></Route>
         <Route path="/crm/deposit-management"><CRMLayout><DepositManagement /></CRMLayout></Route>
         <Route path="/crm/compliance-calendar"><CRMLayout><ComplianceCalendar /></CRMLayout></Route>
+        <Route path="/crm/viewings-calendar"><CRMLayout><ViewingsCalendar /></CRMLayout></Route>
+        <Route path="/crm/tenancy-expiry-calendar"><CRMLayout><TenancyExpiryCalendar /></CRMLayout></Route>
         <Route path="/crm/end-of-tenancy"><CRMLayout><EndOfTenancy /></CRMLayout></Route>
         <Route path="/crm/inventory"><CRMLayout><InventoryTracking /></CRMLayout></Route>
+        <Route path="/crm/company-settings"><CRMLayout><CompanySettings /></CRMLayout></Route>
         <Route path="/crm/tenant/:id">{(params: any) => <CRMLayout><TenantDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/security-matrix">
           <CRMLayout>
@@ -358,9 +367,11 @@ function Router() {
         <Route path="/portal/properties" component={CRMDashboard} />
         <Route path="/portal/my-properties" component={CRMDashboard} />
         <Route path="/portal/property-management" component={PropertyManagement} />
+        <Route path="/portal/my-property" component={TenantPortal} />
         <Route path="/portal/maintenance" component={TenantPortal} />
         <Route path="/portal/maintenance/new" component={TenantPortal} />
         <Route path="/portal/favorites-lists" component={PropertyListingsPage} />
+        <Route path="/portal/payments" component={PaymentPage} />
         <Route path="/payments" component={PaymentPage} />
         <Route path="/tenant-portal" component={TenantPortal} />
         <Route path="/dashboard" component={UserDashboard} />

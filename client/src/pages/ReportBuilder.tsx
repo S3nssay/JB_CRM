@@ -5,13 +5,24 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest } from '@/lib/queryClient';
+
 import {
   FileText, Download, Building2, Users, Shield, Wrench,
   PoundSterling, ClipboardCheck, Key, TrendingUp, Home,
   Loader2, Table, ChevronRight, AlertTriangle,
-  Calendar, UserCheck, FileSpreadsheet
+  Calendar, UserCheck, FileSpreadsheet, ArrowUpDown, ArrowUp, ArrowDown
 } from 'lucide-react';
+
+// Robust fetch helper for reports
+async function fetchReportData(url: string): Promise<any[]> {
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(res.status + ': ' + text);
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
 
 // ─── Report definitions ─────────────────────────────────────────────
 
@@ -62,7 +73,7 @@ const reports: ReportDefinition[] = [
     category: 'property',
     icon: Building2,
     frequency: 'Monthly',
-    fetchData: () => apiRequest('/api/crm/properties'),
+    fetchData: () => fetchReportData('/api/crm/properties'),
     columns: [
       { key: 'address', label: 'Address' },
       { key: 'postcode', label: 'Postcode' },
@@ -96,7 +107,7 @@ const reports: ReportDefinition[] = [
     icon: Home,
     frequency: 'Weekly',
     fetchData: async () => {
-      const all = await apiRequest<any[]>('/api/crm/properties');
+      const all = await fetchReportData('/api/crm/properties');
       return all.filter((p: any) => {
         const managed = p.is_managed || p.isManaged;
         const status = (p.status || '').toLowerCase();
@@ -135,7 +146,7 @@ const reports: ReportDefinition[] = [
     category: 'financial',
     icon: PoundSterling,
     frequency: 'Monthly',
-    fetchData: () => apiRequest('/api/crm/pm/tenancies'),
+    fetchData: () => fetchReportData('/api/crm/pm/tenancies'),
     columns: [
       { key: 'property', label: 'Property' },
       { key: 'tenant', label: 'Tenant' },
@@ -165,7 +176,7 @@ const reports: ReportDefinition[] = [
     icon: PoundSterling,
     frequency: 'Monthly',
     fetchData: async () => {
-      const properties = await apiRequest<any[]>('/api/crm/properties');
+      const properties = await fetchReportData('/api/crm/properties');
       return properties.filter((p: any) => p.is_managed || p.isManaged);
     },
     columns: [
@@ -201,7 +212,7 @@ const reports: ReportDefinition[] = [
     icon: Calendar,
     frequency: 'Weekly',
     fetchData: async () => {
-      const tenancies = await apiRequest<any[]>('/api/crm/pm/tenancies');
+      const tenancies = await fetchReportData('/api/crm/pm/tenancies');
       const now = new Date();
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() + 90);
@@ -240,7 +251,7 @@ const reports: ReportDefinition[] = [
     category: 'tenant',
     icon: Shield,
     frequency: 'Monthly',
-    fetchData: () => apiRequest('/api/crm/pm/tenancies'),
+    fetchData: () => fetchReportData('/api/crm/pm/tenancies'),
     columns: [
       { key: 'property', label: 'Property' },
       { key: 'tenant', label: 'Tenant' },
@@ -267,7 +278,7 @@ const reports: ReportDefinition[] = [
     category: 'tenant',
     icon: Users,
     frequency: 'Monthly',
-    fetchData: () => apiRequest('/api/crm/tenants'),
+    fetchData: () => fetchReportData('/api/crm/tenants'),
     columns: [
       { key: 'name', label: 'Name' },
       { key: 'email', label: 'Email' },
@@ -294,7 +305,7 @@ const reports: ReportDefinition[] = [
     category: 'landlord',
     icon: UserCheck,
     frequency: 'Monthly',
-    fetchData: () => apiRequest('/api/crm/landlords'),
+    fetchData: () => fetchReportData('/api/crm/landlords'),
     columns: [
       { key: 'name', label: 'Name' },
       { key: 'email', label: 'Email' },
@@ -326,7 +337,7 @@ const reports: ReportDefinition[] = [
     frequency: 'Weekly',
     fetchData: async () => {
       try {
-        const data = await apiRequest<any>('/api/crm/compliance/dashboard');
+        const data = await fetch('/api/crm/compliance/dashboard', { credentials: 'include' }).then(r => r.ok ? r.json() : null).catch(() => null);
         // Flatten compliance items from dashboard into a list
         const items: any[] = [];
         if (data?.expiringSoon) items.push(...data.expiringSoon.map((i: any) => ({ ...i, _status: 'Expiring Soon' })));
@@ -338,7 +349,7 @@ const reports: ReportDefinition[] = [
         return Array.isArray(data) ? data : [];
       } catch {
         // Fallback to certifications endpoint
-        return apiRequest('/api/crm/certifications');
+        return fetchReportData('/api/crm/certifications');
       }
     },
     columns: [
@@ -365,9 +376,9 @@ const reports: ReportDefinition[] = [
     frequency: 'Weekly',
     fetchData: async () => {
       try {
-        return await apiRequest('/api/crm/maintenance/tickets');
+        return await fetchReportData('/api/crm/maintenance/tickets');
       } catch {
-        return await apiRequest('/api/crm/maintenance');
+        return await fetchReportData('/api/crm/maintenance');
       }
     },
     columns: [
@@ -398,7 +409,7 @@ const reports: ReportDefinition[] = [
     category: 'performance',
     icon: TrendingUp,
     frequency: 'Weekly',
-    fetchData: () => apiRequest('/api/crm/leads'),
+    fetchData: () => fetchReportData('/api/crm/leads'),
     columns: [
       { key: 'name', label: 'Name' },
       { key: 'email', label: 'Email' },
@@ -427,9 +438,9 @@ const reports: ReportDefinition[] = [
     frequency: 'Monthly',
     fetchData: async () => {
       try {
-        return await apiRequest('/api/crm/analytics/agents');
+        return await fetchReportData('/api/crm/analytics/agents');
       } catch {
-        return await apiRequest('/api/crm/staff');
+        return await fetchReportData('/api/crm/staff');
       }
     },
     columns: [
@@ -457,7 +468,7 @@ const reports: ReportDefinition[] = [
     icon: Key,
     frequency: 'Weekly',
     fetchData: async () => {
-      const tenancies = await apiRequest<any[]>('/api/crm/pm/tenancies');
+      const tenancies = await fetchReportData('/api/crm/pm/tenancies');
       const now = new Date();
       const past30 = new Date();
       past30.setDate(past30.getDate() - 30);
@@ -525,12 +536,52 @@ export default function ReportBuilder() {
   const [reportData, setReportData] = useState<Record<string, any>[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDirection(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedData = (() => {
+    if (!reportData || !sortKey) return reportData;
+    return [...reportData].sort((a, b) => {
+      let aVal = a[sortKey];
+      let bVal = b[sortKey];
+      // Handle nulls/dashes
+      if (aVal === '—' || aVal == null) aVal = '';
+      if (bVal === '—' || bVal == null) bVal = '';
+      // Try numeric comparison (handles "£1,200.00", "46", etc.)
+      const aNum = typeof aVal === 'number' ? aVal : parseFloat(String(aVal).replace(/[£,]/g, ''));
+      const bNum = typeof bVal === 'number' ? bVal : parseFloat(String(bVal).replace(/[£,]/g, ''));
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return sortDirection === 'asc' ? aNum - bNum : bNum - aNum;
+      }
+      // Try date comparison (e.g. "24 Apr 2026")
+      const aDate = new Date(aVal);
+      const bDate = new Date(bVal);
+      if (!isNaN(aDate.getTime()) && !isNaN(bDate.getTime())) {
+        return sortDirection === 'asc' ? aDate.getTime() - bDate.getTime() : bDate.getTime() - aDate.getTime();
+      }
+      // String comparison
+      const cmp = String(aVal).localeCompare(String(bVal));
+      return sortDirection === 'asc' ? cmp : -cmp;
+    });
+  })();
+
 
   const handleGenerateReport = async (report: ReportDefinition) => {
     setSelectedReport(report);
     setLoading(true);
     setReportData(null);
     setError(null);
+    setSortKey(null);
+    setSortDirection("asc");
 
     try {
       const rawData = await report.fetchData();
@@ -713,14 +764,25 @@ export default function ReportBuilder() {
                           <tr>
                             <th className="text-left p-3 text-xs font-semibold text-gray-600 w-8">#</th>
                             {selectedReport.columns.map(col => (
-                              <th key={col.key} className="text-left p-3 text-xs font-semibold text-gray-600 whitespace-nowrap">
-                                {col.label}
+                              <th
+                                key={col.key}
+                                className="text-left p-3 text-xs font-semibold text-gray-600 whitespace-nowrap cursor-pointer hover:bg-gray-100 select-none"
+                                onClick={() => handleSort(col.key)}
+                              >
+                                <span className="inline-flex items-center gap-1">
+                                  {col.label}
+                                  {sortKey === col.key ? (
+                                    sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+                                  ) : (
+                                    <ArrowUpDown className="h-3 w-3 text-gray-300" />
+                                  )}
+                                </span>
                               </th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {reportData.slice(0, 100).map((row, idx) => (
+                          {sortedData.slice(0, 100).map((row, idx) => (
                             <tr key={idx} className="border-b hover:bg-gray-50 last:border-0">
                               <td className="p-3 text-xs text-gray-400">{idx + 1}</td>
                               {selectedReport.columns.map(col => (

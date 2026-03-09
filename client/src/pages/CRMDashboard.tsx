@@ -693,10 +693,10 @@ export default function CRMDashboard() {
                     <Button
                       className="h-20 flex flex-col"
                       variant="outline"
-                      onClick={() => setLocation('/crm/reports')}
+                      onClick={() => setLocation('/crm/analytics')}
                     >
-                      <FileText className="h-6 w-6 mb-2" />
-                      <span className="text-xs">Generate Report</span>
+                      <BarChart3 className="h-6 w-6 mb-2" />
+                      <span className="text-xs">Analytics</span>
                     </Button>
                   </div>
                 </CardContent>
@@ -899,13 +899,41 @@ export default function CRMDashboard() {
                                 {property.isRental === true && '/mo'}
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className={
-                                  (property.status || 'Active').toLowerCase() === 'active' ? 'bg-green-100 text-green-800' :
-                                  (property.status || '').toLowerCase() === 'under offer' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-gray-100 text-gray-800'
-                                }>
-                                  {property.status || 'Active'}
-                                </Badge>
+                                {(() => {
+                                  const wf = workflowByPropertyId[property.id];
+                                  const stage = wf?.currentStage;
+                                  const stageLabels: Record<string, { label: string; className: string }> = {
+                                    valuation_requested: { label: 'Valuation Requested', className: 'bg-gray-100 text-gray-800' },
+                                    valuation_scheduled: { label: 'Valuation Scheduled', className: 'bg-purple-100 text-purple-800' },
+                                    valuation_completed: { label: 'Valuation Done', className: 'bg-purple-100 text-purple-800' },
+                                    instruction_pending: { label: 'Awaiting Instruction', className: 'bg-amber-100 text-amber-800' },
+                                    instruction_signed: { label: 'Instructed', className: 'bg-purple-100 text-purple-800' },
+                                    listing_preparation: { label: 'Preparing Listing', className: 'bg-blue-100 text-blue-800' },
+                                    listed: { label: 'Listed', className: 'bg-green-100 text-green-800' },
+                                    viewing_scheduled: { label: 'Viewings Active', className: 'bg-green-100 text-green-800' },
+                                    offer_received: { label: 'Offer Received', className: 'bg-amber-100 text-amber-800' },
+                                    offer_accepted: { label: 'Under Offer', className: 'bg-yellow-100 text-yellow-800' },
+                                    contracts_preparing: { label: 'Contracts Prep', className: 'bg-indigo-100 text-indigo-800' },
+                                    contracts_sent: { label: 'Contracts Sent', className: 'bg-indigo-100 text-indigo-800' },
+                                    contracts_exchanged: { label: 'Exchanged', className: 'bg-emerald-100 text-emerald-800' },
+                                    completed: { label: 'Completed', className: 'bg-green-200 text-green-900' },
+                                  };
+                                  const info = stage ? stageLabels[stage] : null;
+                                  if (info) {
+                                    return <Badge variant="outline" className={info.className}>{info.label}</Badge>;
+                                  }
+                                  return (
+                                    <Badge variant="outline" className={
+                                      (property.status || 'Active').toLowerCase() === 'active' || (property.status || '').toLowerCase() === 'available' ? 'bg-green-100 text-green-800' :
+                                      (property.status || '').toLowerCase() === 'under_offer' || (property.status || '').toLowerCase() === 'under offer' ? 'bg-yellow-100 text-yellow-800' :
+                                      (property.status || '').toLowerCase() === 'sold' ? 'bg-green-200 text-green-900' :
+                                      (property.status || '').toLowerCase() === 'exchanged' ? 'bg-emerald-100 text-emerald-800' :
+                                      'bg-gray-100 text-gray-800'
+                                    }>
+                                      {(property.status || 'Active').replace(/_/g, ' ')}
+                                    </Badge>
+                                  );
+                                })()}
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center justify-center gap-1">

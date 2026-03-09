@@ -12,7 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Shield, ShieldAlert, ShieldCheck, PoundSterling, Calendar } from 'lucide-react';
+import { Shield, ShieldAlert, ShieldCheck, PoundSterling, Calendar, Mail } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
@@ -54,7 +54,8 @@ export default function DepositManagement() {
   const [protectedDate, setProtectedDate] = useState('');
 
   const { data, isLoading } = useQuery<DepositsResponse>({
-    queryKey: [`/api/crm/deposits?status=${activeTab}`],
+    queryKey: ['/api/crm/deposits', activeTab],
+    queryFn: () => apiRequest(`/api/crm/deposits?status=${activeTab === 'all' ? '' : activeTab}`),
   });
 
   const protectMutation = useMutation({
@@ -173,6 +174,7 @@ export default function DepositManagement() {
                       <TableHead>Certificate No</TableHead>
                       <TableHead>Protected Date</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Email</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>

@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
@@ -43,6 +43,7 @@ interface ParsedProperty {
 
 export default function PropertyCreate() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const { toast } = useToast();
 
   // Read query params to pre-configure property type and landlord
@@ -169,10 +170,10 @@ export default function PropertyCreate() {
           // Ensure features is always an array
           setFeatures(Array.isArray(result.parsed.features) ? result.parsed.features : []);
         }
-        if (result.parsed.isRental !== undefined) {
+        if (!paramType && result.parsed.isRental !== undefined) {
           setIsRental(result.parsed.isRental);
         }
-        if (result.parsed.isResidential !== undefined) {
+        if (!paramType && result.parsed.isResidential !== undefined) {
           setIsResidential(result.parsed.isResidential);
         }
         toast({
@@ -253,6 +254,10 @@ export default function PropertyCreate() {
 
       await apiRequest('/api/crm/properties', 'POST', propertyData);
       images.forEach(img => URL.revokeObjectURL(img.preview));
+
+      // Invalidate property queries so the dashboard picks up the new property
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/properties'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
 
       toast({
         title: "Property created!",

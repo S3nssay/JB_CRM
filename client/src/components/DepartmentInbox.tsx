@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { queryClient } from '@/lib/queryClient';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -132,6 +132,14 @@ export default function DepartmentInbox({ category, title, description }: Depart
     },
     enabled: !!selectedEmailId && folder === 'inbox',
   });
+
+  // Refetch inbox list after viewing an email (backend marks it as read)
+  useEffect(() => {
+    if (selectedEmail) {
+      refetchInbox();
+      queryClient.invalidateQueries({ queryKey: ["/api/email-integration/system-mailbox-counts"] });
+    }
+  }, [selectedEmail?.id]);
 
   // Sync handler
   const handleSync = async () => {

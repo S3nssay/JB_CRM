@@ -12,7 +12,7 @@ import {
   Receipt, AlertTriangle, FileSpreadsheet, TrendingUp,
   RotateCcw, CalendarClock, Send, CheckSquare,
   CreditCard, ArrowRightLeft, Mail,
-  Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck
+  Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -160,10 +160,6 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 Communication
               </p>
               <div className="space-y-0.5">
-                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/bulk-messaging') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/bulk-messaging')}>
-                  <Send className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/bulk-messaging') ? 'text-white' : 'text-gray-400'}`} />
-                  Bulk Messaging
-                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/task-manager') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/task-manager')}>
                   <CheckSquare className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/task-manager') ? 'text-white' : 'text-gray-400'}`} />
                   Task Manager
@@ -218,6 +214,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 Property Management
               </p>
               <div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/pm-dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/pm-dashboard')}>
+                  <Gauge className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/pm-dashboard') ? 'text-white' : 'text-gray-400'}`} />
+                  PM Dashboard
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/rental-agreements') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/rental-agreements')}>
                   <Key className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rental-agreements') ? 'text-white' : 'text-gray-400'}`} />
                   Tenancies
@@ -263,7 +263,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 </p>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/invoices')}>
                   <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/invoices') ? 'text-white' : 'text-gray-400'}`} />
-                  Invoices
+                  Tenant Invoices
                 </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/arrears') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/arrears')}>
                   <AlertTriangle className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/arrears') ? 'text-white' : 'text-gray-400'}`} />
@@ -290,25 +290,11 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   Direct Debits
                 </button>
 
-                {/* Lease sub-group */}
-                <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
-                  Lease
-                </p>
-                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/tenancy-renewals') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/tenancy-renewals')}>
-                  <CalendarClock className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/tenancy-renewals') ? 'text-white' : 'text-gray-400'}`} />
-                  Tenancy Renewals
-                </button>
-              </div>
-            </div>
-
                 {/* PM Workflows sub-group */}
                 <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
                   PM Workflows
                 </p>
-                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/pm-dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/pm-dashboard')}>
-                  <Gauge className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/pm-dashboard') ? 'text-white' : 'text-gray-400'}`} />
-                  PM Dashboard
-                </button>
+
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/rent-collection') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/rent-collection')}>
                   <PoundSterling className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rent-collection') ? 'text-white' : 'text-gray-400'}`} />
                   Rent Collection
@@ -321,6 +307,18 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <Calendar className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/compliance-calendar') ? 'text-white' : 'text-gray-400'}`} />
                   Compliance Calendar
                 </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/viewings-calendar') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/viewings-calendar')}>
+                  <Calendar className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/viewings-calendar') ? 'text-white' : 'text-gray-400'}`} />
+                  Viewings Calendar
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/tenancy-expiry-calendar') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/tenancy-expiry-calendar')}>
+                  <CalendarClock className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/tenancy-expiry-calendar') ? 'text-white' : 'text-gray-400'}`} />
+                  Tenancy Expiry Calendar
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/tenancy-renewals') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/tenancy-renewals')}>
+                  <CalendarClock className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/tenancy-renewals') ? 'text-white' : 'text-gray-400'}`} />
+                  Tenancy Renewals
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/end-of-tenancy') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/end-of-tenancy')}>
                   <ClipboardList className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/end-of-tenancy') ? 'text-white' : 'text-gray-400'}`} />
                   End of Tenancy
@@ -329,6 +327,8 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <ClipboardCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/inventory') ? 'text-white' : 'text-gray-400'}`} />
                   Inventory
                 </button>
+              </div>
+            </div>
 
             {/* Sales & Lettings Section */}
             <div className="mt-4 pt-3 border-t border-gray-200">
@@ -378,6 +378,17 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 </button>
               </div>
 
+              {/* Finance */}
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
+                Finance
+              </p>
+              <div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/business-invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/business-invoices')}>
+                  <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/business-invoices') ? 'text-white' : 'text-gray-400'}`} />
+                  Business Invoices
+                </button>
+              </div>
+
               {/* Leads */}
               <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
                 Leads
@@ -414,7 +425,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <Settings className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/integrations') ? 'text-white' : 'text-gray-400'}`} />
                   Settings
                 </button>
-                {user?.role === 'admin' && (
+                {(user?.role === 'admin' || (user?.securityClearance && user.securityClearance >= 8)) && (
                   <>
                     <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/users') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/users')}>
                       <Shield className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/users') ? 'text-white' : 'text-gray-400'}`} />
@@ -442,6 +453,15 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                     </button>
                   </>
                 )}
+              </div>
+
+              {/* SETTINGS */}
+              <div className="mt-2 pt-2 border-t">
+                <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Settings</p>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${location === '/crm/company-settings' ? 'bg-[#791E75]/10 text-[#791E75] font-medium' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/company-settings')}>
+                  <Settings2 className="h-3.5 w-3.5 flex-shrink-0" />
+                  Company Settings
+                </button>
               </div>
             </div>
           </nav>

@@ -17,7 +17,7 @@ import {
   Save, TestTube, Loader2, Shield, Lock, ArrowLeft,
   CreditCard, Banknote, Mail, MapPin, FileSignature, Settings,
   MessageCircle, Facebook, Linkedin, Twitter,
-  Inbox, Trash2, RefreshCw, Plus
+  Inbox, Trash2, RefreshCw, Plus, Pencil
 } from 'lucide-react';
 
 interface EnvVariable {
@@ -143,7 +143,7 @@ export default function IntegrationsSettings() {
   const { data: envSettings, isLoading } = useQuery<EnvSettings>({
     queryKey: ['/api/crm/env-settings'],
     queryFn: async () => {
-      const res = await fetch('/api/crm/env-settings');
+      const res = await fetch('/api/crm/env-settings', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch settings');
       return res.json();
     }
@@ -160,6 +160,7 @@ export default function IntegrationsSettings() {
   const saveMutation = useMutation({
     mutationFn: async (values: Record<string, string>) => {
       const res = await fetch('/api/crm/env-settings', {
+        credentials: 'include',
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ values })
@@ -191,6 +192,7 @@ export default function IntegrationsSettings() {
       // Auto-save current form values first so the test picks them up
       if (hasChanges) {
         const saveRes = await fetch('/api/crm/env-settings', {
+          credentials: 'include',
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ values: formValues })
@@ -201,6 +203,7 @@ export default function IntegrationsSettings() {
         }
       }
       const res = await fetch(`/api/crm/env-settings/test/${section}`, {
+        credentials: 'include',
         method: 'POST'
       });
       if (!res.ok) throw new Error('Test failed');
@@ -236,6 +239,10 @@ export default function IntegrationsSettings() {
     errorCount: number;
     lastError: string | null;
     syncEnabled: boolean;
+    smtpHost?: string;
+    smtpPort?: number;
+    imapHost?: string;
+    imapPort?: number;
   }
 
   interface MailboxForm {
@@ -277,7 +284,8 @@ export default function IntegrationsSettings() {
     },
   };
 
-  const [mailboxDialog, setMailboxDialog] = useState<string | null>(null); // category being configured
+  const [mailboxDialog, setMailboxDialog] = useState<string | null>(null);
+  const [isEditingMailbox, setIsEditingMailbox] = useState(false); // category being configured
   const [mailboxForm, setMailboxForm] = useState<MailboxForm>({
     smtpHost: 'mail.johnbarclay.uk',
     smtpPort: 465,
@@ -295,7 +303,7 @@ export default function IntegrationsSettings() {
   const { data: systemMailboxes = [], isLoading: mailboxesLoading } = useQuery<SystemMailbox[]>({
     queryKey: ['/api/email-integration/system-mailboxes'],
     queryFn: async () => {
-      const res = await fetch('/api/email-integration/system-mailboxes');
+      const res = await fetch('/api/email-integration/system-mailboxes', { credentials: 'include' });
       if (!res.ok) return [];
       return res.json();
     },
@@ -304,6 +312,7 @@ export default function IntegrationsSettings() {
   const createMailboxMutation = useMutation({
     mutationFn: async ({ category, form }: { category: string; form: MailboxForm }) => {
       const res = await fetch('/api/email-integration/system-mailbox', {
+        credentials: 'include',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -345,9 +354,55 @@ export default function IntegrationsSettings() {
     },
   });
 
+
+  const updateMailboxMutation = useMutation({
+    mutationFn: async ({ category, form }: { category: string; form: MailboxForm }) => {
+      const res = await fetch(`/api/email-integration/system-mailbox/${category}`, {
+        credentials: 'include',
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          smtpHost: form.smtpHost,
+          smtpPort: form.smtpPort,
+          smtpUser: form.smtpUser,
+          smtpPassword: form.smtpPassword,
+          smtpSecure: true,
+          imapHost: form.imapHost,
+          imapPort: form.imapPort,
+          imapUser: form.imapUser,
+          imapPassword: form.imapPassword,
+          imapTls: true,
+          displayName: form.displayName,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        try {
+          const err = JSON.parse(text);
+          throw new Error(err.error || 'Failed to update mailbox');
+        } catch (parseErr) {
+          if (parseErr instanceof SyntaxError) {
+            throw new Error(`Server error (${res.status})`);
+          }
+          throw parseErr;
+        }
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/email-integration/system-mailboxes'] });
+      toast({ title: 'Mailbox Updated', description: `${data.category} mailbox credentials updated (${data.mailboxUpn})` });
+      setMailboxDialog(null);
+      setIsEditingMailbox(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Update Failed', description: error.message, variant: 'destructive' });
+    },
+  });
+
   const deleteMailboxMutation = useMutation({
     mutationFn: async (category: string) => {
-      const res = await fetch(`/api/email-integration/system-mailbox/${category}`, { method: 'DELETE' });
+      const res = await fetch(`/api/email-integration/system-mailbox/${category}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Failed to delete mailbox');
@@ -366,7 +421,7 @@ export default function IntegrationsSettings() {
   const syncMailboxMutation = useMutation({
     mutationFn: async (category: string) => {
       setSyncingCategory(category);
-      const res = await fetch(`/api/email-integration/system-mailboxes/${category}/sync`, { method: 'POST' });
+      const res = await fetch(`/api/email-integration/system-mailboxes/${category}/sync`, { method: 'POST', credentials: 'include' });
       if (!res.ok) throw new Error('Sync failed');
       return res.json();
     },
@@ -395,8 +450,29 @@ export default function IntegrationsSettings() {
       displayName: defaults.displayName,
     });
     setShowMailboxPassword(false);
+    setIsEditingMailbox(false);
     setMailboxDialog(category);
   };
+
+  const openMailboxEdit = (category: string) => {
+    const mailbox = getMailbox(category);
+    const defaults = MAILBOX_DEFAULTS[category];
+    setMailboxForm({
+      smtpHost: mailbox?.smtpHost || 'mail.johnbarclay.uk',
+      smtpPort: mailbox?.smtpPort || 465,
+      smtpUser: mailbox?.mailboxUpn || defaults.email,
+      smtpPassword: '', // Must re-enter password
+      imapHost: mailbox?.imapHost || 'mail.johnbarclay.uk',
+      imapPort: mailbox?.imapPort || 993,
+      imapUser: mailbox?.mailboxUpn || defaults.email,
+      imapPassword: '', // Must re-enter password
+      displayName: mailbox?.mailboxDisplayName || defaults.displayName,
+    });
+    setShowMailboxPassword(false);
+    setIsEditingMailbox(true);
+    setMailboxDialog(category);
+  };
+
 
   const getMailbox = (category: string) => systemMailboxes.find((m) => m.mailboxCategory === category);
 
@@ -726,6 +802,14 @@ export default function IntegrationsSettings() {
                               <Button
                                 variant="outline"
                                 size="sm"
+                                onClick={() => openMailboxEdit(category)}
+                                title="Edit mailbox settings"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
                                 onClick={() => syncMailboxMutation.mutate(category)}
                                 disabled={syncingCategory === category}
                               >
@@ -800,7 +884,7 @@ export default function IntegrationsSettings() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="capitalize">
-                Connect {mailboxDialog} Mailbox
+                {isEditingMailbox ? 'Edit' : 'Connect'} {mailboxDialog} Mailbox
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
@@ -890,7 +974,7 @@ export default function IntegrationsSettings() {
                 </div>
               </div>
               <p className="text-xs text-gray-500">
-                The connection will be tested before saving. SMTP and IMAP use the same credentials by default.
+                {isEditingMailbox ? "Re-enter the password to update credentials. The connection will be tested before saving." : "The connection will be tested before saving. SMTP and IMAP use the same credentials by default."}
               </p>
             </div>
             <DialogFooter>
@@ -899,19 +983,23 @@ export default function IntegrationsSettings() {
               </Button>
               <Button
                 className="bg-[#791E75] hover:bg-[#60175d]"
-                disabled={createMailboxMutation.isPending || !mailboxForm.smtpUser || !mailboxForm.smtpPassword}
+                disabled={(isEditingMailbox ? updateMailboxMutation.isPending : createMailboxMutation.isPending) || !mailboxForm.smtpUser || !mailboxForm.smtpPassword}
                 onClick={() => {
                   if (mailboxDialog) {
-                    createMailboxMutation.mutate({ category: mailboxDialog, form: mailboxForm });
+                    if (isEditingMailbox) {
+                      updateMailboxMutation.mutate({ category: mailboxDialog, form: mailboxForm });
+                    } else {
+                      createMailboxMutation.mutate({ category: mailboxDialog, form: mailboxForm });
+                    }
                   }
                 }}
               >
-                {createMailboxMutation.isPending ? (
+                {(isEditingMailbox ? updateMailboxMutation.isPending : createMailboxMutation.isPending) ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
                   <TestTube className="h-4 w-4 mr-2" />
                 )}
-                Test & Connect
+                {isEditingMailbox ? 'Test & Save' : 'Test & Connect'}
               </Button>
             </DialogFooter>
           </DialogContent>

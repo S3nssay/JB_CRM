@@ -97,7 +97,7 @@ export default function TenantDetails() {
     });
 
     // Handle file upload
-    const handleFileUpload = async (file: File, checklistItem: any) => {
+    const handleFileUpload = async (file: File, checklistItem: any, docType?: string) => {
         try {
             const formData = new FormData();
             formData.append('document', file);
@@ -113,9 +113,27 @@ export default function TenantDetails() {
 
             const uploadData = await uploadRes.json();
 
+            // If no checklist item exists, create one first
+            let checklistId = checklistItem?.id;
+            if (!checklistId && activeTenancy?.id && docType) {
+                const createRes = await fetch(`/api/crm/pm/tenancies/${activeTenancy.id}/checklist`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ itemType: docType })
+                });
+                if (createRes.ok) {
+                    const newItem = await createRes.json();
+                    checklistId = newItem.id;
+                }
+            }
+
+            if (!checklistId) {
+                throw new Error('Could not find or create checklist item');
+            }
+
             // Update the checklist item with the document URL
             await uploadDocMutation.mutateAsync({
-                checklistId: checklistItem.id,
+                checklistId,
                 documentUrl: uploadData.url,
                 documentName: file.name
             });
@@ -222,8 +240,8 @@ export default function TenantDetails() {
                         accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
                         onChange={(e) => {
                             const file = e.target.files?.[0];
-                            if (file && checklistItem) {
-                                handleFileUpload(file, checklistItem);
+                            if (file) {
+                                handleFileUpload(file, checklistItem, docType);
                             }
                             // Reset the input so the same file can be selected again
                             e.target.value = '';
@@ -247,7 +265,7 @@ export default function TenantDetails() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => triggerFileUpload(docType)}
-                                disabled={isUploading || !checklistItem}
+                                disabled={isUploading}
                             >
                                 <Upload className="h-4 w-4" />
                             </Button>
@@ -261,7 +279,7 @@ export default function TenantDetails() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => triggerFileUpload(docType)}
-                                disabled={isUploading || !checklistItem}
+                                disabled={isUploading}
                                 className="gap-1"
                             >
                                 {isUploading ? (

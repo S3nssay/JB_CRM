@@ -20,7 +20,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Textarea } from '@/components/ui/textarea';
 import {
   FileText, Plus, Download, RefreshCw, Loader2, Send, ChevronsUpDown, Check,
-  PoundSterling, CheckCircle, ArrowRightLeft, Search, AlertTriangle, Trash2,
+  PoundSterling, CheckCircle, ArrowRightLeft, Search, AlertTriangle, Trash2, Eye, Calendar, Building, User, Hash,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
@@ -66,8 +66,11 @@ interface CreateInvoiceData {
 
 interface TenantOption {
   id: number;
-  name: string;
+  name: string | null;
+  fullName: string | null;
   email: string | null;
+  propertyId: number | null;
+  propertyAddress: string | null;
 }
 
 interface PropertyOption {
@@ -144,10 +147,21 @@ export default function InvoiceManagement() {
     },
   });
 
-  const tenantMap = useMemo(() => new Map(tenants.map(t => [t.id, t.name])), [tenants]);
+  // Fetch landlords for search/display
+  const { data: landlords = [] } = useQuery<{ id: number; name: string }[]>({
+    queryKey: ['/api/crm/landlords-list'],
+    queryFn: async () => {
+      const res = await fetch('/api/crm/landlords', { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const tenantMap = useMemo(() => new Map(tenants.map(t => [t.id, t.fullName || t.name || 'Unknown'])), [tenants]);
   const propertyMap = useMemo(() => {
     return new Map(properties.map(p => [p.id, p.addressLine1 || p.address || `Property #${p.id}`]));
   }, [properties]);
+  const landlordMap = useMemo(() => new Map(landlords.map(l => [l.id, l.name || `Landlord #${l.id}`])), [landlords]);
 
   // Create invoice mutation
   const createMutation = useMutation({
@@ -221,6 +235,7 @@ export default function InvoiceManagement() {
 
   // Mark paid dialog state
   const [paymentDialogInvoice, setPaymentDialogInvoice] = useState<Invoice | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentForm, setPaymentForm] = useState({
     paymentMethod: 'bank_transfer',
     reference: '',
@@ -363,12 +378,13 @@ export default function InvoiceManagement() {
       filtered = filtered.filter(i =>
         i.invoiceNumber.toLowerCase().includes(term) ||
         (i.tenantId && tenantMap.get(i.tenantId)?.toLowerCase().includes(term)) ||
-        (i.propertyId && propertyMap.get(i.propertyId)?.toLowerCase().includes(term))
+        (i.propertyId && propertyMap.get(i.propertyId)?.toLowerCase().includes(term)) ||
+        (i.landlordId && landlordMap.get(i.landlordId)?.toLowerCase().includes(term))
       );
     }
 
     return filtered;
-  }, [invoices, activeTab, searchTerm, tenantMap, propertyMap]);
+  }, [invoices, activeTab, searchTerm, tenantMap, propertyMap, landlordMap]);
 
   const stats = useMemo(() => {
     const outstanding = invoices.filter(i => ['draft', 'sent', 'overdue'].includes(i.status));
@@ -455,7 +471,7 @@ export default function InvoiceManagement() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search by invoice #, tenant, or property..."
+          placeholder="Search by invoice #, tenant, property, or landlord..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -506,7 +522,7 @@ export default function InvoiceManagement() {
                     {filteredInvoices.map((invoice) => {
                       const isOverdue = invoice.status !== 'paid' && invoice.status !== 'cancelled' && invoice.dueDate && new Date(invoice.dueDate) < new Date();
                       return (
-                        <TableRow key={invoice.id} className={isOverdue && invoice.status !== 'overdue' ? 'bg-red-50' : ''}>
+                        <TableRow key={invoice.id} className={`cursor-pointer hover:bg-muted/50 ${isOverdue && invoice.status !== 'overdue' ? 'bg-red-50' : ''}`} onClick={() => setSelectedInvoice(invoice)}>
                           <TableCell className="font-medium font-mono">{invoice.invoiceNumber}</TableCell>
                           <TableCell className="capitalize">{invoice.invoiceType?.replace(/_/g, ' ')}</TableCell>
                           <TableCell>{invoice.propertyId ? (propertyMap.get(invoice.propertyId) || `#${invoice.propertyId}`) : '-'}</TableCell>
@@ -693,15 +709,19 @@ export default function InvoiceManagement() {
                         {tenants.map((tenant) => (
                           <CommandItem
                             key={tenant.id}
-                            value={`${tenant.name} ${tenant.email || ''}`}
+                            value={`${tenant.fullName || tenant.name || ''} ${tenant.email || ''}`}
                             onSelect={() => {
-                              setFormData({ ...formData, tenantId: tenant.id });
+                              const updates: any = { tenantId: tenant.id };
+                              if (tenant.propertyId && !formData.propertyId) {
+                                updates.propertyId = tenant.propertyId;
+                              }
+                              setFormData({ ...formData, ...updates });
                               setTenantOpen(false);
                             }}
                           >
                             <Check className={cn("mr-2 h-4 w-4", formData.tenantId === tenant.id ? "opacity-100" : "opacity-0")} />
                             <div className="flex flex-col">
-                              <span>{tenant.name}</span>
+                              <span>{tenant.fullName || tenant.name || 'Unknown'}</span>
                               {tenant.email && <span className="text-xs text-muted-foreground">{tenant.email}</span>}
                             </div>
                           </CommandItem>
@@ -735,7 +755,12 @@ export default function InvoiceManagement() {
                             key={property.id}
                             value={`${property.addressLine1 || ''} ${property.address || ''} ${property.postcode || ''}`}
                             onSelect={() => {
-                              setFormData({ ...formData, propertyId: property.id });
+                              const updates: any = { propertyId: property.id };
+                              if (!formData.tenantId) {
+                                const matchingTenant = tenants.find(t => t.propertyId === property.id);
+                                if (matchingTenant) updates.tenantId = matchingTenant.id;
+                              }
+                              setFormData({ ...formData, ...updates });
                               setPropertyOpen(false);
                             }}
                           >
@@ -769,6 +794,122 @@ export default function InvoiceManagement() {
               {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Create Invoice
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+
+      {/* Invoice Detail Dialog */}
+      <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setSelectedInvoice(null)}>
+        <DialogContent className="sm:max-w-[650px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-[#791E75]" />
+              Invoice {selectedInvoice?.invoiceNumber}
+            </DialogTitle>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-6 py-4">
+              {/* Status and Amount Header */}
+              <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Amount</p>
+                  <p className="text-3xl font-bold">{formatCurrency(selectedInvoice.totalAmount)}</p>
+                  {selectedInvoice.vatAmount ? (
+                    <p className="text-xs text-muted-foreground">
+                      Subtotal: {formatCurrency(selectedInvoice.amount)} + VAT: {formatCurrency(selectedInvoice.vatAmount)}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="text-right space-y-2">
+                  {getStatusBadge(selectedInvoice.status)}
+                  {selectedInvoice.paidDate && (
+                    <p className="text-xs text-green-600 font-medium">Paid {formatDate(selectedInvoice.paidDate)}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Invoice Details Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Hash className="h-3 w-3" /> Invoice Number
+                  </p>
+                  <p className="font-mono font-medium">{selectedInvoice.invoiceNumber}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <FileText className="h-3 w-3" /> Type
+                  </p>
+                  <p className="capitalize">{selectedInvoice.invoiceType?.replace(/_/g, ' ')}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Building className="h-3 w-3" /> Property
+                  </p>
+                  <p>{selectedInvoice.propertyId ? (propertyMap.get(selectedInvoice.propertyId) || `Property #${selectedInvoice.propertyId}`) : 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <User className="h-3 w-3" /> Tenant
+                  </p>
+                  <p>{selectedInvoice.tenantId ? (tenantMap.get(selectedInvoice.tenantId) || `Tenant #${selectedInvoice.tenantId}`) : 'N/A'}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> Due Date
+                  </p>
+                  <p className={selectedInvoice.status !== 'paid' && selectedInvoice.dueDate && new Date(selectedInvoice.dueDate) < new Date() ? 'text-red-600 font-medium' : ''}>{formatDate(selectedInvoice.dueDate)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> Created
+                  </p>
+                  <p>{formatDate(selectedInvoice.createdAt)}</p>
+                </div>
+              </div>
+
+              {/* Notes */}
+              {selectedInvoice.notes && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Notes</p>
+                  <p className="text-sm bg-muted/30 rounded p-3">{selectedInvoice.notes}</p>
+                </div>
+              )}
+
+              {/* Sent info */}
+              {selectedInvoice.sentAt && (
+                <p className="text-xs text-muted-foreground">
+                  Email sent: {formatDate(selectedInvoice.sentAt)}
+                </p>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            {selectedInvoice && selectedInvoice.status !== 'paid' && selectedInvoice.status !== 'cancelled' && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    sendEmailMutation.mutate(selectedInvoice.id);
+                  }}
+                  disabled={sendEmailMutation.isPending}
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send Email
+                </Button>
+                <Button
+                  onClick={() => {
+                    setPaymentDialogInvoice(selectedInvoice);
+                    setSelectedInvoice(null);
+                  }}
+                >
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  Record Payment
+                </Button>
+              </>
+            )}
+            <Button variant="outline" onClick={() => setSelectedInvoice(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

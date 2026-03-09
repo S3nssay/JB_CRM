@@ -484,7 +484,7 @@ const EstateAgentHome = () => {
 
         {/* Instagram */}
         <a
-          href="https://instagram.com/johnbarclayestates"
+          href="https://instagram.com/johnbarclayestateandmanagement"
           target="_blank"
           rel="noopener noreferrer"
           className="group relative"
