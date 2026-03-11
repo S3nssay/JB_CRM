@@ -1017,3 +1017,223 @@ Two options:
 - Requires careful mapping of legacy categories to chart of accounts codes
 - Risk: existing data may have inconsistencies that would cause unbalanced entries
 - Only recommended if historical accounting reports are required
+
+---
+
+## Journal Entry Templates (Double-Entry Patterns)
+
+Every financial event creates a balanced journal entry. Here are the standard patterns:
+
+### Rent Collection Cycle
+```
+1. Rent invoice raised:
+   DR  1101  Accounts Receivable - Tenants     £1,200.00
+       CR  4700  Rent Collected (Pass-through)       £1,200.00
+
+2. Rent payment received (into client money):
+   DR  1000  Cash at Bank - Client Account     £1,200.00
+       CR  1101  Accounts Receivable - Tenants       £1,200.00
+
+3. Management fee deducted from landlord:
+   DR  2500  Landlord Funds Held               £  180.00
+       CR  4000  Management Fee Income               £  150.00
+       CR  2100  VAT Output (Sales)                  £   30.00
+
+4. Net rent paid to landlord:
+   DR  2500  Landlord Funds Held               £1,020.00
+       CR  1000  Cash at Bank - Client Account       £1,020.00
+```
+
+### Sales Invoice (Agency Fees)
+```
+1. Invoice raised to landlord:
+   DR  1100  Accounts Receivable - Landlords   £1,200.00
+       CR  4100  Letting Commission Income           £1,000.00
+       CR  2100  VAT Output (Sales)                  £  200.00
+
+2. Payment received:
+   DR  1001  Cash at Bank - Office Account     £1,200.00
+       CR  1100  Accounts Receivable - Landlords     £1,200.00
+```
+
+### Purchase Invoice (Contractor Bill)
+```
+1. Bill approved:
+   DR  5000  Contractor Costs                  £  500.00
+   DR  2101  VAT Input (Purchases)             £  100.00
+       CR  2000  Accounts Payable - Contractors      £  600.00
+
+2. Payment made:
+   DR  2000  Accounts Payable - Contractors    £  600.00
+       CR  1001  Cash at Bank - Office Account       £  600.00
+```
+
+### VAT Return Settlement
+```
+If owing HMRC (Box 5 positive):
+   DR  2100  VAT Output (Sales)               £X,XXX.XX
+       CR  2101  VAT Input (Purchases)              £X,XXX.XX
+       CR  1001  Cash at Bank - Office Account      £X,XXX.XX  (net payment)
+
+If refund due (Box 5 negative):
+   DR  2100  VAT Output (Sales)               £X,XXX.XX
+   DR  1001  Cash at Bank - Office Account    £X,XXX.XX  (net refund)
+       CR  2101  VAT Input (Purchases)              £X,XXX.XX
+```
+
+### Credit Note (Reversal)
+```
+Credit note against sales invoice:
+   DR  4000  Management Fee Income             £  150.00
+   DR  2100  VAT Output (Sales)                £   30.00
+       CR  1100  Accounts Receivable - Landlords     £  180.00
+```
+
+---
+
+## Storage Layer Methods (All Phases)
+
+Add to `server/storage.ts` IStorage interface and DatabaseStorage class:
+
+```
+// Phase 1: Tax Rates
+createTaxRate(data): Promise<TaxRate>
+getAllTaxRates(activeOnly?: boolean): Promise<TaxRate[]>
+getTaxRate(id: number): Promise<TaxRate | undefined>
+updateTaxRate(id: number, data): Promise<TaxRate | undefined>
+
+// Phase 1: Chart of Accounts
+createAccount(data): Promise<ChartOfAccount>
+getAllAccounts(filters?: { type?, isActive? }): Promise<ChartOfAccount[]>
+getAccount(id: number): Promise<ChartOfAccount | undefined>
+getAccountByCode(code: string): Promise<ChartOfAccount | undefined>
+updateAccount(id: number, data): Promise<ChartOfAccount | undefined>
+
+// Phase 1: Business Settings (reuses system_setting)
+getBusinessSettings(): Promise<Record<string, string>>
+updateBusinessSettings(settings: Record<string, string>): Promise<void>
+
+// Phase 2: Financial Periods
+createFinancialPeriod(data): Promise<FinancialPeriod>
+getFinancialPeriods(filters?): Promise<FinancialPeriod[]>
+getOpenPeriodForDate(date: Date): Promise<FinancialPeriod | undefined>
+updateFinancialPeriod(id, data): Promise<FinancialPeriod | undefined>
+
+// Phase 2: Journal Entries
+createJournalEntry(data): Promise<JournalEntry>
+createJournalEntryLines(lines): Promise<JournalEntryLine[]>
+getJournalEntry(id): Promise<JournalEntry | undefined>
+getJournalEntryLines(journalEntryId): Promise<JournalEntryLine[]>
+getJournalEntries(filters, limit?, offset?): Promise<JournalEntry[]>
+updateJournalEntry(id, data): Promise<JournalEntry | undefined>
+getNextJournalEntryNumber(yearMonth: string): Promise<string>
+
+// Phase 2: General Ledger Queries
+getAccountLedger(accountId, from, to): Promise<JournalEntryLine[]>
+getTrialBalance(asAt: Date): Promise<TrialBalanceRow[]>
+getAccountBalance(accountId, asAt: Date): Promise<number>
+
+// Phase 3: Business Invoices
+createBusinessInvoice(data): Promise<BusinessInvoice>
+getBusinessInvoice(id): Promise<BusinessInvoice | undefined>
+getBusinessInvoices(filters, limit?, offset?): Promise<BusinessInvoice[]>
+updateBusinessInvoice(id, data): Promise<BusinessInvoice | undefined>
+createBusinessInvoiceLines(lines): Promise<BusinessInvoiceLine[]>
+getBusinessInvoiceLines(invoiceId): Promise<BusinessInvoiceLine[]>
+
+// Phase 3: Purchase Invoices
+createPurchaseInvoice(data): Promise<PurchaseInvoice>
+getPurchaseInvoice(id): Promise<PurchaseInvoice | undefined>
+getPurchaseInvoices(filters, limit?, offset?): Promise<PurchaseInvoice[]>
+updatePurchaseInvoice(id, data): Promise<PurchaseInvoice | undefined>
+createPurchaseInvoiceLines(lines): Promise<PurchaseInvoiceLine[]>
+
+// Phase 3: Payment Allocations
+createPaymentAllocation(data): Promise<PaymentAllocation>
+getPaymentAllocations(filters): Promise<PaymentAllocation[]>
+deletePaymentAllocation(id): Promise<void>
+
+// Phase 3: Recurring Templates
+createRecurringTemplate(data): Promise<RecurringInvoiceTemplate>
+getRecurringTemplates(activeOnly?): Promise<RecurringInvoiceTemplate[]>
+updateRecurringTemplate(id, data): Promise<RecurringInvoiceTemplate | undefined>
+getDueRecurringTemplates(): Promise<RecurringInvoiceTemplate[]>
+
+// Phase 4: VAT Returns
+createVatReturn(data): Promise<VatReturn>
+getVatReturn(id): Promise<VatReturn | undefined>
+getVatReturns(): Promise<VatReturn[]>
+updateVatReturn(id, data): Promise<VatReturn | undefined>
+createVatReturnLines(lines): Promise<VatReturnLine[]>
+getVatReturnLines(vatReturnId): Promise<VatReturnLine[]>
+```
+
+---
+
+## Complete File Inventory
+
+### New Files to Create (22 files)
+
+| File | Phase | Purpose |
+|------|-------|---------|
+| `server/accountingRoutes.ts` | 1 | All accounting API endpoints |
+| `server/seeds/accountingSeed.ts` | 1 | Seed chart of accounts, tax rates |
+| `server/services/financialPeriodService.ts` | 2 | Period generation and management |
+| `server/services/journalEntryService.ts` | 2 | Double-entry journal creation with validation |
+| `server/services/businessInvoiceService.ts` | 3 | Invoice generation, numbering, PDF |
+| `server/services/invoicePdfService.ts` | 3 | HTML-to-PDF invoice generation |
+| `server/services/vatService.ts` | 4 | VAT return calculation from journal data |
+| `server/services/reportService.ts` | 4 | P&L, Balance Sheet, Aged Debtors/Creditors, Cash Flow |
+| `server/services/accountingReconciliationService.ts` | 6 | Payment allocation and bank reconciliation bridge |
+| `server/scripts/backfillJournalEntries.ts` | 6 | Historical data migration (one-time) |
+| `client/src/pages/ChartOfAccounts.tsx` | 1 | Account management UI |
+| `client/src/pages/BusinessSettings.tsx` | 1 | Company info settings UI |
+| `client/src/pages/GeneralLedger.tsx` | 2 | Journal entry viewer with running balances |
+| `client/src/pages/JournalEntries.tsx` | 2 | Manual journal entry creation |
+| `client/src/pages/TrialBalance.tsx` | 2 | Trial balance report |
+| `client/src/pages/BusinessInvoices.tsx` | 3 | Sales invoice management |
+| `client/src/pages/PurchaseInvoices.tsx` | 3 | Supplier bill management |
+| `client/src/pages/VATReturns.tsx` | 4 | VAT return management |
+| `client/src/pages/TaxReports.tsx` | 4 | Corporation tax and annual tax summary |
+| `client/src/pages/ProfitAndLoss.tsx` | 5 | P&L report with drill-down |
+| `client/src/pages/BalanceSheet.tsx` | 5 | Balance sheet report |
+| `client/src/pages/AgedDebtors.tsx` | 5 | Aged debtors report |
+| `client/src/pages/AgedCreditors.tsx` | 5 | Aged creditors report |
+| `client/src/pages/CashFlowStatement.tsx` | 5 | Cash flow statement |
+| `client/src/pages/FinancialReports.tsx` | 5 | Reports hub/dashboard |
+
+### Existing Files to Modify
+
+| File | Phase | Changes |
+|------|-------|---------|
+| `shared/schema.ts` | 1-4 | Add ~15 new table definitions + insert schemas + types |
+| `server/storage.ts` | 1-4 | Add ~40 new storage methods to IStorage + DatabaseStorage |
+| `server/routes.ts` | 1 | Register accountingRouter |
+| `server/financeRoutes.ts` | 2, 6 | Add journal entry hooks; fix hardcoded 20% VAT at line ~468 |
+| `server/reconciliationEngine.ts` | 6 | Add journal entry creation in `recordPaymentAndReconcile` |
+| `server/bankReconciliationService.ts` | 6 | Journal entries on bank transaction matching |
+| `server/schedulerService.ts` | 3 | Add recurring invoice generation + overdue detection |
+| `client/src/App.tsx` | 1-5 | Add ~15 new route definitions |
+| `client/src/components/CRMLayout.tsx` | 1-5 | Add "Accounting" nav section to sidebar |
+| `client/src/pages/BankReconciliation.tsx` | 6 | Add account categorization for unmatched transactions |
+| `client/src/pages/InvoiceManagement.tsx` | 6 | Link to accounting journal entries |
+
+### New Database Tables (15 total)
+
+| DB Table Name | Drizzle Export | Phase |
+|---------------|---------------|-------|
+| `business_setting` | `businessSettings` | 1 |
+| `chart_of_account` | `chartOfAccounts` | 1 |
+| `tax_rate` | `taxRates` | 1 |
+| `financial_period` | `financialPeriods` | 2 |
+| `journal_entry` | `journalEntries` | 2 |
+| `journal_entry_line` | `journalEntryLines` | 2 |
+| `business_invoice` | `businessInvoices` | 3 |
+| `business_invoice_line` | `businessInvoiceLines` | 3 |
+| `purchase_invoice` | `purchaseInvoices` | 3 |
+| `purchase_invoice_line` | `purchaseInvoiceLines` | 3 |
+| `credit_note` | `creditNotes` | 3 |
+| `payment_allocation` | `paymentAllocations` | 3 |
+| `recurring_invoice_template` | `recurringInvoiceTemplates` | 3 |
+| `vat_return` | `vatReturns` | 4 |
+| `vat_return_transaction` | `vatReturnTransactions` | 4 |
