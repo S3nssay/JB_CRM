@@ -1180,6 +1180,22 @@ export const tenant = pgTable("tenant", {
   guarantorAgreementSigned: boolean("guarantor_agreement_signed").default(false),
   guarantorAgreementUrl: text("guarantor_agreement_url"),
 
+  // GDPR Consent Tracking
+  gdprConsentDate: timestamp("gdpr_consent_date"),
+  gdprConsentSource: text("gdpr_consent_source"), // 'tenancy_agreement', 'online_form', 'in_person'
+  marketingConsentEmail: boolean("marketing_consent_email").default(false),
+  marketingConsentSms: boolean("marketing_consent_sms").default(false),
+  dataRetentionAcknowledged: boolean("data_retention_acknowledged").default(false),
+  dataErasureRequestedAt: timestamp("data_erasure_requested_at"),
+
+  // Right to Rent verification
+  rightToRentCheckDate: timestamp("right_to_rent_check_date"),
+  rightToRentDocumentType: text("right_to_rent_document_type"), // 'passport', 'biometric_residence_permit', 'share_code'
+  rightToRentDocumentUrl: text("right_to_rent_document_url"),
+  rightToRentExpiryDate: timestamp("right_to_rent_expiry_date"), // Null = indefinite right
+  rightToRentVerifiedBy: integer("right_to_rent_verified_by"),
+  rightToRentFollowUpDate: timestamp("right_to_rent_follow_up_date"), // For time-limited right to rent
+
   // Status
   status: text("status").notNull().default("active"), // 'active', 'notice_given', 'moved_out', 'evicted'
 
@@ -5052,14 +5068,21 @@ export const tenancyChecklistItemTypes = [
   'deposit_protection_dps',
   'deposit_protection_tds',
   'deposit_held_by_landlord',
+  'deposit_prescribed_info',
   'work_reference',
   'bank_reference',
   'previous_landlord_reference',
   'tenants_id',
+  'right_to_rent_check',
   'authorization_to_landlord',
   'terms_and_conditions_to_landlord',
   'information_sheet_to_landlord',
   'gas_safety_certificate',
+  'eicr_certificate',
+  'epc_certificate',
+  'smoke_alarm_check',
+  'co_alarm_check',
+  'how_to_rent_guide',
   'keys_given_to_tenant',
   'spare_keys_in_office'
 ] as const;
@@ -5077,14 +5100,21 @@ export const tenancyChecklistItemLabels: Record<TenancyChecklistItemType, string
   'deposit_protection_dps': 'Deposit Protection by DPS',
   'deposit_protection_tds': 'Deposit Protection by TDS',
   'deposit_held_by_landlord': 'Deposit Held by Landlord',
+  'deposit_prescribed_info': 'Deposit Prescribed Information',
   'work_reference': 'Work Reference',
   'bank_reference': 'Bank Reference',
   'previous_landlord_reference': 'Previous Landlord Reference',
   'tenants_id': 'Tenant\'s ID',
+  'right_to_rent_check': 'Right to Rent Check',
   'authorization_to_landlord': 'Authorization to Landlord',
   'terms_and_conditions_to_landlord': 'Terms & Conditions to Landlord',
   'information_sheet_to_landlord': 'Information Sheet to Landlord',
   'gas_safety_certificate': 'Gas Safety Certificate',
+  'eicr_certificate': 'EICR (Electrical Safety) Certificate',
+  'epc_certificate': 'Energy Performance Certificate (EPC)',
+  'smoke_alarm_check': 'Smoke Alarm Test Confirmation',
+  'co_alarm_check': 'Carbon Monoxide Alarm Test Confirmation',
+  'how_to_rent_guide': 'How to Rent Guide Provided',
   'keys_given_to_tenant': 'Keys Given to Tenant',
   'spare_keys_in_office': 'Spare Keys in Office'
 };
@@ -5105,14 +5135,21 @@ export const tenancyChecklistItemMeta: Record<TenancyChecklistItemType, {
   'deposit_protection_dps': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
   'deposit_protection_tds': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
   'deposit_held_by_landlord': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'deposit_prescribed_info': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
   'work_reference': { category: 'references', workflow: 'onboarding', requiresDocument: true },
   'bank_reference': { category: 'references', workflow: 'onboarding', requiresDocument: true },
   'previous_landlord_reference': { category: 'references', workflow: 'onboarding', requiresDocument: true },
   'tenants_id': { category: 'identity', workflow: 'onboarding', requiresDocument: true },
+  'right_to_rent_check': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
   'authorization_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
   'terms_and_conditions_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
   'information_sheet_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
   'gas_safety_certificate': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'eicr_certificate': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'epc_certificate': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
+  'smoke_alarm_check': { category: 'compliance', workflow: 'compliance', requiresDocument: false },
+  'co_alarm_check': { category: 'compliance', workflow: 'compliance', requiresDocument: false },
+  'how_to_rent_guide': { category: 'compliance', workflow: 'compliance', requiresDocument: false },
   'keys_given_to_tenant': { category: 'handover', workflow: 'general', requiresDocument: false },
   'spare_keys_in_office': { category: 'handover', workflow: 'general', requiresDocument: false }
 };
@@ -5447,6 +5484,16 @@ export const leads = pgTable("lead", {
   convertedToTenantId: integer("converted_to_tenant_id"), // FK to tenant if they became a tenant
   convertedToBuyerId: integer("converted_to_buyer_id"), // FK — buyer stays as lead, linked to sales progression
   convertedToPropertyId: integer("converted_to_property_id"), // Which property did they rent/buy?
+
+  // GDPR Consent Tracking
+  gdprConsentDate: timestamp("gdpr_consent_date"), // When consent was given
+  gdprConsentSource: text("gdpr_consent_source"), // 'website_form', 'phone', 'email', 'in_person'
+  marketingConsentEmail: boolean("marketing_consent_email").default(false),
+  marketingConsentSms: boolean("marketing_consent_sms").default(false),
+  marketingConsentPhone: boolean("marketing_consent_phone").default(false),
+  thirdPartyConsentPortals: boolean("third_party_consent_portals").default(false), // Consent to share with portals
+  dataRetentionConsentDate: timestamp("data_retention_consent_date"),
+  dataErasureRequestedAt: timestamp("data_erasure_requested_at"), // GDPR right to erasure request
 
   // Last activity tracking
   lastContactedAt: timestamp("last_contacted_at"),
@@ -6680,6 +6727,92 @@ export const gocardlessPayments = pgTable("gocardless_payment", {
 export const insertGocardlessPaymentSchema = createInsertSchema(gocardlessPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export type GocardlessPayment = typeof gocardlessPayments.$inferSelect;
 export type InsertGocardlessPayment = z.infer<typeof insertGocardlessPaymentSchema>;
+
+// ==========================================
+// AGENCY REGULATORY COMPLIANCE
+// Tracks the agency's own regulatory memberships and certificates
+// Required by UK law for all property agents
+// ==========================================
+export const agencyCompliance = pgTable("agency_compliance", {
+  id: serial("id").primaryKey(),
+
+  // Compliance type
+  complianceType: text("compliance_type").notNull(),
+  // 'client_money_protection' - CMP scheme membership (mandatory since April 2019)
+  // 'redress_scheme' - Property Ombudsman / Property Redress Scheme (mandatory since Oct 2014)
+  // 'ico_registration' - ICO Data Protection registration (mandatory under GDPR/DPA 2018)
+  // 'professional_indemnity_insurance' - PI Insurance
+  // 'anti_money_laundering' - HMRC AML supervision registration
+  // 'property_mark' - Propertymark/ARLA/NAEA membership
+  // 'tpo_membership' - The Property Ombudsman membership
+  // 'dps_membership' - Deposit protection scheme agent account
+
+  // Provider/scheme details
+  schemeName: text("scheme_name").notNull(), // e.g. 'Client Money Protect', 'TPO', 'ICO'
+  membershipNumber: text("membership_number"),
+  certificateUrl: text("certificate_url"),
+
+  // Validity
+  startDate: timestamp("start_date").notNull(),
+  expiryDate: timestamp("expiry_date"),
+  isActive: boolean("is_active").default(true),
+
+  // Renewal tracking
+  renewalReminderSent: boolean("renewal_reminder_sent").default(false),
+  renewalReminderDate: timestamp("renewal_reminder_date"),
+
+  // Display requirement - must be displayed in offices and on correspondence
+  displayedInOffice: boolean("displayed_in_office").default(false),
+  displayedOnWebsite: boolean("displayed_on_website").default(false),
+  displayedOnCorrespondence: boolean("displayed_on_correspondence").default(false),
+
+  // Audit
+  verifiedBy: integer("verified_by"),
+  verifiedAt: timestamp("verified_at"),
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+export const insertAgencyComplianceSchema = createInsertSchema(agencyCompliance).omit({ id: true, createdAt: true, updatedAt: true });
+export type AgencyCompliance = typeof agencyCompliance.$inferSelect;
+export type InsertAgencyCompliance = z.infer<typeof insertAgencyComplianceSchema>;
+
+// ==========================================
+// TENANT FEES ACT 2019 COMPLIANCE
+// Tracks permitted payments and ensures no prohibited fees are charged
+// ==========================================
+export const tenantFeeTypes = [
+  'rent',                          // Permitted: Rent payments
+  'tenancy_deposit',               // Permitted: Capped at 5 weeks' rent (rent < £50k pa)
+  'holding_deposit',               // Permitted: Capped at 1 week's rent
+  'early_termination',             // Permitted: If requested by tenant, capped at landlord's loss
+  'late_rent_payment',             // Permitted: Interest at 3% above BoE base rate, only after 14 days
+  'lost_key_replacement',          // Permitted: Reasonable cost evidenced by receipt
+  'variation_of_contract',         // Permitted: Capped at £50 inc VAT
+  'council_tax',                   // Permitted: Utility/council tax bills
+  'utilities',                     // Permitted: Utility bills
+  'communication_services',        // Permitted: TV licence, broadband if agreed
+  'default_fee',                   // Permitted: Only if in contract AND reasonable
+] as const;
+
+export type TenantFeeType = typeof tenantFeeTypes[number];
+
+// Maximum permitted amounts under Tenant Fees Act 2019
+export const tenantFeeMaximums: Record<TenantFeeType, { maxType: 'fixed' | 'weeks_rent' | 'percentage' | 'actual_cost' | 'uncapped'; maxValue: number | null; description: string }> = {
+  'rent': { maxType: 'uncapped', maxValue: null, description: 'No cap on rent itself' },
+  'tenancy_deposit': { maxType: 'weeks_rent', maxValue: 5, description: 'Maximum 5 weeks rent (annual rent under £50,000)' },
+  'holding_deposit': { maxType: 'weeks_rent', maxValue: 1, description: 'Maximum 1 week rent' },
+  'early_termination': { maxType: 'actual_cost', maxValue: null, description: 'Capped at landlord/agent losses or remaining rent' },
+  'late_rent_payment': { maxType: 'percentage', maxValue: 3, description: '3% above Bank of England base rate, only after 14 days late' },
+  'lost_key_replacement': { maxType: 'actual_cost', maxValue: null, description: 'Reasonable cost evidenced by receipt/invoice' },
+  'variation_of_contract': { maxType: 'fixed', maxValue: 5000, description: 'Maximum £50 inc VAT (5000 pence)' },
+  'council_tax': { maxType: 'actual_cost', maxValue: null, description: 'Actual cost of council tax' },
+  'utilities': { maxType: 'actual_cost', maxValue: null, description: 'Actual cost of utilities' },
+  'communication_services': { maxType: 'actual_cost', maxValue: null, description: 'Actual cost as agreed in tenancy' },
+  'default_fee': { maxType: 'actual_cost', maxValue: null, description: 'Only if specified in contract and reasonable' },
+};
 
 // ==========================================
 // SYSTEM SETTINGS (key/value store)

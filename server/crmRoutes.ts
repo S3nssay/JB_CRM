@@ -74,7 +74,11 @@ import {
   propertyInquiries,
   payments,
   renewalReminders,
-  propertyWorkflows
+  propertyWorkflows,
+  agencyCompliance,
+  insertAgencyComplianceSchema,
+  tenantFeeMaximums,
+  type TenantFeeType
 } from '@shared/schema';
 
 import { eq, desc, and, sql, or, gte, lte, inArray, count, isNull } from 'drizzle-orm';
@@ -11269,7 +11273,16 @@ crmRouter.post('/compliance/requirements/seed', requireAdmin, async (req, res) =
       { code: 'PAT_TESTING', name: 'PAT Testing', description: 'Portable Appliance Testing for electrical items provided.', category: 'recommended', appliesToProperty: true, frequencyMonths: 12, reminderDaysBefore: 30, penaltyDescription: 'Potential liability for electrical accidents', sortOrder: 21 },
       { code: 'LEGIONELLA', name: 'Legionella Risk Assessment', description: 'Assess risk of legionella bacteria in water systems.', category: 'recommended', appliesToProperty: true, frequencyMonths: null, reminderDaysBefore: 30, penaltyDescription: 'Potential health liability', referenceUrl: 'https://www.hse.gov.uk/legionnaires/', sortOrder: 22 },
       { code: 'BUILDING_INSURANCE', name: 'Building Insurance', description: 'Buildings insurance covering the property structure.', category: 'recommended', appliesToProperty: true, appliesToLandlord: true, frequencyMonths: 12, reminderDaysBefore: 30, penaltyDescription: 'Financial risk if uninsured', sortOrder: 23 },
-      { code: 'LANDLORD_INSURANCE', name: 'Landlord Insurance', description: 'Landlord-specific insurance including liability cover.', category: 'recommended', appliesToLandlord: true, appliesToProperty: false, frequencyMonths: 12, reminderDaysBefore: 30, penaltyDescription: 'Financial and legal risk', sortOrder: 24 }
+      { code: 'LANDLORD_INSURANCE', name: 'Landlord Insurance', description: 'Landlord-specific insurance including liability cover.', category: 'recommended', appliesToLandlord: true, appliesToProperty: false, frequencyMonths: 12, reminderDaysBefore: 30, penaltyDescription: 'Financial and legal risk', sortOrder: 24 },
+
+      // AGENCY-LEVEL COMPLIANCE (applies to the agent/agency, not individual properties)
+      { code: 'CLIENT_MONEY_PROTECTION', name: 'Client Money Protection (CMP)', description: 'Membership of a government-approved client money protection scheme. Mandatory for all letting agents holding client money since April 2019.', category: 'critical', appliesToProperty: false, appliesToLandlord: false, frequencyMonths: 12, reminderDaysBefore: 60, penaltyDescription: 'Up to £30,000 fine. Criminal offence.', referenceUrl: 'https://www.gov.uk/government/publications/client-money-protection-for-property-agents', sortOrder: 30 },
+      { code: 'REDRESS_SCHEME', name: 'Property Redress Scheme', description: 'Membership of a government-approved redress scheme (TPO or PRS). Mandatory for all letting and estate agents since October 2014.', category: 'critical', appliesToProperty: false, appliesToLandlord: false, frequencyMonths: 12, reminderDaysBefore: 60, penaltyDescription: 'Up to £5,000 fine per offence.', referenceUrl: 'https://www.gov.uk/government/publications/property-agent-redress-schemes', sortOrder: 31 },
+      { code: 'ICO_REGISTRATION', name: 'ICO Data Protection Registration', description: 'Registration with the Information Commissioner\'s Office under the Data Protection Act 2018 / UK GDPR. Required for all businesses processing personal data.', category: 'critical', appliesToProperty: false, appliesToLandlord: false, frequencyMonths: 12, reminderDaysBefore: 30, penaltyDescription: 'Up to £4,350 fine for failure to register. Up to £17.5 million for GDPR breaches.', referenceUrl: 'https://ico.org.uk/for-organisations/guide-to-data-protection/', sortOrder: 32 },
+      { code: 'AML_REGISTRATION', name: 'HMRC AML Registration', description: 'Registration with HMRC for anti-money laundering supervision. Required for estate agents under the Money Laundering Regulations 2017.', category: 'critical', appliesToProperty: false, appliesToLandlord: false, frequencyMonths: 12, reminderDaysBefore: 60, penaltyDescription: 'Criminal offence. Unlimited fine and/or imprisonment.', referenceUrl: 'https://www.gov.uk/guidance/money-laundering-regulations-estate-agency-business', sortOrder: 33 },
+
+      // FURNITURE & FURNISHINGS FIRE SAFETY
+      { code: 'FURNITURE_FIRE_SAFETY', name: 'Furniture & Furnishings Fire Safety', description: 'All upholstered furniture and soft furnishings provided must comply with the Furniture and Furnishings (Fire) (Safety) Regulations 1988. Check fire safety labels.', category: 'high', appliesToProperty: true, frequencyMonths: null, reminderDaysBefore: 7, penaltyDescription: 'Up to £5,000 fine and/or 6 months imprisonment', referenceUrl: 'https://www.gov.uk/government/publications/furniture-and-furnishings-fire-safety-regulations-guidance', sortOrder: 14 }
     ];
 
     // Insert requirements (skip if code already exists)
@@ -11394,6 +11407,274 @@ crmRouter.put('/compliance/status/:id', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error updating compliance status:', error);
     res.status(500).json({ error: 'Failed to update compliance status' });
+  }
+});
+
+// ==========================================
+// AGENCY COMPLIANCE ROUTES
+// Tracks the agency's own regulatory memberships (CMP, Redress, ICO, AML)
+// ==========================================
+
+// Get all agency compliance records
+crmRouter.get('/agency-compliance', requireAgent, async (req, res) => {
+  try {
+    const records = await db.select().from(agencyCompliance).orderBy(agencyCompliance.complianceType);
+    res.json(records);
+  } catch (error) {
+    console.error('Error fetching agency compliance:', error);
+    res.status(500).json({ error: 'Failed to fetch agency compliance records' });
+  }
+});
+
+// Create agency compliance record
+crmRouter.post('/agency-compliance', requireAdmin, async (req, res) => {
+  try {
+    const data = insertAgencyComplianceSchema.parse(req.body);
+    const [record] = await db.insert(agencyCompliance).values(data).returning();
+    res.json(record);
+  } catch (error) {
+    console.error('Error creating agency compliance record:', error);
+    res.status(500).json({ error: 'Failed to create agency compliance record' });
+  }
+});
+
+// Update agency compliance record
+crmRouter.put('/agency-compliance/:id', requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const updates = req.body;
+    const [record] = await db.update(agencyCompliance).set({ ...updates, updatedAt: new Date() }).where(eq(agencyCompliance.id, id)).returning();
+    res.json(record);
+  } catch (error) {
+    console.error('Error updating agency compliance record:', error);
+    res.status(500).json({ error: 'Failed to update agency compliance record' });
+  }
+});
+
+// Agency compliance dashboard - checks what's missing or expiring
+crmRouter.get('/agency-compliance/dashboard', requireAgent, async (req, res) => {
+  try {
+    const records = await db.select().from(agencyCompliance).where(eq(agencyCompliance.isActive, true));
+    const now = new Date();
+    const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const requiredTypes = [
+      'client_money_protection',
+      'redress_scheme',
+      'ico_registration',
+      'anti_money_laundering'
+    ];
+
+    const existingTypes = records.map(r => r.complianceType);
+    const missingTypes = requiredTypes.filter(t => !existingTypes.includes(t));
+
+    const expiringSoon = records.filter(r =>
+      r.expiryDate && new Date(r.expiryDate) <= thirtyDaysFromNow && new Date(r.expiryDate) > now
+    );
+
+    const expired = records.filter(r =>
+      r.expiryDate && new Date(r.expiryDate) < now
+    );
+
+    res.json({
+      totalRecords: records.length,
+      missingRequired: missingTypes,
+      expiringSoon: expiringSoon,
+      expired: expired,
+      allRecords: records,
+      isFullyCompliant: missingTypes.length === 0 && expired.length === 0
+    });
+  } catch (error) {
+    console.error('Error fetching agency compliance dashboard:', error);
+    res.status(500).json({ error: 'Failed to fetch agency compliance dashboard' });
+  }
+});
+
+// ==========================================
+// EPC MINIMUM RATING VALIDATION
+// Properties cannot be let if EPC rating is F or G (since April 2018)
+// Rating must be E or above. Planned to move to C by 2025.
+// ==========================================
+
+crmRouter.get('/compliance/epc-validation/:propertyId', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.propertyId);
+    const [property] = await db.select().from(properties).where(eq(properties.id, propertyId));
+
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    const epcRating = property.energyRating?.toUpperCase();
+    const validRatings = ['A', 'B', 'C', 'D', 'E'];
+    const belowMinimum = epcRating && !validRatings.includes(epcRating); // F or G
+    const noRating = !epcRating;
+
+    // Check if property is listed for rental - EPC is mandatory for lettings
+    const isRental = property.isRental || property.isManaged;
+
+    let warnings: string[] = [];
+
+    if (noRating && isRental) {
+      warnings.push('No EPC rating recorded. A valid EPC is required before letting a property.');
+    }
+    if (belowMinimum && isRental) {
+      warnings.push(`EPC rating ${epcRating} is below the legal minimum of E. This property CANNOT be legally let until the rating is improved. Fine of up to £5,000.`);
+    }
+    if (epcRating === 'E' && isRental) {
+      warnings.push('EPC rating E meets the current minimum but the government plans to raise the minimum to C. Consider upgrading.');
+    }
+    if (epcRating === 'D' && isRental) {
+      warnings.push('EPC rating D is above current minimum but the government plans to raise the minimum to C. Consider upgrading.');
+    }
+
+    res.json({
+      propertyId,
+      epcRating: epcRating || 'Not recorded',
+      isCompliant: !belowMinimum && !noRating,
+      canBeLet: !belowMinimum,
+      isRental,
+      warnings,
+      currentMinimum: 'E',
+      plannedMinimum: 'C'
+    });
+  } catch (error) {
+    console.error('Error validating EPC:', error);
+    res.status(500).json({ error: 'Failed to validate EPC rating' });
+  }
+});
+
+// ==========================================
+// TENANT FEES ACT 2019 VALIDATION
+// Validates that a proposed fee complies with the Tenant Fees Act
+// ==========================================
+
+crmRouter.post('/compliance/validate-tenant-fee', requireAgent, async (req, res) => {
+  try {
+    const { feeType, amount, weeklyRent, annualRent } = req.body;
+
+    if (!feeType || amount === undefined) {
+      return res.status(400).json({ error: 'feeType and amount are required' });
+    }
+
+    const feeInfo = tenantFeeMaximums[feeType as TenantFeeType];
+    if (!feeInfo) {
+      return res.json({
+        isPermitted: false,
+        feeType,
+        reason: `Fee type '${feeType}' is not a permitted payment under the Tenant Fees Act 2019. Charging prohibited fees is a criminal offence with fines up to £30,000.`
+      });
+    }
+
+    let isCompliant = true;
+    let maxAllowed: number | null = null;
+    let warnings: string[] = [];
+
+    switch (feeInfo.maxType) {
+      case 'fixed':
+        maxAllowed = feeInfo.maxValue;
+        if (maxAllowed && amount > maxAllowed) {
+          isCompliant = false;
+          warnings.push(`Amount ${amount} pence exceeds the maximum permitted ${maxAllowed} pence (£${(maxAllowed / 100).toFixed(2)}).`);
+        }
+        break;
+      case 'weeks_rent':
+        if (weeklyRent && feeInfo.maxValue) {
+          maxAllowed = weeklyRent * feeInfo.maxValue;
+          if (amount > maxAllowed) {
+            isCompliant = false;
+            warnings.push(`Amount exceeds maximum of ${feeInfo.maxValue} weeks' rent (£${(maxAllowed / 100).toFixed(2)}).`);
+          }
+        }
+        // Additional check: deposits capped at 5 weeks if annual rent < £50,000
+        if (feeType === 'tenancy_deposit' && annualRent && annualRent >= 5000000) {
+          // For properties with annual rent >= £50,000, deposit cap is 6 weeks
+          maxAllowed = weeklyRent ? weeklyRent * 6 : null;
+          warnings.push('Annual rent is £50,000+. Deposit cap is 6 weeks\' rent instead of 5.');
+        }
+        break;
+      case 'actual_cost':
+        warnings.push('This fee must be evidenced by actual costs incurred (receipts/invoices required).');
+        break;
+    }
+
+    if (feeType === 'late_rent_payment') {
+      warnings.push('Late payment interest can only be charged after rent is 14+ days overdue. Rate: 3% above Bank of England base rate.');
+    }
+
+    res.json({
+      isPermitted: true,
+      isCompliant,
+      feeType,
+      amount,
+      maxAllowed,
+      description: feeInfo.description,
+      warnings
+    });
+  } catch (error) {
+    console.error('Error validating tenant fee:', error);
+    res.status(500).json({ error: 'Failed to validate tenant fee' });
+  }
+});
+
+// ==========================================
+// DEPOSIT PROTECTION TIMELINE VALIDATION
+// Deposits must be protected within 30 days of receipt
+// Prescribed information must also be provided within 30 days
+// ==========================================
+
+crmRouter.get('/compliance/deposit-protection/:tenancyId', requireAgent, async (req, res) => {
+  try {
+    const tenancyId = parseInt(req.params.tenancyId);
+    const [tenancy] = await db.select().from(tenancies).where(eq(tenancies.id, tenancyId));
+
+    if (!tenancy) {
+      return res.status(404).json({ error: 'Tenancy not found' });
+    }
+
+    const warnings: string[] = [];
+    const now = new Date();
+
+    // Check if deposit exists but no protection date
+    if (tenancy.depositAmount && !tenancy.depositProtectedDate) {
+      const startDate = new Date(tenancy.startDate);
+      const daysSinceStart = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (daysSinceStart > 30) {
+        warnings.push(`URGENT: Deposit has not been protected and tenancy started ${daysSinceStart} days ago. Legal deadline is 30 days. Landlord CANNOT serve Section 21 notice and tenant may claim up to 3x deposit.`);
+      } else if (daysSinceStart > 20) {
+        warnings.push(`WARNING: Only ${30 - daysSinceStart} days remaining to protect deposit. Protect immediately.`);
+      } else {
+        warnings.push(`Deposit protection due within ${30 - daysSinceStart} days.`);
+      }
+    }
+
+    // Check deposit scheme is recorded
+    if (tenancy.depositAmount && !tenancy.depositScheme) {
+      warnings.push('No deposit protection scheme recorded. Must be TDS, DPS, or MyDeposits.');
+    }
+
+    // Check deposit cap (Tenant Fees Act)
+    if (tenancy.depositAmount && tenancy.rentAmount) {
+      const weeklyRent = (parseFloat(tenancy.rentAmount) * 12) / 52;
+      const fiveWeeksRent = weeklyRent * 5;
+      if (parseFloat(tenancy.depositAmount) > fiveWeeksRent) {
+        warnings.push(`Deposit of £${(parseFloat(tenancy.depositAmount)).toFixed(2)} may exceed the 5-week rent cap of £${fiveWeeksRent.toFixed(2)} under the Tenant Fees Act 2019.`);
+      }
+    }
+
+    res.json({
+      tenancyId,
+      depositAmount: tenancy.depositAmount,
+      depositScheme: tenancy.depositScheme,
+      depositCertificateNumber: tenancy.depositCertificateNumber,
+      depositProtectedDate: tenancy.depositProtectedDate,
+      isProtected: !!tenancy.depositProtectedDate,
+      warnings
+    });
+  } catch (error) {
+    console.error('Error checking deposit protection:', error);
+    res.status(500).json({ error: 'Failed to check deposit protection' });
   }
 });
 
