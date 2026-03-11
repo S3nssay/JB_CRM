@@ -89,8 +89,8 @@ export class PropertyImportService {
         }
     }
 
-    async importFromUrl(url: string, userId?: number, saveToDb: boolean = true): Promise<ImportResult> {
-        console.log(`[PropertyImport] Starting import from ${url}`);
+    async importFromUrl(url: string, userId?: number, saveToDb: boolean = true, isRentalOverride?: boolean): Promise<ImportResult> {
+        console.log(`[PropertyImport] Starting import from ${url} | isRentalOverride=${isRentalOverride}`);
 
         try {
             const portal = this.detectPortal(url);
@@ -119,7 +119,7 @@ export class PropertyImportService {
                 bathrooms: data.bathrooms,
                 squareFootage: data.sqft,
                 propertyType: data.propertyType || this.inferPropertyType(data.title),
-                isRental: data.isRental ?? false,
+                isRental: isRentalOverride !== undefined ? isRentalOverride : (data.isRental ?? false),
                 status: 'available',
                 features: data.features,
                 images: downloadedImages,

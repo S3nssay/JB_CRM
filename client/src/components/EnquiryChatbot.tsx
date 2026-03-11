@@ -75,6 +75,8 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
   const [bookingPropertyId, setBookingPropertyId] = useState<number | null>(null);
   const [viewingDate, setViewingDate] = useState('');
   const [viewingTime, setViewingTime] = useState('10:00');
+  const [viewingSlots, setViewingSlots] = useState<any>(null); // { groupViewingsOnly, slots?, busySlots?, groupSlots? }
+  const [selectedGroupSlotId, setSelectedGroupSlotId] = useState<number | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -105,6 +107,8 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
       setBookingPropertyId(null);
       setViewingDate('');
       setViewingTime('10:00');
+      setViewingSlots(null);
+      setSelectedGroupSlotId(null);
 
       // Start conversation
       const propertyName = property.title || property.addressLine1 || property.address || 'this property';
@@ -280,8 +284,10 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
     }, 500);
   };
 
-  const handleBookViewing = (propertyId: number) => {
+  const handleBookViewing = async (propertyId: number) => {
     setBookingPropertyId(propertyId);
+    setSelectedGroupSlotId(null);
+    setViewingSlots(null);
     const prop = searchResults.find(p => p.id === propertyId);
     const propName = prop?.title || prop?.addressLine1 || 'the property';
     addUserMessage(`I'd like to view ${propName}`);
@@ -292,6 +298,32 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
     nextDay.setDate(now.getDate() + (now.getDay() >= 5 ? 8 - now.getDay() : 1));
     setViewingDate(nextDay.toISOString().split('T')[0]);
 
+    // Fetch available viewing slots
+    try {
+      const res = await fetch(`/api/public/properties/${propertyId}/viewing-slots`);
+      if (res.ok) {
+        const slotsData = await res.json();
+        setViewingSlots(slotsData);
+
+        if (slotsData.groupViewingsOnly) {
+          if (slotsData.slots && slotsData.slots.length > 0) {
+            setTimeout(() => {
+              addBotMessage(`This property has scheduled group viewing sessions. Please select one of the available slots below.`);
+              setStep('book_viewing');
+            }, 500);
+          } else {
+            setTimeout(() => {
+              addBotMessage(`Sorry, there are no group viewing slots available for this property at the moment. Please check back later or contact us directly.`);
+              setStep('thank_you');
+            }, 500);
+          }
+          return;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch viewing slots:', err);
+    }
+
     setTimeout(() => {
       addBotMessage(`When works best for you? Pick a date and time below.`);
       setStep('book_viewing');
@@ -299,29 +331,51 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
   };
 
   const handleConfirmViewing = async () => {
-    if (!viewingDate) {
+    const isGroupSlot = !!selectedGroupSlotId;
+    if (!isGroupSlot && !viewingDate) {
       toast({ title: 'Please select a date', variant: 'destructive' });
       return;
     }
     if (!leadId || !leadToken || !bookingPropertyId) return;
 
-    addUserMessage(`${viewingDate} at ${viewingTime}`);
+    const prop = searchResults.find(p => p.id === bookingPropertyId);
+    const propName = prop?.title || prop?.addressLine1 || 'the property';
+
+    if (isGroupSlot) {
+      const slot = viewingSlots?.slots?.find((s: any) => s.id === selectedGroupSlotId)
+        || viewingSlots?.groupSlots?.find((s: any) => s.id === selectedGroupSlotId);
+      const slotTime = slot ? new Date(slot.startTime) : null;
+      const timeStr = slotTime ? slotTime.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '';
+      const dateStr = slotTime ? slotTime.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) : '';
+      addUserMessage(`Group viewing on ${dateStr} at ${timeStr}`);
+    } else {
+      addUserMessage(`${viewingDate} at ${viewingTime}`);
+    }
+
     setIsLoading(true);
 
     try {
-      const scheduledAt = `${viewingDate}T${viewingTime}:00`;
-      await apiRequest(`/api/public/leads/${leadId}/viewings`, 'POST', {
+      const payload: any = {
         leadToken,
         propertyId: bookingPropertyId,
-        scheduledAt,
-      });
+      };
+      if (isGroupSlot) {
+        payload.groupSlotId = selectedGroupSlotId;
+      } else {
+        payload.scheduledAt = `${viewingDate}T${viewingTime}:00`;
+      }
 
-      const prop = searchResults.find(p => p.id === bookingPropertyId);
-      const propName = prop?.title || prop?.addressLine1 || 'the property';
+      const result = await apiRequest(`/api/public/leads/${leadId}/viewings`, 'POST', payload);
+
+      const bookedAt = isGroupSlot
+        ? new Date(result.scheduled_at || result.scheduledAt)
+        : new Date(`${viewingDate}T${viewingTime}:00`);
+      const bookedDateStr = bookedAt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+      const bookedTimeStr = bookedAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
       setTimeout(() => {
         addBotMessage(
-          `Your viewing for **${propName}** is booked for **${new Date(scheduledAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })} at ${viewingTime}**. One of our agents will confirm shortly.`
+          `Your viewing for **${propName}** is booked for **${bookedDateStr} at ${bookedTimeStr}**. One of our agents will confirm shortly.`
         );
         setTimeout(() => {
           addBotMessage(`Is there anything else I can help with?`);
@@ -329,10 +383,16 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
         }, 800);
       }, 500);
 
-      toast({ title: 'Viewing booked!', description: `${propName} on ${viewingDate} at ${viewingTime}` });
-    } catch (error) {
+      toast({ title: 'Viewing booked!', description: `${propName} on ${bookedDateStr} at ${bookedTimeStr}` });
+    } catch (error: any) {
       console.error('Error booking viewing:', error);
-      toast({ title: 'Failed to book viewing. Please try again.', variant: 'destructive' });
+      const errMsg = error?.message || 'Failed to book viewing. Please try again.';
+      if (errMsg.includes('not available') || errMsg.includes('full')) {
+        toast({ title: 'Slot unavailable', description: errMsg, variant: 'destructive' });
+        addBotMessage(`Sorry, that time slot is no longer available. Please choose a different time.`);
+      } else {
+        toast({ title: errMsg, variant: 'destructive' });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -531,45 +591,85 @@ export default function EnquiryChatbot({ property, isOpen, onClose }: EnquiryCha
           </div>
         );
 
-      case 'book_viewing':
+      case 'book_viewing': {
+        const isGroupOnly = viewingSlots?.groupViewingsOnly;
+        const groupSlots = isGroupOnly ? viewingSlots?.slots : viewingSlots?.groupSlots;
+        const hasGroupSlots = groupSlots && groupSlots.length > 0;
+
         return (
           <div className="space-y-2">
-            <div className="flex gap-2">
-              <Input
-                type="date"
-                value={viewingDate}
-                onChange={e => setViewingDate(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="flex-1"
-              />
-              <Select value={viewingTime} onValueChange={setViewingTime}>
-                <SelectTrigger className="w-28">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="09:00">09:00</SelectItem>
-                  <SelectItem value="10:00">10:00</SelectItem>
-                  <SelectItem value="11:00">11:00</SelectItem>
-                  <SelectItem value="12:00">12:00</SelectItem>
-                  <SelectItem value="13:00">13:00</SelectItem>
-                  <SelectItem value="14:00">14:00</SelectItem>
-                  <SelectItem value="15:00">15:00</SelectItem>
-                  <SelectItem value="16:00">16:00</SelectItem>
-                  <SelectItem value="17:00">17:00</SelectItem>
-                  <SelectItem value="18:00">18:00</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Group viewing slot picker */}
+            {hasGroupSlots && (
+              <div className="space-y-1.5">
+                {isGroupOnly && <p className="text-xs text-gray-500 font-medium">Available group viewing slots:</p>}
+                {!isGroupOnly && <p className="text-xs text-gray-500 font-medium">Join a group viewing:</p>}
+                <div className="max-h-[140px] overflow-y-auto space-y-1">
+                  {groupSlots.map((slot: any) => {
+                    const dt = new Date(slot.startTime);
+                    const dateStr = dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+                    const timeStr = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+                    const selected = selectedGroupSlotId === slot.id;
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => setSelectedGroupSlotId(selected ? null : slot.id)}
+                        className={`w-full text-left px-3 py-2 rounded-lg border text-xs transition-colors ${
+                          selected ? 'border-[#791E75] bg-[#791E75]/10 text-[#791E75]' : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <span className="font-medium">{dateStr}</span> at <span className="font-medium">{timeStr}</span>
+                        <span className="text-gray-400 ml-2">({slot.spotsLeft} spots left)</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Individual date/time picker (hidden when group-only) */}
+            {!isGroupOnly && (
+              <>
+                {hasGroupSlots && <div className="text-xs text-gray-400 text-center">— or pick your own time —</div>}
+                <div className="flex gap-2">
+                  <Input
+                    type="date"
+                    value={viewingDate}
+                    onChange={e => { setViewingDate(e.target.value); setSelectedGroupSlotId(null); }}
+                    min={new Date().toISOString().split('T')[0]}
+                    className="flex-1"
+                  />
+                  <Select value={viewingTime} onValueChange={(v) => { setViewingTime(v); setSelectedGroupSlotId(null); }}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="09:00">09:00</SelectItem>
+                      <SelectItem value="10:00">10:00</SelectItem>
+                      <SelectItem value="11:00">11:00</SelectItem>
+                      <SelectItem value="12:00">12:00</SelectItem>
+                      <SelectItem value="13:00">13:00</SelectItem>
+                      <SelectItem value="14:00">14:00</SelectItem>
+                      <SelectItem value="15:00">15:00</SelectItem>
+                      <SelectItem value="16:00">16:00</SelectItem>
+                      <SelectItem value="17:00">17:00</SelectItem>
+                      <SelectItem value="18:00">18:00</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            )}
+
             <Button
               onClick={handleConfirmViewing}
-              disabled={!viewingDate}
+              disabled={isGroupOnly ? !selectedGroupSlotId : (!viewingDate && !selectedGroupSlotId)}
               className="w-full bg-[#791E75] hover:bg-[#631560]"
             >
               <Calendar className="h-4 w-4 mr-2" />
-              Confirm Viewing
+              {selectedGroupSlotId ? 'Join Group Viewing' : 'Confirm Viewing'}
             </Button>
           </div>
         );
+      }
 
       case 'thank_you':
         return (

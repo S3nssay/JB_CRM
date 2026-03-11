@@ -648,12 +648,39 @@ export default function MaintenanceTasks() {
                       <CardHeader className="pb-2">
                         <CardTitle className="text-sm font-semibold text-gray-700">Assigned Contractor</CardTitle>
                       </CardHeader>
-                      <CardContent className="text-sm">
+                      <CardContent className="text-sm space-y-2">
                         {selectedTicket.contractorName ? (
-                          <div className="flex items-center gap-2">
-                            <HardHat className="h-3.5 w-3.5 text-gray-400" />
-                            <span className="font-medium">{selectedTicket.contractorName}</span>
-                          </div>
+                          <>
+                            <div className="flex items-center gap-2">
+                              <HardHat className="h-3.5 w-3.5 text-gray-400" />
+                              <span className="font-medium">{selectedTicket.contractorName}</span>
+                            </div>
+                            {selectedTicket.contractorPhone && (
+                              <div className="flex items-center gap-2">
+                                <Phone className="h-3.5 w-3.5 text-gray-400" />
+                                <span>{selectedTicket.contractorPhone}</span>
+                              </div>
+                            )}
+                            {selectedTicket.contractorEmail && (
+                              <div className="flex items-center gap-2">
+                                <Mail className="h-3.5 w-3.5 text-gray-400" />
+                                <span>{selectedTicket.contractorEmail}</span>
+                              </div>
+                            )}
+                            <Separator className="my-2" />
+                            <Select onValueChange={(v) => assignContractorMutation.mutate({ ticketId: selectedTicket.id, contractorId: Number(v) })}>
+                              <SelectTrigger className="h-8 text-xs">
+                                <SelectValue placeholder="Reassign to different contractor..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(contractors || []).filter((c: any) => c.id !== selectedTicket.assignedContractor?.id).map((c: any) => (
+                                  <SelectItem key={c.id} value={String(c.id)}>
+                                    {c.companyName || c.contactName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </>
                         ) : (
                           <div className="space-y-2">
                             <p className="text-gray-400 italic text-xs">No contractor assigned</p>

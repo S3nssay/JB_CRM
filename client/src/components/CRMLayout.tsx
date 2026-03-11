@@ -12,7 +12,8 @@ import {
   Receipt, AlertTriangle, FileSpreadsheet, TrendingUp,
   RotateCcw, CalendarClock, Send, CheckSquare,
   CreditCard, ArrowRightLeft, Mail,
-  Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2
+  Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
+  ChevronDown, ChevronRight as ChevronRightIcon
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -23,6 +24,9 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
   const [location, setLocation] = useLocation();
   const [user, setUser] = useState<any>(null);
   const [showImportKeyDataDialog, setShowImportKeyDataDialog] = useState(false);
+  const [pmExpanded, setPmExpanded] = useState(true);
+  const [salesExpanded, setSalesExpanded] = useState(true);
+  const [adminExpanded, setAdminExpanded] = useState(true);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -210,13 +214,19 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
 
             {/* Property Management Section */}
             <div className="mt-4 pt-3 border-t border-gray-200">
-              <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider mb-1.5 px-3">
-                Property Management
-              </p>
-              <div className="space-y-0.5">
+              <button
+                className="w-full flex items-center justify-between px-3 mb-1.5 group"
+                onClick={() => setPmExpanded(!pmExpanded)}
+              >
+                <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider">
+                  Property Management
+                </p>
+                {pmExpanded ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" />}
+              </button>
+              {pmExpanded && <div className="space-y-0.5">
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/pm-dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/pm-dashboard')}>
                   <Gauge className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/pm-dashboard') ? 'text-white' : 'text-gray-400'}`} />
-                  PM Dashboard
+                  PM Command Centre
                 </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/rental-agreements') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/rental-agreements')}>
                   <Key className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rental-agreements') ? 'text-white' : 'text-gray-400'}`} />
@@ -241,13 +251,6 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActivePrefix('/crm/contacts') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/contacts')}>
                   <Users className={`h-3.5 w-3.5 flex-shrink-0 ${isActivePrefix('/crm/contacts') ? 'text-white' : 'text-gray-400'}`} />
                   Contacts
-                </button>
-                <button
-                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/maintenance') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
-                  onClick={() => setLocation('/crm/maintenance')}
-                >
-                  <Wrench className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/maintenance') ? 'text-white' : 'text-gray-400'}`} />
-                  Maintenance
                 </button>
                 <button
                   className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/support-tickets') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
@@ -295,6 +298,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   PM Workflows
                 </p>
 
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/tenancy-onboarding') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/tenancy-onboarding')}>
+                  <ClipboardCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/tenancy-onboarding') ? 'text-white' : 'text-gray-400'}`} />
+                  Tenancy Onboarding
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/rent-collection') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/rent-collection')}>
                   <PoundSterling className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rent-collection') ? 'text-white' : 'text-gray-400'}`} />
                   Rent Collection
@@ -327,15 +334,25 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <ClipboardCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/inventory') ? 'text-white' : 'text-gray-400'}`} />
                   Inventory
                 </button>
-              </div>
+              </div>}
             </div>
 
             {/* Sales & Lettings Section */}
             <div className="mt-4 pt-3 border-t border-gray-200">
-              <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider mb-1.5 px-3">
-                Sales & Lettings
-              </p>
-
+              <button
+                className="w-full flex items-center justify-between px-3 mb-1.5 group"
+                onClick={() => setSalesExpanded(!salesExpanded)}
+              >
+                <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider">
+                  Sales & Lettings
+                </p>
+                {salesExpanded ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" />}
+              </button>
+              {salesExpanded && <>
+              <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/sl-dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/sl-dashboard')}>
+                <Gauge className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/sl-dashboard') ? 'text-white' : 'text-gray-400'}`} />
+                S&L Command Centre
+              </button>
               {/* Listings */}
               <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-1">
                 Listings
@@ -383,10 +400,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 Finance
               </p>
               <div className="space-y-0.5">
-                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/business-invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/business-invoices')}>
-                  <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/business-invoices') ? 'text-white' : 'text-gray-400'}`} />
-                  Business Invoices
-                </button>
+
               </div>
 
               {/* Leads */}
@@ -396,12 +410,16 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               <div className="space-y-0.5">
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all relative ${isActive('/crm/landlord-lead-pipeline') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/landlord-lead-pipeline')}>
                   <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/landlord-lead-pipeline') ? 'text-white' : 'text-gray-400'}`} />
-                  Landlord Pipeline
+                  Lead Pipeline
                   {newLandlordLeadsCount > 0 && (
                     <span className="ml-auto bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
                       {newLandlordLeadsCount > 99 ? '99+' : newLandlordLeadsCount}
                     </span>
                   )}
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/property-pipeline') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/property-pipeline')}>
+                  <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/property-pipeline') ? 'text-white' : 'text-gray-400'}`} />
+                  Property Pipeline
                 </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all relative ${isActive('/crm/leads') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/leads')}>
                   <Users className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/leads') ? 'text-white' : 'text-gray-400'}`} />
@@ -413,14 +431,21 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   )}
                 </button>
               </div>
+              </>}
             </div>
 
             {/* Admin Section */}
             <div className="mt-4 pt-3 border-t border-gray-200">
-              <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider mb-1.5 px-3">
-                Admin
-              </p>
-              <div className="space-y-0.5">
+              <button
+                className="w-full flex items-center justify-between px-3 mb-1.5 group"
+                onClick={() => setAdminExpanded(!adminExpanded)}
+              >
+                <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider">
+                  Admin
+                </p>
+                {adminExpanded ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" />}
+              </button>
+              {adminExpanded && <><div className="space-y-0.5">
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/integrations') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/integrations')}>
                   <Settings className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/integrations') ? 'text-white' : 'text-gray-400'}`} />
                   Settings
@@ -447,6 +472,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                       <Lock className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/security-matrix') ? 'text-white' : 'text-gray-400'}`} />
                       Security Matrix
                     </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/business-invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/business-invoices')}>
+                      <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/business-invoices') ? 'text-white' : 'text-gray-400'}`} />
+                      Business Invoices
+                    </button>
                     <button className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all" onClick={() => setShowImportKeyDataDialog(true)}>
                       <FileUp className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />
                       Import Data
@@ -463,6 +492,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   Company Settings
                 </button>
               </div>
+              </>}
             </div>
           </nav>
         </aside>

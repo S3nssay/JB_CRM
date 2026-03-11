@@ -87,7 +87,8 @@ export const properties = pgTable("property", {
   id: serial("id").primaryKey(),
 
   // Property status
-  status: text("status").notNull().default("active"), // 'active', 'under_offer', 'sold', 'let', 'withdrawn'
+  status: text("status").notNull().default("active"), // 'active', 'under_offer', 'sstc', 'exchanged', 'completed', 'fallen_through', 'withdrawn'
+  isMarketed: boolean("is_marketed").default(true), // Whether property is actively being marketed
 
   // Basic property information
   title: text("title").notNull(),
@@ -128,6 +129,7 @@ export const properties = pgTable("property", {
 
   // Viewing and contact
   viewingArrangements: text("viewing_arrangements"), // 'by_appointment', 'viewing_times', etc.
+  groupViewingsOnly: boolean("group_viewings_only").default(false), // Force chatbot enquiries to group viewing slots
   agentContact: text("agent_contact"),
 
   // Property manager (agent responsible for this property)
@@ -181,6 +183,27 @@ export const properties = pgTable("property", {
 
   // Notes
   notes: text("notes"),
+
+  // Pipeline workflow dates (records when each stage was entered)
+  listedAt: timestamp("listed_at"),
+  underOfferAt: timestamp("under_offer_at"),
+  sstcAt: timestamp("sstc_at"),
+  exchangedAt: timestamp("exchanged_at"),
+  completedAt: timestamp("completed_at"),
+  fallenThroughAt: timestamp("fallen_through_at"),
+  withdrawnAt: timestamp("withdrawn_at"),
+  valuationDate: timestamp("valuation_date"),
+  valuationAmount: integer("valuation_amount"),
+  valuationReportUrl: text("valuation_report_url"),
+
+  // Pipeline workflow agents (records who moved property to each stage)
+  listedBy: integer("listed_by"),
+  underOfferBy: integer("under_offer_by"),
+  sstcBy: integer("sstc_by"),
+  exchangedBy: integer("exchanged_by"),
+  completedBy: integer("completed_by"),
+  fallenThroughBy: integer("fallen_through_by"),
+  withdrawnBy: integer("withdrawn_by"),
 
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -1181,7 +1204,7 @@ export const tenant = pgTable("tenant", {
   guarantorAgreementUrl: text("guarantor_agreement_url"),
 
   // Status
-  status: text("status").notNull().default("active"), // 'active', 'notice_given', 'moved_out', 'evicted'
+  status: text("status").notNull().default("applicant"), // 'applicant', 'active', 'notice_given', 'moved_out', 'evicted'
 
   // Notes
   notes: text("notes"),
@@ -1446,8 +1469,12 @@ export const savedProperties = pgTable("saved_property", {
 // Tenant Support Tickets
 export const supportTickets = pgTable("support_ticket", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").notNull(),
+  tenantId: integer("tenant_id"),
+  landlordId: integer("landlord_id"),
   propertyId: integer("property_id").notNull(),
+
+  // Who raised the ticket
+  raisedBy: text("raised_by").notNull().default("staff"), // 'staff', 'tenant', 'landlord'
 
   // Ticket details
   ticketNumber: text("ticket_number").notNull().unique(),
@@ -2195,6 +2222,18 @@ export const contacts = pgTable("contact", {
   valuationCompletedDate: timestamp("valuation_completed_date"),
   valuationAmount: integer("valuation_amount"),
   instructionSignedDate: timestamp("instruction_signed_date"),
+  valuationReportUrl: text("valuation_report_url"),
+
+  // Workflow tracking (date + agent for each stage)
+  contactedAt: timestamp("contacted_at"),
+  contactedBy: integer("contacted_by"),
+  valuationScheduledBy: integer("valuation_scheduled_by"),
+  valuationCompletedBy: integer("valuation_completed_by"),
+  instructionSignedBy: integer("instruction_signed_by"),
+  listingPreparationAt: timestamp("listing_preparation_at"),
+  listingPreparationBy: integer("listing_preparation_by"),
+  listedAt: timestamp("listed_at"),
+  listedBy: integer("listed_by"),
 
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3861,6 +3900,11 @@ export const calendarEvents = pgTable("calendar_event", {
   outlookEventId: text("outlook_event_id"),
   lastSyncedAt: timestamp("last_synced_at"),
 
+  // Group viewing support
+  isGroupViewing: boolean("is_group_viewing").default(false),
+  maxAttendees: integer("max_attendees").default(1), // Max attendees for group viewings
+  currentAttendeesCount: integer("current_attendees_count").default(0), // Current booked count
+
   // Notes
   notes: text("notes"),
   outcome: text("outcome"), // Post-event notes
@@ -4764,6 +4808,30 @@ export const tenancies = pgTable("tenancy", {
   tenancyType: text("tenancy_type").default("ast"), // ast, periodic, contractual_periodic, company_let
   specialTerms: text("special_terms"),
 
+  // End-of-tenancy deposit return tracking
+  depositReturnAmount: decimal("deposit_return_amount"),
+  depositDeductionsAmount: decimal("deposit_deductions_amount"),
+  depositDeductionsReason: text("deposit_deductions_reason"),
+  depositReturnStatus: text("deposit_return_status").default("pending"), // pending, agreed, disputed, returned
+  depositReturnDate: timestamp("deposit_return_date"),
+  depositDisputeStatus: text("deposit_dispute_status"), // none, raised, mediation, adjudication, resolved
+  depositDisputeDate: timestamp("deposit_dispute_date"),
+  depositDisputeNotes: text("deposit_dispute_notes"),
+
+  // End-of-tenancy checkout details
+  checkoutDate: timestamp("checkout_date"),
+  checkoutClerk: text("checkout_clerk"),
+  noticeServedDate: timestamp("notice_served_date"),
+  noticeType: text("notice_type"), // section_21, section_8, tenant_notice, mutual
+  forwardingAddress: text("forwarding_address"),
+  finalMeterElectric: text("final_meter_electric"),
+  finalMeterGas: text("final_meter_gas"),
+  finalMeterWater: text("final_meter_water"),
+  dilapidationsAmount: decimal("dilapidations_amount"),
+  dilapidationsNotes: text("dilapidations_notes"),
+  cleaningRequired: boolean("cleaning_required").default(false),
+  cleaningCost: decimal("cleaning_cost"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
@@ -5056,6 +5124,7 @@ export type InsertPropertyChecklist = z.infer<typeof insertPropertyChecklistSche
 
 // Define all checklist item types
 export const tenancyChecklistItemTypes = [
+  // Onboarding checklist items
   'tenancy_agreement',
   'notices',
   'guarantors_agreement',
@@ -5074,7 +5143,23 @@ export const tenancyChecklistItemTypes = [
   'information_sheet_to_landlord',
   'gas_safety_certificate',
   'keys_given_to_tenant',
-  'spare_keys_in_office'
+  'spare_keys_in_office',
+  // End-of-tenancy checklist items (15-step process)
+  'serve_notice',
+  'tenant_acknowledge_notice',
+  'schedule_checkout_inspection',
+  'checkout_inspection',
+  'inventory_checkout',
+  'meter_readings',
+  'assess_dilapidations',
+  'cleaning_assessment',
+  'deposit_deductions_agreed',
+  'deposit_return_initiated',
+  'key_return',
+  'final_account',
+  'utility_notifications',
+  'council_tax_notification',
+  'forwarding_address'
 ] as const;
 
 export type TenancyChecklistItemType = typeof tenancyChecklistItemTypes[number];
@@ -5099,7 +5184,23 @@ export const tenancyChecklistItemLabels: Record<TenancyChecklistItemType, string
   'information_sheet_to_landlord': 'Information Sheet to Landlord',
   'gas_safety_certificate': 'Gas Safety Certificate',
   'keys_given_to_tenant': 'Keys Given to Tenant',
-  'spare_keys_in_office': 'Spare Keys in Office'
+  'spare_keys_in_office': 'Spare Keys in Office',
+  // End-of-tenancy labels
+  'serve_notice': 'Serve Notice to Tenant',
+  'tenant_acknowledge_notice': 'Tenant Acknowledges Notice',
+  'schedule_checkout_inspection': 'Schedule Checkout Inspection',
+  'checkout_inspection': 'Conduct Checkout Inspection',
+  'inventory_checkout': 'Complete Inventory Checkout Report',
+  'meter_readings': 'Record Final Meter Readings',
+  'assess_dilapidations': 'Assess Dilapidations & Damages',
+  'cleaning_assessment': 'Cleaning Assessment',
+  'deposit_deductions_agreed': 'Agree Deposit Deductions with Tenant',
+  'deposit_return_initiated': 'Initiate Deposit Return via Scheme',
+  'key_return': 'Collect All Keys',
+  'final_account': 'Produce Final Account / Statement',
+  'utility_notifications': 'Notify Utility Providers',
+  'council_tax_notification': 'Notify Council Tax',
+  'forwarding_address': 'Obtain Forwarding Address'
 };
 
 // Metadata for checklist items (category, workflow, document requirements)
@@ -5127,7 +5228,23 @@ export const tenancyChecklistItemMeta: Record<TenancyChecklistItemType, {
   'information_sheet_to_landlord': { category: 'documents', workflow: 'onboarding', requiresDocument: true },
   'gas_safety_certificate': { category: 'compliance', workflow: 'compliance', requiresDocument: true },
   'keys_given_to_tenant': { category: 'handover', workflow: 'general', requiresDocument: false },
-  'spare_keys_in_office': { category: 'handover', workflow: 'general', requiresDocument: false }
+  'spare_keys_in_office': { category: 'handover', workflow: 'general', requiresDocument: false },
+  // End-of-tenancy meta
+  'serve_notice': { category: 'notice', workflow: 'end_of_tenancy', requiresDocument: true },
+  'tenant_acknowledge_notice': { category: 'notice', workflow: 'end_of_tenancy', requiresDocument: false },
+  'schedule_checkout_inspection': { category: 'inspection', workflow: 'end_of_tenancy', requiresDocument: false },
+  'checkout_inspection': { category: 'inspection', workflow: 'end_of_tenancy', requiresDocument: true },
+  'inventory_checkout': { category: 'inspection', workflow: 'end_of_tenancy', requiresDocument: true },
+  'meter_readings': { category: 'utilities', workflow: 'end_of_tenancy', requiresDocument: false },
+  'assess_dilapidations': { category: 'financial', workflow: 'end_of_tenancy', requiresDocument: true },
+  'cleaning_assessment': { category: 'inspection', workflow: 'end_of_tenancy', requiresDocument: false },
+  'deposit_deductions_agreed': { category: 'financial', workflow: 'end_of_tenancy', requiresDocument: true },
+  'deposit_return_initiated': { category: 'financial', workflow: 'end_of_tenancy', requiresDocument: true },
+  'key_return': { category: 'handover', workflow: 'end_of_tenancy', requiresDocument: false },
+  'final_account': { category: 'financial', workflow: 'end_of_tenancy', requiresDocument: true },
+  'utility_notifications': { category: 'utilities', workflow: 'end_of_tenancy', requiresDocument: false },
+  'council_tax_notification': { category: 'utilities', workflow: 'end_of_tenancy', requiresDocument: false },
+  'forwarding_address': { category: 'admin', workflow: 'end_of_tenancy', requiresDocument: false }
 };
 
 // Individual checklist items with document support
@@ -6470,6 +6587,7 @@ export const propertyTransactions = pgTable("property_transaction", {
   invoiceId: integer("invoice_id"),
   paymentId: integer("payment_id"),
   maintenanceTicketId: integer("maintenance_ticket_id"),
+  supportTicketId: integer("support_ticket_id"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
@@ -6624,6 +6742,86 @@ export type BankTransaction = typeof bankTransactions.$inferSelect;
 export type InsertBankTransaction = z.infer<typeof insertBankTransactionSchema>;
 
 // ==========================================
+// AUTOMATION: AGENT RUNS
+// ==========================================
+
+export const agentRuns = pgTable("agent_run", {
+  id: serial("id").primaryKey(),
+  agentType: text("agent_type").notNull(), // 'rent_processing', 'arrears_detection', 'compliance_check'
+  status: text("status").notNull().default("running"), // 'running', 'completed', 'failed', 'cancelled'
+  triggeredBy: text("triggered_by").notNull(), // 'scheduler', 'manual', user ID
+
+  // Execution details
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+
+  // Results summary
+  stepsCompleted: integer("steps_completed").notNull().default(0),
+  stepsTotal: integer("steps_total").notNull().default(0),
+
+  // Step-by-step log
+  log: json("log").$type<AgentLogEntry[]>(),
+
+  // Summary stats for rent processing
+  paymentsMatched: integer("payments_matched").default(0),
+  receiptsGenerated: integer("receipts_generated").default(0),
+  receiptsSent: integer("receipts_sent").default(0),
+  chargesProcessed: integer("charges_processed").default(0),
+  statementsGenerated: integer("statements_generated").default(0),
+  statementsSent: integer("statements_sent").default(0),
+  landlordPaymentsPrepared: integer("landlord_payments_prepared").default(0),
+  totalRentProcessed: integer("total_rent_processed").default(0), // pence
+  totalCommission: integer("total_commission").default(0), // pence
+  totalCharges: integer("total_charges").default(0), // pence
+  totalNetPayable: integer("total_net_payable").default(0), // pence
+
+  errorCount: integer("error_count").default(0),
+  errorDetails: json("error_details"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow()
+});
+
+export interface AgentLogEntry {
+  step: number;
+  action: string;
+  status: 'success' | 'error' | 'skipped' | 'pending';
+  message: string;
+  details?: any;
+  timestamp: string;
+}
+
+export const insertAgentRunSchema = createInsertSchema(agentRuns).omit({ id: true, createdAt: true });
+export type AgentRun = typeof agentRuns.$inferSelect;
+export type InsertAgentRun = z.infer<typeof insertAgentRunSchema>;
+
+// ==========================================
+// ROUTED MESSAGES (Message Router Agent)
+// ==========================================
+
+export const routedMessages = pgTable("routed_message", {
+  id: serial("id").primaryKey(),
+  source: text("source").notNull().default("manual"),
+  subject: text("subject"),
+  body: text("body").notNull(),
+  senderEmail: text("sender_email"),
+  senderName: text("sender_name"),
+  agentType: text("agent_type").notNull(),
+  confidence: decimal("confidence"),
+  matchedKeywords: json("matched_keywords").$type<string[]>(),
+  reasoning: text("reasoning"),
+  suggestedAction: text("suggested_action"),
+  status: text("status").notNull().default("pending"),
+  tenancyId: integer("tenancy_id"),
+  propertyId: integer("property_id"),
+  actionedAt: timestamp("actioned_at"),
+  actionedBy: text("actioned_by"),
+  agentRunId: integer("agent_run_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type RoutedMessage = typeof routedMessages.$inferSelect;
+
+// ==========================================
 // FINANCE: GOCARDLESS MANDATES
 // ==========================================
 
@@ -6756,8 +6954,135 @@ export const companySettings = pgTable("company_settings", {
   primaryColor: text("primary_color").default("#791E75"),
   secondaryColor: text("secondary_color"),
 
+  // Communication Settings
+  callMode: text("call_mode").default("phone"), // 'phone' (Twilio dials agent's phone) or 'browser' (WebRTC softphone)
+  emailMode: text("email_mode").default("smtp"), // 'smtp' or 'microsoft365'
+  defaultCallerId: text("default_caller_id"), // Caller ID for outbound calls
+  browserCallEnabled: boolean("browser_call_enabled").default(false), // Enable browser-based calling
+
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export type CompanySettings = typeof companySettings.$inferSelect;
 export type InsertCompanySettings = typeof companySettings.$inferInsert;
+
+// ==========================================
+// TENANCY ONBOARDING PIPELINE
+// Tracks each step of new tenancy setup
+// ==========================================
+
+export const onboardingStepTypes = [
+  'register_applicant',           // Step 1: Register tenant as applicant (auto-completed on creation)
+  'collect_documents',            // Step 2: Tenant uploads ID, references, guarantor docs
+  'verify_documents',             // Step 3: Agent verifies uploaded documents
+  'allocate_property',            // Step 4: Assign property and landlord to tenant
+  'landlord_approval',            // Step 5: Landlord approves tenant, move-in date confirmed
+  'confirm_start_date',           // Step 6: Tenancy start date confirmed, create tenancy
+  'sign_contracts',               // Step 7: Contracts signed (DocuSign)
+  'record_rent',                  // Step 8: Rent amount & due dates recorded in CRM
+  'set_commission',               // Step 9: JB commission % set on property
+  'upload_certificates',          // Step 10: Gas, EICR, EPC certificates uploaded with expiry dates to CRM
+  'record_deposit',               // Step 11: Deposit amount & type recorded in CRM
+  'register_dps',                 // Step 12: Tenant registered on DPS portal
+  'protect_deposit',              // Step 13: Deposit protected with DPS
+  'verify_deposit_payment',       // Step 14: Deposit payment received (GoCardless)
+  'receive_dps_certificate',      // Step 15: DPS certificate received & uploaded
+] as const;
+
+export type OnboardingStepType = typeof onboardingStepTypes[number];
+
+export const onboardingStepLabels: Record<OnboardingStepType, string> = {
+  'register_applicant': 'Register Applicant',
+  'collect_documents': 'Collect Documents',
+  'verify_documents': 'Verify Documents',
+  'allocate_property': 'Allocate Property',
+  'landlord_approval': 'Landlord Approval',
+  'confirm_start_date': 'Confirm Start Date',
+  'sign_contracts': 'Sign Contracts',
+  'record_rent': 'Record Rent Details',
+  'set_commission': 'Set Commission',
+  'upload_certificates': 'Upload Certificates',
+  'record_deposit': 'Record Deposit',
+  'register_dps': 'Register on DPS',
+  'protect_deposit': 'Protect Deposit',
+  'verify_deposit_payment': 'Verify Deposit Payment',
+  'receive_dps_certificate': 'Receive DPS Certificate',
+};
+
+export const onboardingStepDescriptions: Record<OnboardingStepType, string> = {
+  'register_applicant': 'Tenant registered in CRM system as applicant.',
+  'collect_documents': 'Tenant uploads ID, proof of address, references, employer details, and guarantor documents. Can be done by tenant via portal or by staff from the CRM.',
+  'verify_documents': 'Agent reviews and verifies all uploaded documents. ID verification, work reference, bank reference, and previous landlord reference checked.',
+  'allocate_property': 'Once documents are verified, assign a property and landlord to this tenant.',
+  'landlord_approval': 'Landlord approves tenancy and tenant confirms move-in date. Applicant status changes to tenant.',
+  'confirm_start_date': 'Tenancy start date confirmed. Create tenancy record linking tenant and property.',
+  'sign_contracts': 'Tenancy contract and all related documents signed by landlord and tenant.',
+  'record_rent': 'Rent amount recorded in CRM, including monthly due dates.',
+  'set_commission': 'JB commission percentage set on property as agreed by JB and landlord.',
+  'upload_certificates': 'Tenancy contract, Gas Safety Certificate, Electrical Certificate, and EICR expiry dates uploaded to Property Info in CRM.',
+  'record_deposit': 'Deposit amount recorded in CRM — custodial (DPS), held by agency, or landlord recorded in CRM.',
+  'register_dps': 'Tenant name, email address, and deposit amount registered on the DPS portal.',
+  'protect_deposit': 'Deposit is protected with the Deposit Protection Scheme (DPS). Accounts team pay the deposit amount to DPS.',
+  'verify_deposit_payment': 'All accounting bank transactions downloaded from bank and retained. Deposit payment verified.',
+  'receive_dps_certificate': 'DPS confirms payment by issuing a copy of the Deposit Certificate to the tenant and JB.',
+};
+
+export const tenancyOnboarding = pgTable("tenancy_onboarding", {
+  id: serial("id").primaryKey(),
+
+  // Core references (property and landlord assigned later at allocate_property step)
+  propertyId: integer("property_id"),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id").notNull(),     // The applicant/tenant
+  tenancyId: integer("tenancy_id"),              // Created at step 3
+
+  // Assigned agent managing this onboarding
+  assignedAgentId: integer("assigned_agent_id"),
+
+  // Overall status
+  status: text("status").notNull().default("in_progress"), // 'in_progress', 'completed', 'cancelled', 'on_hold'
+  currentStep: text("current_step").notNull().default("register_applicant"),
+
+  // Notes
+  notes: text("notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export type TenancyOnboarding = typeof tenancyOnboarding.$inferSelect;
+export type InsertTenancyOnboarding = typeof tenancyOnboarding.$inferInsert;
+
+export const tenancyOnboardingSteps = pgTable("tenancy_onboarding_step", {
+  id: serial("id").primaryKey(),
+  onboardingId: integer("onboarding_id").notNull(), // FK to tenancy_onboarding
+
+  // Step details
+  stepType: text("step_type").notNull(),  // One of onboardingStepTypes
+  stepOrder: integer("step_order").notNull(),
+
+  // Status
+  status: text("status").notNull().default("pending"), // 'pending', 'in_progress', 'completed', 'skipped', 'blocked'
+
+  // Assignment
+  assignedToId: integer("assigned_to_id"),  // Agent responsible for this step
+
+  // Completion details
+  completedAt: timestamp("completed_at"),
+  completedById: integer("completed_by_id"),
+
+  // Step data (JSON for flexible storage per step type)
+  stepData: json("step_data"),  // e.g., { depositScheme: 'DPS', certificateNumber: '...' }
+
+  // Notes and notifications
+  notes: text("notes"),
+  notificationSent: boolean("notification_sent").default(false),
+  notificationSentAt: timestamp("notification_sent_at"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type TenancyOnboardingStep = typeof tenancyOnboardingSteps.$inferSelect;
+export type InsertTenancyOnboardingStep = typeof tenancyOnboardingSteps.$inferInsert;

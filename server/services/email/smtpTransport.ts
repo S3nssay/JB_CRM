@@ -147,6 +147,9 @@ export class SmtpSender {
           pass: config.password,
         },
         tls: { rejectUnauthorized: false },
+        connectionTimeout: 15000,
+        greetingTimeout: 15000,
+        socketTimeout: 15000,
       });
       await transporter.verify();
       transporter.close();
@@ -331,6 +334,7 @@ export class ImapPoller {
         },
         logger: false,
         tls: { rejectUnauthorized: false },
+        connectionTimeout: 15000,
       });
       client.on('error', (err: any) => { /* handled below */ });
 

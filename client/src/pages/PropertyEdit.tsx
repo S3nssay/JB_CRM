@@ -16,8 +16,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
   Save, Loader2, Home, Building2, MapPin,
   Bed, Bath, Square, Tag, Globe, Send, Share2, Upload, X, Image, FileText,
-  Key, Download, Trash2, ExternalLink, Calendar, ArrowRightLeft, Shield, Eye
+  Key, Download, Trash2, ExternalLink, Calendar, ArrowRightLeft, Shield, Eye,
+  Users, Plus
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 
 interface PropertyData {
@@ -57,6 +59,213 @@ interface PropertyData {
   rentAmount?: number;
   rentPeriod?: string;
   deposit?: number;
+}
+
+function GroupViewingSection({ propertyId }: { propertyId: number }) {
+  const { toast } = useToast();
+  const [groupOnly, setGroupOnly] = useState(false);
+  const [slots, setSlots] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newSlotDate, setNewSlotDate] = useState('');
+  const [newSlotTime, setNewSlotTime] = useState('10:00');
+  const [newSlotMaxAttendees, setNewSlotMaxAttendees] = useState('10');
+  const [adding, setAdding] = useState(false);
+
+  // Fetch current state
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [propRes, slotsRes] = await Promise.all([
+          fetch(`/api/crm/properties/${propertyId}`, { credentials: 'include' }),
+          fetch(`/api/crm/properties/${propertyId}/viewing-slots`, { credentials: 'include' }),
+        ]);
+        if (propRes.ok) {
+          const prop = await propRes.json();
+          setGroupOnly(prop.groupViewingsOnly || false);
+        }
+        if (slotsRes.ok) {
+          const data = await slotsRes.json();
+          // Merge group slots from both fields
+          const allGroupSlots = [...(data.slots || []), ...(data.groupSlots || [])].filter((s: any) => s.isGroupViewing);
+          setSlots(allGroupSlots);
+        }
+      } catch (err) {
+        console.error('Failed to load group viewing data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [propertyId]);
+
+  const handleToggleGroupOnly = async (checked: boolean) => {
+    setGroupOnly(checked);
+    try {
+      await fetch(`/api/crm/properties/${propertyId}/group-viewings-mode`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ groupViewingsOnly: checked }),
+      });
+      toast({ title: checked ? 'Group viewings enabled' : 'Individual viewings allowed', description: checked ? 'Chatbot will only offer group slots' : 'Chatbot will allow any time' });
+    } catch {
+      toast({ title: 'Failed to update', variant: 'destructive' });
+      setGroupOnly(!checked);
+    }
+  };
+
+  const handleAddSlot = async () => {
+    if (!newSlotDate || !newSlotTime) {
+      toast({ title: 'Select date and time', variant: 'destructive' });
+      return;
+    }
+    setAdding(true);
+    try {
+      const startTime = `${newSlotDate}T${newSlotTime}:00`;
+      const endTime = new Date(new Date(startTime).getTime() + 30 * 60000).toISOString();
+      const res = await fetch(`/api/crm/properties/${propertyId}/group-viewing-slots`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ slots: [{ startTime, endTime, maxAttendees: parseInt(newSlotMaxAttendees) || 10 }] }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const newSlots = (data.slots || []).map((s: any) => ({
+          id: s.id,
+          startTime: s.start_time,
+          endTime: s.end_time,
+          maxAttendees: s.max_attendees,
+          spotsLeft: s.max_attendees - (s.current_attendees_count || 0),
+          isGroupViewing: true,
+        }));
+        setSlots(prev => [...prev, ...newSlots]);
+        setNewSlotDate('');
+        toast({ title: 'Group viewing slot added' });
+      } else {
+        toast({ title: 'Failed to add slot', variant: 'destructive' });
+      }
+    } catch {
+      toast({ title: 'Error adding slot', variant: 'destructive' });
+    } finally {
+      setAdding(false);
+    }
+  };
+
+  const handleDeleteSlot = async (slotId: number) => {
+    try {
+      const res = await fetch(`/api/crm/calendar-events/${slotId}`, { method: 'DELETE', credentials: 'include' });
+      if (res.ok) {
+        setSlots(prev => prev.filter(s => s.id !== slotId));
+        toast({ title: 'Slot removed' });
+      }
+    } catch {
+      toast({ title: 'Failed to remove slot', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Users className="h-5 w-5 text-[#791E75]" />
+            <div>
+              <CardTitle className="text-lg">Group Viewings</CardTitle>
+              <CardDescription>Manage group viewing slots and settings for this property</CardDescription>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="group-only" className="text-sm">Group only</Label>
+            <Switch
+              id="group-only"
+              checked={groupOnly}
+              onCheckedChange={handleToggleGroupOnly}
+            />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {groupOnly && (
+          <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+            Chatbot enquiries will only be able to book into group viewing slots below. Individual time selection is disabled.
+          </div>
+        )}
+
+        {/* Add new slot */}
+        <div className="flex items-end gap-2">
+          <div className="flex-1 space-y-1">
+            <Label className="text-xs">Date</Label>
+            <Input
+              type="date"
+              value={newSlotDate}
+              onChange={e => setNewSlotDate(e.target.value)}
+              min={new Date().toISOString().split('T')[0]}
+            />
+          </div>
+          <div className="w-24 space-y-1">
+            <Label className="text-xs">Time</Label>
+            <Select value={newSlotTime} onValueChange={setNewSlotTime}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {['09:00','09:30','10:00','10:30','11:00','11:30','12:00','12:30','13:00','13:30','14:00','14:30','15:00','15:30','16:00','16:30','17:00','17:30','18:00'].map(t => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-20 space-y-1">
+            <Label className="text-xs">Max</Label>
+            <Input
+              type="number"
+              value={newSlotMaxAttendees}
+              onChange={e => setNewSlotMaxAttendees(e.target.value)}
+              min="2"
+              max="50"
+            />
+          </div>
+          <Button onClick={handleAddSlot} disabled={adding || !newSlotDate} size="sm" className="bg-[#791E75] hover:bg-[#60175d]">
+            <Plus className="h-4 w-4 mr-1" />
+            Add
+          </Button>
+        </div>
+
+        {/* Existing slots */}
+        {loading ? (
+          <div className="text-center py-4"><Loader2 className="h-5 w-5 animate-spin mx-auto text-gray-400" /></div>
+        ) : slots.length === 0 ? (
+          <p className="text-sm text-gray-400 text-center py-4">No group viewing slots set up yet</p>
+        ) : (
+          <div className="space-y-2">
+            {slots.map((slot: any) => {
+              const dt = new Date(slot.startTime);
+              return (
+                <div key={slot.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <Calendar className="h-4 w-4 text-[#791E75]" />
+                    <div>
+                      <span className="text-sm font-medium">
+                        {dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}
+                      </span>
+                      <span className="text-sm text-gray-500 ml-2">
+                        {dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {slot.spotsLeft}/{slot.maxAttendees} spots
+                    </Badge>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => handleDeleteSlot(slot.id)} className="text-red-500 hover:text-red-700">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function PropertyEdit() {
@@ -355,8 +564,10 @@ export default function PropertyEdit() {
                   <SelectContent>
                     <SelectItem value="active">Active</SelectItem>
                     <SelectItem value="under_offer">Under Offer</SelectItem>
-                    <SelectItem value="sold">Sold</SelectItem>
-                    <SelectItem value="let">Let</SelectItem>
+                    <SelectItem value="sstc">SSTC</SelectItem>
+                    <SelectItem value="exchanged">Exchanged</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="fallen_through">Fallen Through</SelectItem>
                     <SelectItem value="withdrawn">Withdrawn</SelectItem>
                   </SelectContent>
                 </Select>
@@ -431,8 +642,8 @@ export default function PropertyEdit() {
                 <Input
                   id="price"
                   type="number"
-                  value={formData.price ? formData.price / 100 : ''}
-                  onChange={(e) => updateField('price', Math.round(parseFloat(e.target.value) * 100))}
+                  value={formData.price || ''}
+                  onChange={(e) => updateField('price', Math.round(parseFloat(e.target.value)))}
                 />
               </div>
               <div className="space-y-2">
@@ -1028,6 +1239,11 @@ export default function PropertyEdit() {
             )}
           </CardContent>
         </Card>
+
+        {/* Group Viewing Management */}
+        {property && (property.isListedSale || property.isListedRental) && (
+          <GroupViewingSection propertyId={property.id} />
+        )}
 
         {/* Save Button */}
         <div className="flex justify-end gap-4">

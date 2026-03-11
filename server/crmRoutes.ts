@@ -77,7 +77,7 @@ import {
   propertyWorkflows
 } from '@shared/schema';
 
-import { eq, desc, and, sql, or, gte, lte, inArray, count, isNull } from 'drizzle-orm';
+import { eq, desc, and, sql, or, gte, lte, inArray, notInArray, count, isNull } from 'drizzle-orm';
 import {
   parsePropertyFromNaturalLanguage,
   enhancePropertyDescription,
@@ -112,6 +112,18 @@ import { websiteImport } from './websiteImportService';
 import { parsePdfToStaging, importFromStaging } from './pdfPropertyImportService';
 
 export const crmRouter = Router();
+
+// Ensure valuation workflow columns exist on contact table
+pool.query(`
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS valuation_scheduled_date timestamp;
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS valuation_completed_date timestamp;
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS valuation_amount integer;
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS instruction_signed_date timestamp;
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS workflow_stage text DEFAULT 'new';
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS workflow_updated_at timestamp;
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS assigned_agent_id integer;
+  ALTER TABLE contact ADD COLUMN IF NOT EXISTS linked_property_id integer;
+`).catch((err: any) => console.log('Contact column migration note:', err.message));
 
 // Demo email mode settings
 crmRouter.get('/demo-email-mode', async (_req, res) => {
@@ -158,7 +170,8 @@ crmRouter.put('/company-settings', async (req, res) => {
       'bank_name', 'bank_account_name', 'bank_account_number', 'bank_sort_code', 'bank_iban', 'bank_swift',
       'invoice_prefix', 'invoice_next_number', 'invoice_payment_terms_days', 'invoice_footer_text', 'invoice_notes',
       'quote_prefix', 'quote_next_number', 'quote_validity_days',
-      'logo_url', 'primary_color', 'secondary_color'
+      'logo_url', 'primary_color', 'secondary_color',
+      'call_mode', 'email_mode', 'default_caller_id', 'browser_call_enabled'
     ];
     
     const setClauses: string[] = [];
@@ -192,6 +205,94 @@ crmRouter.put('/company-settings', async (req, res) => {
   }
 });
 
+
+// Social Media & Portal Credentials (from environment variables)
+crmRouter.get('/social-credentials', async (_req, res) => {
+  try {
+    const maskPassword = (pwd: string | undefined) => {
+      if (!pwd) return '';
+      if (pwd.length <= 4) return '****';
+      return pwd.substring(0, 2) + '*'.repeat(pwd.length - 4) + pwd.substring(pwd.length - 2);
+    };
+
+    const credentials = {
+      facebook: {
+        username: process.env.FACEBOOK_USERNAME || '',
+        password: maskPassword(process.env.FACEBOOK_PASSWORD),
+        configured: !!(process.env.FACEBOOK_USERNAME && process.env.FACEBOOK_PASSWORD),
+      },
+      instagram: {
+        username: process.env.INSTAGRAM_USERNAME || '',
+        password: maskPassword(process.env.INSTAGRAM_PASSWORD),
+        configured: !!(process.env.INSTAGRAM_USERNAME && process.env.INSTAGRAM_PASSWORD),
+      },
+      twitter: {
+        username: process.env.TWITTER_USERNAME || '',
+        password: maskPassword(process.env.TWITTER_PASSWORD),
+        configured: !!(process.env.TWITTER_USERNAME && process.env.TWITTER_PASSWORD),
+      },
+      google_business: {
+        username: process.env.GOOGLE_BUSINESS_EMAIL || '',
+        password: maskPassword(process.env.GOOGLE_BUSINESS_PASSWORD),
+        configured: !!(process.env.GOOGLE_BUSINESS_EMAIL && process.env.GOOGLE_BUSINESS_PASSWORD),
+      },
+      zoopla: {
+        username: process.env.ZOOPLA_USERNAME || '',
+        password: maskPassword(process.env.ZOOPLA_PASSWORD),
+        configured: !!(process.env.ZOOPLA_USERNAME && process.env.ZOOPLA_PASSWORD),
+      },
+    };
+
+    res.json(credentials);
+  } catch (error) {
+    console.error('Failed to fetch social credentials:', error);
+    res.status(500).json({ error: 'Failed to fetch social credentials' });
+  }
+});
+
+crmRouter.put('/social-credentials', async (req, res) => {
+  try {
+    res.json({ message: 'Social media credentials are managed via environment variables (.env file). Please update the .env file directly and restart the server.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update social credentials' });
+  }
+});
+
+crmRouter.post('/social-credentials/test/:platform', async (req, res) => {
+  try {
+    const { platform } = req.params;
+
+    const platformConfig: Record<string, { name: string; userEnv: string; passEnv: string; testUrl?: string }> = {
+      facebook: { name: 'Facebook', userEnv: 'FACEBOOK_USERNAME', passEnv: 'FACEBOOK_PASSWORD', testUrl: 'https://graph.facebook.com/me' },
+      instagram: { name: 'Instagram', userEnv: 'INSTAGRAM_USERNAME', passEnv: 'INSTAGRAM_PASSWORD' },
+      twitter: { name: 'X / Twitter', userEnv: 'TWITTER_USERNAME', passEnv: 'TWITTER_PASSWORD' },
+      google_business: { name: 'Google Business', userEnv: 'GOOGLE_BUSINESS_EMAIL', passEnv: 'GOOGLE_BUSINESS_PASSWORD' },
+      zoopla: { name: 'Zoopla Pro', userEnv: 'ZOOPLA_USERNAME', passEnv: 'ZOOPLA_PASSWORD' },
+    };
+
+    const config = platformConfig[platform];
+    if (!config) {
+      return res.status(400).json({ success: false, message: 'Unknown platform' });
+    }
+
+    const username = process.env[config.userEnv];
+    const password = process.env[config.passEnv];
+
+    if (!username || !password) {
+      return res.json({ success: false, message: `${config.name} credentials not configured in environment variables` });
+    }
+
+    // Credentials are present - report configured status
+    // Note: Full OAuth/API testing would require platform-specific API keys and tokens
+    res.json({
+      success: true,
+      message: `${config.name} credentials are configured. Username: ${username}. To fully test, log in at the platform's website with these credentials.`
+    });
+  } catch (error) {
+    console.error('Social credential test failed:', error);
+    res.status(500).json({ success: false, message: 'Test failed due to server error' });
+  }
+});
 
 // Configure multer for property image uploads
 const uploadDir = path.join(process.cwd(), 'uploads', 'properties');
@@ -444,6 +545,154 @@ function sanitizePropertyUpdates(body: Record<string, any>): Record<string, any>
 
 // ==========================================
 // IMAGE UPLOAD ROUTES
+// ==========================================
+
+// ==========================================
+// OUTBOUND CALL API
+// ==========================================
+
+// Initiate outbound call via Twilio (dials agent first, then bridges to customer)
+crmRouter.post('/calls/initiate', requireAgent, async (req, res) => {
+  try {
+    const { to, agentPhone, contactName, entityType, entityId } = req.body;
+    if (!to) return res.status(400).json({ error: 'Phone number is required' });
+
+    // Get company settings for call mode and caller ID
+    const settingsResult = await pool.query('SELECT call_mode, default_caller_id FROM company_settings LIMIT 1');
+    const settings = settingsResult.rows[0] || {};
+    const callMode = settings.call_mode || 'phone';
+
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioNumber = settings.default_caller_id || process.env.TWILIO_PHONE_NUMBER;
+
+    if (!accountSid || !authToken || !twilioNumber) {
+      return res.status(400).json({ error: 'Twilio not configured. Set up Twilio credentials in Integration Settings.' });
+    }
+
+    const twilio = require('twilio');
+    const client = twilio(accountSid, authToken);
+
+    // Normalize phone number to E.164 format
+    let normalizedTo = to.replace(/\s/g, '');
+    if (normalizedTo.startsWith('0')) normalizedTo = '+44' + normalizedTo.slice(1);
+    if (!normalizedTo.startsWith('+')) normalizedTo = '+44' + normalizedTo;
+
+    if (callMode === 'phone') {
+      if (!agentPhone) {
+        return res.status(400).json({ error: 'Agent phone number is required for phone mode. Set your phone number in your profile.' });
+      }
+
+      let normalizedAgent = agentPhone.replace(/\s/g, '');
+      if (normalizedAgent.startsWith('0')) normalizedAgent = '+44' + normalizedAgent.slice(1);
+      if (!normalizedAgent.startsWith('+')) normalizedAgent = '+44' + normalizedAgent;
+
+      const call = await client.calls.create({
+        to: normalizedAgent,
+        from: twilioNumber,
+        twiml: `<Response><Say>Connecting you to ${contactName || 'the contact'}.</Say><Dial callerId="${twilioNumber}">${normalizedTo}</Dial></Response>`,
+        statusCallback: `${process.env.BASE_URL || ''}/api/crm/calls/status`,
+        statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+      });
+
+      await pool.query(`
+        INSERT INTO lead_communication (lead_id, channel, direction, subject, content, created_at)
+        VALUES ($1, 'call', 'outbound', $2, $3, NOW())
+      `, [entityId || null, `Call to ${contactName || normalizedTo}`, `Outbound call initiated to ${normalizedTo} by agent`]).catch(() => {});
+
+      res.json({ success: true, callSid: call.sid, mode: 'phone' });
+    } else {
+      const { AccessToken } = twilio.jwt;
+      const { VoiceGrant } = AccessToken;
+      const twimlAppSid = process.env.TWILIO_TWIML_APP_SID;
+      if (!twimlAppSid) {
+        return res.status(400).json({ error: 'Browser calling requires TWILIO_TWIML_APP_SID. Configure it in Integration Settings.' });
+      }
+      const token = new AccessToken(accountSid, process.env.TWILIO_API_KEY || accountSid, process.env.TWILIO_API_SECRET || authToken, {
+        identity: `agent-${(req as any).user?.id || 'unknown'}`
+      });
+      const voiceGrant = new VoiceGrant({ outgoingApplicationSid: twimlAppSid, incomingAllow: true });
+      token.addGrant(voiceGrant);
+      res.json({ success: true, token: token.toJwt(), mode: 'browser', to: normalizedTo });
+    }
+  } catch (error) {
+    console.error('Error initiating call:', error);
+    const message = error instanceof Error ? error.message : 'Failed to initiate call';
+    res.status(500).json({ error: message });
+  }
+});
+
+// Call status webhook (no auth needed - Twilio calls this)
+crmRouter.post('/calls/status', async (req, res) => {
+  try {
+    const { CallSid, CallStatus, CallDuration } = req.body;
+    console.log(`Call ${CallSid}: ${CallStatus} (duration: ${CallDuration}s)`);
+    res.sendStatus(200);
+  } catch (error) {
+    res.sendStatus(200);
+  }
+});
+
+// Unified email send (respects admin setting for SMTP vs M365)
+crmRouter.post('/communications/send-email', requireAgent, async (req, res) => {
+  try {
+    const { to, subject, body, cc, bcc, entityType, entityId, contactName } = req.body;
+
+    if (!to || !subject || !body) {
+      return res.status(400).json({ error: 'To, subject, and body are required' });
+    }
+
+    const settingsResult = await pool.query('SELECT email_mode FROM company_settings LIMIT 1');
+    const emailMode = settingsResult.rows[0]?.email_mode || 'smtp';
+
+    let result;
+
+    if (emailMode === 'microsoft365') {
+      try {
+        const { createGraphClient } = await import('./services/microsoft/graphApiClient');
+        const userId = (req as any).user?.id;
+        const connResult = await pool.query(
+          'SELECT * FROM email_connection WHERE user_id = $1 AND provider IN ($2, $3) AND is_active = true LIMIT 1',
+          [userId, 'microsoft365', 'microsoft']
+        );
+        if (connResult.rows.length > 0 && connResult.rows[0].access_token) {
+          const client = createGraphClient(connResult.rows[0].access_token);
+          await client.sendEmail({
+            to: Array.isArray(to) ? to : [to],
+            subject,
+            bodyHtml: body,
+            cc: cc ? (Array.isArray(cc) ? cc : [cc]) : undefined,
+            bcc: bcc ? (Array.isArray(bcc) ? bcc : [bcc]) : undefined,
+          });
+          result = { success: true, provider: 'microsoft365' };
+        } else {
+          result = await emailService.sendEmail(to, subject, body, { cc, bcc });
+          result = { ...result, provider: 'smtp_fallback' };
+        }
+      } catch (graphError) {
+        console.error('M365 send failed, falling back to SMTP:', graphError);
+        result = await emailService.sendEmail(to, subject, body, { cc, bcc });
+        result = { ...result, provider: 'smtp_fallback' };
+      }
+    } else {
+      result = await emailService.sendEmail(to, subject, body, { cc, bcc });
+      result = { ...result, provider: 'smtp' };
+    }
+
+    if (entityId) {
+      await pool.query(`
+        INSERT INTO lead_communication (lead_id, channel, direction, subject, content, created_at)
+        VALUES ($1, 'email', 'outbound', $2, $3, NOW())
+      `, [entityId, subject, `Email sent to ${contactName || to}`]).catch(() => {});
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error sending email:', error);
+    res.status(500).json({ error: 'Failed to send email' });
+  }
+});
+
 // ==========================================
 
 // Upload a single property image
@@ -1381,7 +1630,7 @@ crmRouter.post('/properties', requireAgent, async (req, res) => {
       areaId: area?.id,
       title: finalTitle,
       description: finalDescription,
-      price: validated.price, // Already in pence from frontend
+      price: validated.price,
       deposit: validated.deposit
     });
 
@@ -1399,17 +1648,6 @@ crmRouter.put('/properties/:id', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const updates = sanitizePropertyUpdates(req.body);
-
-    // Convert price to pence if provided in pounds (values under 1,000,000 are assumed to be pounds)
-    if (updates.price && typeof updates.price === 'number' && updates.price < 1000000) {
-      updates.price = updates.price * 100;
-    }
-    if (updates.deposit && typeof updates.deposit === 'number' && updates.deposit < 100000) {
-      updates.deposit = updates.deposit * 100;
-    }
-    if (updates.rentAmount && typeof updates.rentAmount === 'number' && updates.rentAmount < 100000) {
-      updates.rentAmount = updates.rentAmount * 100;
-    }
 
     // Use Drizzle ORM for the update
     const [property] = await db.update(properties)
@@ -1433,14 +1671,6 @@ crmRouter.patch('/properties/:id', requireAgent, async (req, res) => {
     const id = parseInt(req.params.id);
     const updates = sanitizePropertyUpdates(req.body);
 
-    // Convert price to pence if provided
-    if (updates.price && typeof updates.price === 'number' && updates.price < 1000000) {
-      updates.price = updates.price * 100;
-    }
-    if (updates.deposit && typeof updates.deposit === 'number' && updates.deposit < 100000) {
-      updates.deposit = updates.deposit * 100;
-    }
-
     // UPDATE property table (CRM now uses this table)
     const [property] = await db.update(properties)
       .set({ ...updates, updatedAt: new Date() })
@@ -1459,18 +1689,57 @@ crmRouter.patch('/properties/:id', requireAgent, async (req, res) => {
 });
 
 crmRouter.delete('/properties/:id', requireAgent, async (req, res) => {
+  const client = await pool.connect();
   try {
     const id = parseInt(req.params.id);
-    const success = await storage.deleteProperty(id);
 
-    if (!success) {
+    // Check property exists
+    const { rows } = await client.query('SELECT id FROM properties WHERE id = $1', [id]);
+    if (rows.length === 0) {
       return res.status(404).json({ error: 'Property not found' });
     }
 
+    await client.query('BEGIN');
+
+    // Delete from all tables that reference property_id
+    const relatedTables = [
+      'calendar_event', 'communication', 'document', 'lead_viewing',
+      'lead_property_view', 'lead_property_interest', 'property_portal_listing',
+      'property_inquiry', 'property_checklist', 'property_certificate',
+      'tenancy_contract', 'rental_agreement', 'maintenance_ticket',
+      'valuation', 'offer', 'viewing_feedback', 'property_note',
+      'voice_lead_property_interest', 'proactive_lead',
+      'rent_transaction', 'deposit', 'inventory_item', 'inventory_report',
+      'compliance_item', 'end_of_tenancy'
+    ];
+
+    for (const table of relatedTables) {
+      try {
+        await client.query(`DELETE FROM ${table} WHERE property_id = $1`, [id]);
+      } catch (e: any) {
+        // Table or column might not exist, skip silently
+        if (!['42P01', '42703'].includes(e.code)) throw e;
+      }
+    }
+
+    // Also handle tenant table which has property_id
+    try {
+      await client.query('UPDATE tenant SET property_id = NULL WHERE property_id = $1', [id]);
+    } catch (e: any) {
+      if (e.code !== '42P01') throw e;
+    }
+
+    // Now delete the property
+    await client.query('DELETE FROM properties WHERE id = $1', [id]);
+
+    await client.query('COMMIT');
     res.json({ success: true });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error deleting property:', error);
     res.status(500).json({ error: 'Failed to delete property' });
+  } finally {
+    client.release();
   }
 });
 
@@ -1830,10 +2099,22 @@ crmRouter.get('/landlord-leads', requireAgent, async (req, res) => {
     let query = `
       SELECT c.*,
              u.full_name as "assignedAgentName",
-             p.title as "linkedPropertyTitle"
+             p.title as "linkedPropertyTitle",
+             u_contacted.full_name as "contactedByName",
+             u_val_sched.full_name as "valuationScheduledByName",
+             u_val_comp.full_name as "valuationCompletedByName",
+             u_instr.full_name as "instructionSignedByName",
+             u_listprep.full_name as "listingPreparationByName",
+             u_listed.full_name as "listedByName"
       FROM contact c
       LEFT JOIN "user" u ON c.assigned_agent_id = u.id
       LEFT JOIN property p ON c.linked_property_id = p.id
+      LEFT JOIN "user" u_contacted ON c.contacted_by = u_contacted.id
+      LEFT JOIN "user" u_val_sched ON c.valuation_scheduled_by = u_val_sched.id
+      LEFT JOIN "user" u_val_comp ON c.valuation_completed_by = u_val_comp.id
+      LEFT JOIN "user" u_instr ON c.instruction_signed_by = u_instr.id
+      LEFT JOIN "user" u_listprep ON c.listing_preparation_by = u_listprep.id
+      LEFT JOIN "user" u_listed ON c.listed_by = u_listed.id
       WHERE c.inquiry_type IN ('valuation', 'selling', 'letting')
     `;
     const params: any[] = [];
@@ -1928,29 +2209,83 @@ crmRouter.patch('/landlord-leads/:id/stage', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
     const { stage } = req.body;
+    const agentId = (req as any).user?.id || null;
 
     if (!LANDLORD_LEAD_STAGES.includes(stage)) {
       return res.status(400).json({ error: 'Invalid workflow stage' });
     }
 
+    // Map stage to date/agent column names
+    const stageDateMap: Record<string, { dateCol: string; agentCol: string }> = {
+      'contacted': { dateCol: 'contacted_at', agentCol: 'contacted_by' },
+      'valuation_scheduled': { dateCol: 'valuation_scheduled_date', agentCol: 'valuation_scheduled_by' },
+      'valuation_completed': { dateCol: 'valuation_completed_date', agentCol: 'valuation_completed_by' },
+      'instruction_signed': { dateCol: 'instruction_signed_date', agentCol: 'instruction_signed_by' },
+      'listing_preparation': { dateCol: 'listing_preparation_at', agentCol: 'listing_preparation_by' },
+      'listed': { dateCol: 'listed_at', agentCol: 'listed_by' },
+    };
+
+    const mapping = stageDateMap[stage];
+    const dateSet = mapping ? `, ${mapping.dateCol} = NOW(), ${mapping.agentCol} = $3` : '';
+
     const result = await pool.query(`
       UPDATE contact
       SET workflow_stage = $1,
           workflow_updated_at = NOW(),
+          updated_at = NOW(),
           status = CASE
             WHEN $1 = 'listed' THEN 'converted'
             WHEN $1 = 'contacted' THEN 'contacted'
             ELSE status
           END
+          ${dateSet}
       WHERE id = $2
       RETURNING *
-    `, [stage, id]);
+    `, mapping ? [stage, id, agentId] : [stage, id]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Landlord lead not found' });
     }
 
-    res.json(result.rows[0]);
+    const contact = result.rows[0];
+
+    // When moving to 'listed', auto-create a property if one doesn't exist
+    if (stage === 'listed' && !contact.linked_property_id) {
+      const isRental = contact.inquiry_type === 'letting';
+      const title = `${contact.property_type || 'Property'} in ${contact.postcode || ''}`.trim();
+      const propertyResult = await pool.query(`
+        INSERT INTO property (
+          title, description, address_line1, postcode, property_type, bedrooms, bathrooms,
+          tenure, price, status, is_listed, is_rental, is_published_website,
+          created_at, updated_at
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', true, $10, false, NOW(), NOW()
+        )
+        RETURNING id
+      `, [
+        title,
+        title,
+        contact.property_address || '',
+        contact.postcode || '',
+        contact.property_type || 'house',
+        contact.bedrooms || 3,
+        1,
+        'freehold',
+        contact.valuation_amount || 0,
+        isRental
+      ]);
+
+      const propertyId = propertyResult.rows[0].id;
+
+      // Link the property back to the contact
+      await pool.query(`
+        UPDATE contact SET linked_property_id = $1 WHERE id = $2
+      `, [propertyId, id]);
+
+      contact.linked_property_id = propertyId;
+    }
+
+    res.json(contact);
   } catch (error) {
     console.error('Error updating workflow stage:', error);
     res.status(500).json({ error: 'Failed to update workflow stage' });
@@ -1967,15 +2302,18 @@ crmRouter.post('/landlord-leads/:id/schedule-valuation', requireAgent, async (re
       return res.status(400).json({ error: 'Scheduled date is required' });
     }
 
+    const agentId = (req as any).user?.id || null;
     const result = await pool.query(`
       UPDATE contact
       SET workflow_stage = 'valuation_scheduled',
           workflow_updated_at = NOW(),
+          updated_at = NOW(),
           valuation_scheduled_date = $1,
+          valuation_scheduled_by = $4,
           assigned_agent_id = COALESCE($2, assigned_agent_id)
       WHERE id = $3
       RETURNING *
-    `, [scheduledDate, assignedAgentId || null, id]);
+    `, [scheduledDate, assignedAgentId || null, id, agentId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Landlord lead not found' });
@@ -1984,7 +2322,8 @@ crmRouter.post('/landlord-leads/:id/schedule-valuation', requireAgent, async (re
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error scheduling valuation:', error);
-    res.status(500).json({ error: 'Failed to schedule valuation' });
+    const message = error instanceof Error ? error.message : 'Failed to schedule valuation';
+    res.status(500).json({ error: message });
   }
 });
 
@@ -1992,21 +2331,35 @@ crmRouter.post('/landlord-leads/:id/schedule-valuation', requireAgent, async (re
 crmRouter.post('/landlord-leads/:id/complete-valuation', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { valuationAmount, notes } = req.body;
+    const { valuationAmount, notes, valuationReportUrl } = req.body;
+    const agentId = (req as any).user?.id || null;
 
     const result = await pool.query(`
       UPDATE contact
       SET workflow_stage = 'valuation_completed',
           workflow_updated_at = NOW(),
+          updated_at = NOW(),
           valuation_completed_date = NOW(),
+          valuation_completed_by = $4,
           valuation_amount = $1,
+          valuation_report_url = COALESCE($5, valuation_report_url),
           notes = CASE WHEN $2 IS NOT NULL THEN COALESCE(notes || E'\\n', '') || $2 ELSE notes END
       WHERE id = $3
       RETURNING *
-    `, [valuationAmount || null, notes || null, id]);
+    `, [valuationAmount || null, notes || null, id, agentId, valuationReportUrl || null]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+
+    // If a valuation report was uploaded and there's a linked property, save document record
+    if (valuationReportUrl && result.rows[0].linked_property_id) {
+      await pool.query(`
+        INSERT INTO document (name, original_name, document_type, storage_url, mime_type, size,
+                              property_id, entity_type, entity_id, description, status, created_at, updated_at)
+        VALUES ($1, $1, 'report', $2, 'application/pdf', 0,
+                $3, 'property', $3, 'Valuation Report', 'active', NOW(), NOW())
+      `, ['Valuation Report', valuationReportUrl, result.rows[0].linked_property_id]);
     }
 
     res.json(result.rows[0]);
@@ -2020,15 +2373,18 @@ crmRouter.post('/landlord-leads/:id/complete-valuation', requireAgent, async (re
 crmRouter.post('/landlord-leads/:id/sign-instruction', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
+    const agentId = (req as any).user?.id || null;
 
     const result = await pool.query(`
       UPDATE contact
       SET workflow_stage = 'instruction_signed',
           workflow_updated_at = NOW(),
-          instruction_signed_date = NOW()
+          updated_at = NOW(),
+          instruction_signed_date = NOW(),
+          instruction_signed_by = $2
       WHERE id = $1
       RETURNING *
-    `, [id]);
+    `, [id, agentId]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Landlord lead not found' });
@@ -2059,23 +2415,28 @@ crmRouter.post('/landlord-leads/:id/convert-to-listing', requireAgent, async (re
     const contact = contactResult.rows[0];
 
     // Create the property
+    const isRental = contact.inquiry_type === 'letting';
+    const title = propertyData?.title || `${contact.property_type || 'Property'} in ${contact.postcode || ''}`;
     const propertyResult = await pool.query(`
       INSERT INTO property (
-        title, address_line1, postcode, property_type, bedrooms,
-        listing_type, price, status, is_listed, is_published_website,
+        title, description, address_line1, postcode, property_type, bedrooms, bathrooms,
+        tenure, price, status, is_listed, is_rental, is_published_website,
         created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, 'Available', true, false, NOW(), NOW()
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, 'active', true, $10, false, NOW(), NOW()
       )
       RETURNING id
     `, [
-      propertyData?.title || `${contact.property_type || 'Property'} in ${contact.postcode}`,
-      contact.property_address || propertyData?.addressLine1,
-      contact.postcode || propertyData?.postcode,
+      title,
+      title, // description defaults to title, can be edited later
+      contact.property_address || propertyData?.addressLine1 || '',
+      contact.postcode || propertyData?.postcode || '',
       contact.property_type || propertyData?.propertyType || 'house',
       contact.bedrooms || propertyData?.bedrooms || 3,
-      contact.inquiry_type === 'letting' ? 'rental' : 'sale',
-      contact.valuation_amount || propertyData?.price || 0
+      1, // bathrooms default
+      'freehold', // tenure default
+      contact.valuation_amount || propertyData?.price || 0,
+      isRental
     ]);
 
     const propertyId = propertyResult.rows[0].id;
@@ -2084,7 +2445,7 @@ crmRouter.post('/landlord-leads/:id/convert-to-listing', requireAgent, async (re
     const updateResult = await pool.query(`
       UPDATE contact
       SET workflow_stage = 'listed',
-          workflow_updated_at = NOW(),
+          updated_at = NOW(),
           linked_property_id = $1,
           status = 'converted'
       WHERE id = $2
@@ -2147,6 +2508,95 @@ crmRouter.patch('/landlord-leads/:id', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error updating landlord lead:', error);
     res.status(500).json({ error: 'Failed to update landlord lead' });
+  }
+});
+
+// Delete a landlord lead
+crmRouter.delete('/landlord-leads/:id', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const result = await pool.query('DELETE FROM contact WHERE id = $1 RETURNING id', [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Landlord lead not found' });
+    }
+    res.json({ success: true, id });
+  } catch (error) {
+    console.error('Error deleting landlord lead:', error);
+    res.status(500).json({ error: 'Failed to delete landlord lead' });
+  }
+});
+
+
+// Property Pipeline - get all listed properties grouped by status
+crmRouter.get('/property-pipeline', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.address, p.address_line1, p.postcode, p.price,
+             p.bedrooms, p.bathrooms, p.property_type, p.is_rental, p.is_residential,
+             p.status, p.is_listed, p.is_marketed, p.created_at, p.updated_at,
+             p.images,
+             p.listed_at, p.under_offer_at, p.sstc_at, p.exchanged_at,
+             p.completed_at, p.fallen_through_at, p.withdrawn_at,
+             p.valuation_date, p.valuation_amount, p.valuation_report_url,
+             p.listed_by, p.under_offer_by, p.sstc_by, p.exchanged_by,
+             p.completed_by, p.fallen_through_by, p.withdrawn_by,
+             u_listed.full_name as listed_by_name,
+             u_offer.full_name as under_offer_by_name,
+             u_sstc.full_name as sstc_by_name,
+             u_exchanged.full_name as exchanged_by_name,
+             u_completed.full_name as completed_by_name
+      FROM property p
+      LEFT JOIN "user" u_listed ON p.listed_by = u_listed.id
+      LEFT JOIN "user" u_offer ON p.under_offer_by = u_offer.id
+      LEFT JOIN "user" u_sstc ON p.sstc_by = u_sstc.id
+      LEFT JOIN "user" u_exchanged ON p.exchanged_by = u_exchanged.id
+      LEFT JOIN "user" u_completed ON p.completed_by = u_completed.id
+      WHERE p.is_listed = true
+      ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property pipeline:', error);
+    res.status(500).json({ error: 'Failed to fetch property pipeline' });
+  }
+});
+
+// Update property status (for pipeline stage moves)
+crmRouter.patch('/property-pipeline/:id/status', requireAgent, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { status } = req.body;
+    const agentId = (req as any).user?.id || null;
+    const validStatuses = ['active', 'under_offer', 'sstc', 'exchanged', 'completed', 'sold', 'let', 'fallen_through', 'withdrawn'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ error: 'Invalid status' });
+    }
+
+    // Map status to date/agent column names
+    const statusDateMap: Record<string, { dateCol: string; agentCol: string }> = {
+      'active': { dateCol: 'listed_at', agentCol: 'listed_by' },
+      'under_offer': { dateCol: 'under_offer_at', agentCol: 'under_offer_by' },
+      'sstc': { dateCol: 'sstc_at', agentCol: 'sstc_by' },
+      'exchanged': { dateCol: 'exchanged_at', agentCol: 'exchanged_by' },
+      'completed': { dateCol: 'completed_at', agentCol: 'completed_by' },
+      'sold': { dateCol: 'completed_at', agentCol: 'completed_by' },
+      'let': { dateCol: 'completed_at', agentCol: 'completed_by' },
+      'fallen_through': { dateCol: 'fallen_through_at', agentCol: 'fallen_through_by' },
+      'withdrawn': { dateCol: 'withdrawn_at', agentCol: 'withdrawn_by' },
+    };
+
+    const mapping = statusDateMap[status];
+    const result = await pool.query(
+      `UPDATE property SET status = $1, ${mapping.dateCol} = NOW(), ${mapping.agentCol} = $3, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [status, id, agentId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating property status:', error);
+    res.status(500).json({ error: 'Failed to update property status' });
   }
 });
 
@@ -3363,13 +3813,16 @@ crmRouter.post('/properties/import/preview', requireAgent, async (req, res) => {
 // Import property from URL (scrapes and saves to database)
 crmRouter.post('/properties/import', requireAgent, async (req, res) => {
   try {
-    const { url } = req.body;
+    const { url, listingType } = req.body;
 
     if (!url) {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    const result = await propertyImport.importFromUrl(url, req.user?.id, true);
+    console.log('[Import] listingType from body:', listingType);
+    const isRentalOverride = listingType === 'rental' ? true : listingType === 'sale' ? false : undefined;
+    console.log('[Import] isRentalOverride:', isRentalOverride);
+    const result = await propertyImport.importFromUrl(url, req.user?.id, true, isRentalOverride);
     res.json(result);
   } catch (error: any) {
     console.error('Error importing property:', error);
@@ -3642,6 +4095,9 @@ crmRouter.get('/maintenance/tickets', async (req, res) => {
       if (ticket.assignedContractorId) {
         const contractor = await storage.getContractor(ticket.assignedContractorId);
         if (contractor) {
+          enriched.contractorName = contractor.companyName || contractor.contactName;
+          enriched.contractorPhone = contractor.phone;
+          enriched.contractorEmail = contractor.email;
           enriched.assignedContractor = {
             id: contractor.id,
             companyName: contractor.companyName,
@@ -3696,7 +4152,7 @@ crmRouter.get('/maintenance/tickets/unassigned', requireAgent, async (req, res) 
       .leftJoin(properties, eq(maintenanceTickets.propertyId, properties.id))
       .where(and(
         isNull(maintenanceTickets.assignedContractorId),
-        eq(maintenanceTickets.status, 'new')
+        notInArray(maintenanceTickets.status, ['completed', 'closed'])
       ))
       .orderBy(desc(maintenanceTickets.createdAt));
 
@@ -5274,7 +5730,7 @@ crmRouter.put('/staff/:id', requireAgent, async (req, res) => {
     if (updates.fullName) userUpdates.fullName = updates.fullName;
     if (updates.phone) userUpdates.phone = updates.phone;
     if (updates.role) userUpdates.role = updates.role;
-    if (updates.department) userUpdates.department = updates.department;
+    if ('department' in updates) userUpdates.department = updates.department;
     if (typeof updates.isActive === 'boolean') userUpdates.isActive = updates.isActive;
 
     if (Object.keys(userUpdates).length > 0) {
@@ -7134,7 +7590,7 @@ function generateEnvFileContent(values: Record<string, string>, existingContent:
         // Update the value
         const newValue = values[key];
         // Quote values that contain spaces or special characters
-        const needsQuotes = newValue.includes(' ') || newValue.includes('#') || newValue.includes('=');
+        const needsQuotes = newValue.includes(' ') || newValue.includes('#') || newValue.includes('=') || newValue.includes('!') || newValue.includes('$') || newValue.includes('\\');
         updatedLines.push(`${key}=${needsQuotes ? `"${newValue}"` : newValue}`);
       } else {
         // Keep the existing line
@@ -7148,7 +7604,7 @@ function generateEnvFileContent(values: Record<string, string>, existingContent:
   // Add new keys that don't exist
   for (const [key, value] of Object.entries(values)) {
     if (!existingKeys.has(key) && value) {
-      const needsQuotes = value.includes(' ') || value.includes('#') || value.includes('=');
+      const needsQuotes = value.includes(' ') || value.includes('#') || value.includes('=') || value.includes('!') || value.includes('$') || value.includes('\\');
       updatedLines.push(`${key}=${needsQuotes ? `"${value}"` : value}`);
     }
   }
@@ -9488,12 +9944,14 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
         COALESCE(t.phone, u.phone) as tenant_phone,
         p.address_line1 as property_address,
         p.postcode as property_postcode,
-        c.company_name as contractor_name
+        c.company_name as contractor_name,
+        l.name as landlord_name
       FROM support_ticket st
       LEFT JOIN tenant t ON st.tenant_id = t.id
       LEFT JOIN "user" u ON st.tenant_id = u.id
       LEFT JOIN property p ON st.property_id = p.id
       LEFT JOIN contractor c ON st.assigned_to_id = c.id
+      LEFT JOIN landlord l ON st.landlord_id = l.id
       WHERE 1=1
     `;
 
@@ -9558,13 +10016,16 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
       priority: row.priority,
       status: row.status,
       workflowStatus: row.workflow_status,
+      raisedBy: row.raised_by || 'staff',
       tenantId: row.tenant_id,
+      landlordId: row.landlord_id,
       propertyId: row.property_id,
       assignedToId: row.assigned_to_id,
       contractorId: row.contractor_id,
       tenantName: row.tenant_name,
       tenantEmail: row.tenant_email,
       tenantPhone: row.tenant_phone,
+      landlordName: row.landlord_name,
       propertyAddress: row.property_address,
       propertyPostcode: row.property_postcode,
       contractorName: row.contractor_name,
@@ -9595,10 +10056,10 @@ crmRouter.get('/support-tickets', requireAgent, async (req, res) => {
 // Create support ticket (admin/agent manual creation)
 crmRouter.post('/support-tickets', requireAgent, async (req: any, res) => {
   try {
-    const { tenantId, propertyId, category, subject, description, priority } = req.body;
+    const { tenantId, landlordId, propertyId, category, subject, description, priority, raisedBy } = req.body;
 
-    if (!tenantId || !propertyId || !category || !subject || !description) {
-      return res.status(400).json({ error: 'tenantId, propertyId, category, subject, and description are required' });
+    if (!propertyId || !category || !subject || !description) {
+      return res.status(400).json({ error: 'propertyId, category, subject, and description are required' });
     }
 
     // Generate ticket number
@@ -9608,31 +10069,105 @@ crmRouter.post('/support-tickets', requireAgent, async (req: any, res) => {
     const ticketNumber = `${prefix}${date}${random}`;
 
     const result = await pool.query(`
-      INSERT INTO support_ticket (tenant_id, property_id, ticket_number, category, subject, description, priority, status, workflow_status, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', 'new', NOW(), NOW())
+      INSERT INTO support_ticket (tenant_id, landlord_id, property_id, raised_by, ticket_number, category, subject, description, priority, status, workflow_status, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'open', 'new', NOW(), NOW())
       RETURNING *
-    `, [tenantId, propertyId, ticketNumber, category, subject, description, priority || 'medium']);
+    `, [tenantId || null, landlordId || null, propertyId, raisedBy || 'staff', ticketNumber, category, subject, description, priority || 'medium']);
 
     const ticket = result.rows[0];
 
-    // Fetch tenant and property names for response
+    // Create workflow event for ticket creation
+    await pool.query(`
+      INSERT INTO ticket_workflow_event (ticket_id, event_type, title, description, triggered_by, created_at)
+      VALUES ($1, 'ticket_created', 'Ticket Created', $2, $3, NOW())
+    `, [ticket.id, `Ticket #${ticketNumber} created. Category: ${category}, Priority: ${priority || 'medium'}`, raisedBy || 'staff']);
+
+    // Fetch related names for response
     const detailResult = await pool.query(`
-      SELECT t.name as tenant_name, p.address_line1 as property_address, p.postcode as property_postcode
-      FROM tenant t, property p
-      WHERE t.id = $1 AND p.id = $2
-    `, [tenantId, propertyId]);
+      SELECT
+        t.name as tenant_name,
+        l.name as landlord_name,
+        p.address_line1 as property_address,
+        p.postcode as property_postcode
+      FROM property p
+      LEFT JOIN tenant t ON t.id = $1
+      LEFT JOIN landlord l ON l.id = $2
+      WHERE p.id = $3
+    `, [tenantId || null, landlordId || null, propertyId]);
 
     const detail = detailResult.rows[0] || {};
 
     res.json({
       ...ticket,
       tenantName: detail.tenant_name,
+      landlordName: detail.landlord_name,
       propertyAddress: detail.property_address,
       propertyPostcode: detail.property_postcode
     });
   } catch (error) {
     console.error('Error creating support ticket:', error);
     res.status(500).json({ error: 'Failed to create support ticket' });
+  }
+});
+
+// Get support ticket statistics for dashboard (MUST be before :ticketId route)
+crmRouter.get('/support-tickets/stats/overview', requireAgent, async (req, res) => {
+  try {
+    const statusResult = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (WHERE status = 'open') AS open,
+        COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
+        COUNT(*) FILTER (WHERE status = 'waiting_tenant') AS waiting_tenant,
+        COUNT(*) FILTER (WHERE status = 'resolved') AS resolved,
+        COUNT(*) FILTER (WHERE status = 'closed') AS closed,
+        COUNT(*) FILTER (WHERE priority = 'urgent') AS urgent,
+        COUNT(*) FILTER (WHERE priority = 'high') AS high,
+        COUNT(*) AS total
+      FROM support_ticket
+    `);
+    const resolutionResult = await pool.query(`
+      SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600) AS avg_hours
+      FROM support_ticket WHERE resolved_at IS NOT NULL
+    `);
+    const satisfactionResult = await pool.query(`
+      SELECT ROUND(AVG(satisfaction_rating)::numeric, 1) AS avg_rating
+      FROM support_ticket WHERE satisfaction_rating IS NOT NULL
+    `);
+    const categoryResult = await pool.query(`
+      SELECT category, COUNT(*) AS count FROM support_ticket GROUP BY category
+    `);
+    const row = statusResult.rows[0];
+    const avgHours = resolutionResult.rows[0]?.avg_hours;
+    const avgRating = satisfactionResult.rows[0]?.avg_rating;
+    const byCategory: Record<string, number> = {};
+    for (const cat of categoryResult.rows) { byCategory[cat.category] = Number(cat.count); }
+    let averageResolutionTime = 'N/A';
+    if (avgHours !== null && avgHours !== undefined) {
+      const hours = Math.round(Number(avgHours));
+      averageResolutionTime = hours < 24 ? `${hours} hours` : `${Math.round(hours / 24)} days`;
+    }
+    res.json({
+      total: Number(row.total), open: Number(row.open), inProgress: Number(row.in_progress),
+      waitingTenant: Number(row.waiting_tenant), resolved: Number(row.resolved), closed: Number(row.closed),
+      urgent: Number(row.urgent), high: Number(row.high), averageResolutionTime,
+      satisfactionRating: avgRating ? Number(avgRating) : 'N/A', byCategory
+    });
+  } catch (error) {
+    console.error('Error fetching support stats:', error);
+    res.status(500).json({ error: 'Failed to fetch support statistics' });
+  }
+});
+
+// Get support tickets pipeline counts (MUST be before :ticketId route)
+crmRouter.get('/support-tickets/pipeline', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`SELECT status, COUNT(*) as count FROM support_ticket GROUP BY status`);
+    const pipeline: Record<string, number> = {};
+    for (const row of result.rows) { pipeline[row.status] = Number(row.count); }
+    res.json(pipeline);
+  } catch (error) {
+    console.error('Error fetching pipeline:', error);
+    res.status(500).json({ error: 'Failed to fetch pipeline' });
   }
 });
 
@@ -10245,6 +10780,48 @@ crmRouter.post('/support-tickets/:ticketId/quotes/:quoteId/complete', requireAge
       notificationChannels: ['whatsapp', 'email']
     });
 
+    // Charge cost to landlord account via property_transaction
+    const chargeAmount = finalAmount ? Number(finalAmount) : null;
+    if (chargeAmount && chargeAmount > 0) {
+      // Look up ticket to get property_id and landlord_id
+      const ticketResult = await pool.query(
+        `SELECT st.property_id, st.landlord_id, st.ticket_number, st.subject, p.landlord_id as property_landlord_id
+         FROM support_ticket st
+         LEFT JOIN property p ON st.property_id = p.id
+         WHERE st.id = $1`, [ticketId]
+      );
+      const ticketData = ticketResult.rows[0];
+      if (ticketData) {
+        const landlordId = ticketData.landlord_id || ticketData.property_landlord_id;
+        if (landlordId) {
+          await pool.query(
+            `INSERT INTO property_transaction (property_id, landlord_id, transaction_type, category, description, amount, transaction_date, support_ticket_id, notes, created_at)
+             VALUES ($1, $2, 'expense', 'maintenance', $3, $4, NOW(), $5, $6, NOW())`,
+            [
+              ticketData.property_id,
+              landlordId,
+              `Maintenance: ${ticketData.subject} (Ticket #${ticketData.ticket_number})`,
+              chargeAmount,
+              ticketId,
+              invoiceNumber ? `Invoice: ${invoiceNumber}` : null
+            ]
+          );
+
+          // Record landlord charge event
+          await db.insert(ticketWorkflowEvents).values({
+            ticketId: Number(ticketId),
+            quoteId: Number(quoteId),
+            eventType: 'landlord_charged',
+            triggeredBy: 'system',
+            userId,
+            title: `Landlord charged £${(chargeAmount / 100).toFixed(2)}`,
+            description: `Maintenance cost of £${(chargeAmount / 100).toFixed(2)} charged to landlord account${invoiceNumber ? ` (Invoice: ${invoiceNumber})` : ''}`,
+            metadata: { amount: chargeAmount, landlordId, invoiceNumber }
+          });
+        }
+      }
+    }
+
     // Notify tenant
     await tenantSupportService.sendTicketUpdate(
       Number(ticketId),
@@ -10276,83 +10853,155 @@ crmRouter.get('/support-tickets/:ticketId/workflow', requireAgent, async (req, r
   }
 });
 
-// Get support ticket statistics for dashboard
-crmRouter.get('/support-tickets/stats/overview', requireAgent, async (req, res) => {
+// (stats/overview and pipeline routes moved above :ticketId route)
+
+// Get full change history for a support ticket
+crmRouter.get('/support-tickets/:ticketId/history', requireAgent, async (req, res) => {
   try {
-    // Count tickets by status
-    const statusResult = await pool.query(`
-      SELECT
-        COUNT(*) FILTER (WHERE status = 'open') AS open,
-        COUNT(*) FILTER (WHERE status = 'in_progress') AS in_progress,
-        COUNT(*) FILTER (WHERE status = 'waiting_tenant') AS waiting_tenant,
-        COUNT(*) FILTER (WHERE status = 'resolved') AS resolved,
-        COUNT(*) FILTER (WHERE status = 'closed') AS closed,
-        COUNT(*) FILTER (WHERE priority = 'urgent') AS urgent,
-        COUNT(*) FILTER (WHERE priority = 'high') AS high,
-        COUNT(*) AS total
-      FROM support_ticket
-    `);
+    const { ticketId } = req.params;
 
-    // Average resolution time (for resolved/closed tickets)
-    const resolutionResult = await pool.query(`
-      SELECT AVG(EXTRACT(EPOCH FROM (resolved_at - created_at)) / 3600) AS avg_hours
-      FROM support_ticket
-      WHERE resolved_at IS NOT NULL
-    `);
+    // Get workflow events
+    const eventsResult = await pool.query(`
+      SELECT * FROM ticket_workflow_event
+      WHERE ticket_id = $1
+      ORDER BY created_at ASC
+    `, [ticketId]);
 
-    // Average satisfaction rating
-    const satisfactionResult = await pool.query(`
-      SELECT ROUND(AVG(satisfaction_rating)::numeric, 1) AS avg_rating
-      FROM support_ticket
-      WHERE satisfaction_rating IS NOT NULL
-    `);
+    // Get comments
+    const commentsResult = await pool.query(`
+      SELECT tc.*, u.full_name as user_name
+      FROM ticket_comment tc
+      LEFT JOIN "user" u ON tc.user_id = u.id
+      WHERE tc.ticket_id = $1
+      ORDER BY tc.created_at ASC
+    `, [ticketId]);
 
-    // Count by category
-    const categoryResult = await pool.query(`
-      SELECT category, COUNT(*) AS count
-      FROM support_ticket
-      GROUP BY category
-    `);
+    // Merge into unified timeline
+    const timeline = [
+      ...eventsResult.rows.map((e: any) => ({
+        id: `event-${e.id}`,
+        type: 'event' as const,
+        eventType: e.event_type,
+        title: e.title,
+        description: e.description,
+        triggeredBy: e.triggered_by,
+        previousStatus: e.previous_status,
+        newStatus: e.new_status,
+        notificationChannels: e.notification_channels,
+        createdAt: e.created_at
+      })),
+      ...commentsResult.rows.map((c: any) => ({
+        id: `comment-${c.id}`,
+        type: 'comment' as const,
+        comment: c.comment,
+        userName: c.user_name,
+        isInternal: c.is_internal,
+        attachments: c.attachments,
+        createdAt: c.created_at
+      }))
+    ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 
-    const row = statusResult.rows[0];
-    const avgHours = resolutionResult.rows[0]?.avg_hours;
-    const avgRating = satisfactionResult.rows[0]?.avg_rating;
-
-    const byCategory: Record<string, number> = {};
-    for (const cat of categoryResult.rows) {
-      byCategory[cat.category] = Number(cat.count);
-    }
-
-    // Format resolution time
-    let averageResolutionTime = 'N/A';
-    if (avgHours !== null && avgHours !== undefined) {
-      const hours = Math.round(Number(avgHours));
-      if (hours < 24) {
-        averageResolutionTime = `${hours} hours`;
-      } else {
-        const days = Math.round(hours / 24);
-        averageResolutionTime = `${days} days`;
-      }
-    }
-
-    const stats = {
-      total: Number(row.total),
-      open: Number(row.open),
-      inProgress: Number(row.in_progress),
-      waitingTenant: Number(row.waiting_tenant),
-      resolved: Number(row.resolved),
-      closed: Number(row.closed),
-      urgent: Number(row.urgent),
-      high: Number(row.high),
-      averageResolutionTime,
-      satisfactionRating: avgRating ? Number(avgRating) : 'N/A',
-      byCategory
-    };
-
-    res.json(stats);
+    res.json(timeline);
   } catch (error) {
-    console.error('Error fetching support stats:', error);
-    res.status(500).json({ error: 'Failed to fetch support statistics' });
+    console.error('Error fetching ticket history:', error);
+    res.status(500).json({ error: 'Failed to fetch ticket history' });
+  }
+});
+
+// Get landlord charges for a support ticket
+crmRouter.get('/support-tickets/:ticketId/charges', requireAgent, async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const result = await pool.query(`
+      SELECT pt.*, l.name as landlord_name, p.address_line1 as property_address
+      FROM property_transaction pt
+      LEFT JOIN landlord l ON pt.landlord_id = l.id
+      LEFT JOIN property p ON pt.property_id = p.id
+      WHERE pt.support_ticket_id = $1
+      ORDER BY pt.created_at DESC
+    `, [ticketId]);
+
+    const charges = result.rows.map((row: any) => ({
+      id: row.id,
+      amount: row.amount,
+      description: row.description,
+      category: row.category,
+      transactionDate: row.transaction_date,
+      landlordName: row.landlord_name,
+      propertyAddress: row.property_address,
+      notes: row.notes,
+      createdAt: row.created_at
+    }));
+
+    const totalCharged = charges.reduce((sum: number, c: any) => sum + c.amount, 0);
+
+    res.json({ charges, totalCharged });
+  } catch (error) {
+    console.error('Error fetching ticket charges:', error);
+    res.status(500).json({ error: 'Failed to fetch charges' });
+  }
+});
+
+// Manually charge a cost to landlord for a support ticket
+crmRouter.post('/support-tickets/:ticketId/charge-landlord', requireAgent, async (req: any, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { amount, description, invoiceNumber } = req.body;
+    const userId = req.user?.id || 1;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: 'Amount must be positive (in pence)' });
+    }
+
+    // Get ticket info
+    const ticketResult = await pool.query(
+      `SELECT st.property_id, st.landlord_id, st.ticket_number, st.subject, p.landlord_id as property_landlord_id
+       FROM support_ticket st
+       LEFT JOIN property p ON st.property_id = p.id
+       WHERE st.id = $1`, [ticketId]
+    );
+
+    if (ticketResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Ticket not found' });
+    }
+
+    const ticket = ticketResult.rows[0];
+    const landlordId = ticket.landlord_id || ticket.property_landlord_id;
+
+    if (!landlordId) {
+      return res.status(400).json({ error: 'No landlord associated with this ticket or property' });
+    }
+
+    // Create the charge
+    const chargeResult = await pool.query(
+      `INSERT INTO property_transaction (property_id, landlord_id, transaction_type, category, description, amount, transaction_date, support_ticket_id, notes, created_at)
+       VALUES ($1, $2, 'expense', 'maintenance', $3, $4, NOW(), $5, $6, NOW())
+       RETURNING *`,
+      [
+        ticket.property_id,
+        landlordId,
+        description || `Maintenance: ${ticket.subject} (Ticket #${ticket.ticket_number})`,
+        Number(amount),
+        ticketId,
+        invoiceNumber ? `Invoice: ${invoiceNumber}` : null
+      ]
+    );
+
+    // Record workflow event
+    await db.insert(ticketWorkflowEvents).values({
+      ticketId: Number(ticketId),
+      eventType: 'landlord_charged',
+      triggeredBy: 'property_manager',
+      userId,
+      title: `Landlord charged £${(Number(amount) / 100).toFixed(2)}`,
+      description: `${description || 'Maintenance cost'} - £${(Number(amount) / 100).toFixed(2)} charged to landlord account${invoiceNumber ? ` (Invoice: ${invoiceNumber})` : ''}`,
+      metadata: { amount: Number(amount), landlordId, invoiceNumber }
+    });
+
+    res.json({ success: true, charge: chargeResult.rows[0] });
+  } catch (error) {
+    console.error('Error charging landlord:', error);
+    res.status(500).json({ error: 'Failed to charge landlord' });
   }
 });
 
@@ -10955,6 +11604,140 @@ crmRouter.post('/admin/properties/set-managed', requireAdmin, async (req, res) =
 // ==========================================
 // CALENDAR & VIEWING ENDPOINTS
 // ==========================================
+
+// Get available viewing slots for a property (public - used by chatbot)
+crmRouter.get('/properties/:id/viewing-slots', async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) return res.status(400).json({ error: 'Invalid property ID' });
+
+    // Check if property uses group viewings only
+    const propResult = await pool.query(
+      `SELECT id, group_viewings_only, title, address_line1, postcode FROM properties WHERE id = $1`,
+      [propertyId]
+    );
+    if (propResult.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
+    const property = propResult.rows[0];
+    const groupOnly = property.group_viewings_only;
+
+    // Get existing calendar events for next 30 days for this property
+    const now = new Date();
+    const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    const eventsResult = await pool.query(`
+      SELECT id, title, start_time, end_time, is_group_viewing, max_attendees, current_attendees_count, status, event_type
+      FROM calendar_event
+      WHERE property_id = $1
+        AND start_time >= $2
+        AND start_time <= $3
+        AND status NOT IN ('cancelled')
+        AND event_type = 'viewing'
+      ORDER BY start_time ASC
+    `, [propertyId, now, thirtyDaysLater]);
+
+    const events = eventsResult.rows;
+
+    if (groupOnly) {
+      // Return only group viewing slots that have capacity
+      const groupSlots = events
+        .filter(e => e.is_group_viewing && (e.current_attendees_count || 0) < (e.max_attendees || 10))
+        .map(e => ({
+          id: e.id,
+          startTime: e.start_time,
+          endTime: e.end_time,
+          title: e.title,
+          spotsLeft: (e.max_attendees || 10) - (e.current_attendees_count || 0),
+          maxAttendees: e.max_attendees || 10,
+          isGroupViewing: true,
+        }));
+      return res.json({ groupViewingsOnly: true, slots: groupSlots, property: { id: property.id, title: property.title, address: property.address_line1 } });
+    }
+
+    // Not group-only: return busy times so chatbot can avoid conflicts
+    const busySlots = events.map(e => ({
+      startTime: e.start_time,
+      endTime: e.end_time,
+    }));
+
+    // Also return any group slots that have capacity (user can optionally join)
+    const availableGroupSlots = events
+      .filter(e => e.is_group_viewing && (e.current_attendees_count || 0) < (e.max_attendees || 10))
+      .map(e => ({
+        id: e.id,
+        startTime: e.start_time,
+        endTime: e.end_time,
+        title: e.title,
+        spotsLeft: (e.max_attendees || 10) - (e.current_attendees_count || 0),
+        maxAttendees: e.max_attendees || 10,
+        isGroupViewing: true,
+      }));
+
+    res.json({ groupViewingsOnly: false, busySlots, groupSlots: availableGroupSlots, property: { id: property.id, title: property.title, address: property.address_line1 } });
+  } catch (error) {
+    console.error('Error fetching viewing slots:', error);
+    res.status(500).json({ error: 'Failed to fetch viewing slots' });
+  }
+});
+
+// Create/manage group viewing slots for a property (internal - agents only)
+crmRouter.post('/properties/:id/group-viewing-slots', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const user = req.user as any;
+    const { slots } = req.body; // Array of { startTime, endTime, maxAttendees }
+
+    if (!Array.isArray(slots) || slots.length === 0) {
+      return res.status(400).json({ error: 'Provide an array of slots with startTime, endTime, maxAttendees' });
+    }
+
+    // Get property for title
+    const propResult = await pool.query(`SELECT title, address_line1, postcode FROM properties WHERE id = $1`, [propertyId]);
+    if (propResult.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
+    const prop = propResult.rows[0];
+    const propLabel = prop.title || prop.address_line1 || `Property #${propertyId}`;
+
+    const created = [];
+    for (const slot of slots) {
+      const start = new Date(slot.startTime);
+      const end = slot.endTime ? new Date(slot.endTime) : new Date(start.getTime() + 30 * 60000);
+      const maxAtt = slot.maxAttendees || 10;
+
+      const result = await pool.query(`
+        INSERT INTO calendar_event (title, description, event_type, start_time, end_time, location, property_id, organizer_id, is_group_viewing, max_attendees, current_attendees_count, status)
+        VALUES ($1, $2, 'viewing', $3, $4, $5, $6, $7, true, $8, 0, 'scheduled')
+        RETURNING *
+      `, [
+        `Group Viewing: ${propLabel}`,
+        `Group viewing slot (max ${maxAtt} attendees)`,
+        start, end,
+        `${prop.address_line1}, ${prop.postcode}`,
+        propertyId,
+        user.id,
+        maxAtt,
+      ]);
+      created.push(result.rows[0]);
+    }
+
+    res.status(201).json({ created: created.length, slots: created });
+  } catch (error) {
+    console.error('Error creating group viewing slots:', error);
+    res.status(500).json({ error: 'Failed to create group viewing slots' });
+  }
+});
+
+// Toggle group_viewings_only for a property
+crmRouter.patch('/properties/:id/group-viewings-mode', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const { groupViewingsOnly } = req.body;
+
+    await pool.query(`UPDATE properties SET group_viewings_only = $1 WHERE id = $2`, [!!groupViewingsOnly, propertyId]);
+    res.json({ success: true, groupViewingsOnly: !!groupViewingsOnly });
+  } catch (error) {
+    console.error('Error toggling group viewings mode:', error);
+    res.status(500).json({ error: 'Failed to update' });
+  }
+});
 
 // Get all calendar events
 crmRouter.get('/calendar-events', requireAgent, async (req, res) => {
@@ -15370,5 +16153,67 @@ crmRouter.get('/compliance/summary', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error fetching compliance summary:', error);
     res.status(500).json({ error: 'Failed to fetch compliance summary' });
+  }
+});
+
+// ==========================================
+// TENANCY EXPIRY CALENDAR ENDPOINT
+// ==========================================
+
+crmRouter.get('/tenancy-expiry/calendar', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        t.id,
+        t.property_id as "propertyId",
+        COALESCE(p.address_line1, '') as "propertyAddress",
+        COALESCE(tn.name, '') as "tenantName",
+        COALESCE(l.name, '') as "landlordName",
+        t.start_date as "startDate",
+        t.end_date as "endDate",
+        t.rent_amount as "rentAmount",
+        t.rent_frequency as "rentFrequency",
+        t.deposit_amount as "depositAmount",
+        t.status,
+        t.is_periodic as "isPeriodic",
+        CASE
+          WHEN t.end_date IS NOT NULL THEN EXTRACT(DAY FROM t.end_date - NOW())::integer
+          ELSE NULL
+        END as "daysUntilExpiry",
+        CASE
+          WHEN t.is_periodic = true THEN 'periodic'
+          WHEN t.end_date IS NULL THEN 'active'
+          WHEN t.end_date < NOW() THEN 'expired'
+          WHEN t.end_date < NOW() + INTERVAL '30 days' THEN 'critical'
+          WHEN t.end_date < NOW() + INTERVAL '60 days' THEN 'warning'
+          WHEN t.end_date < NOW() + INTERVAL '90 days' THEN 'upcoming'
+          ELSE 'active'
+        END as "urgency"
+      FROM tenancy t
+      LEFT JOIN property p ON t.property_id = p.id
+      LEFT JOIN tenant tn ON t.tenant_id = tn.id
+      LEFT JOIN landlord l ON t.landlord_id = l.id
+      WHERE t.status IN ('active', 'pending')
+      ORDER BY
+        CASE
+          WHEN t.end_date IS NULL THEN 3
+          WHEN t.end_date < NOW() THEN 0
+          WHEN t.end_date < NOW() + INTERVAL '30 days' THEN 1
+          ELSE 2
+        END,
+        t.end_date ASC
+    `);
+
+    const rows = result.rows.map(r => ({
+      ...r,
+      rentAmount: r.rentAmount ? parseFloat(r.rentAmount) : null,
+      depositAmount: r.depositAmount ? parseFloat(r.depositAmount) : null,
+      isPeriodic: r.isPeriodic || false,
+    }));
+
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching tenancy expiry calendar:', error);
+    res.status(500).json({ error: 'Failed to fetch tenancy expiry calendar' });
   }
 });

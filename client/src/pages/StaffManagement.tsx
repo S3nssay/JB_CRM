@@ -129,6 +129,8 @@ export default function StaffManagement() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [showRoleAssignDialog, setShowRoleAssignDialog] = useState(false);
+  const [editDepartment, setEditDepartment] = useState<string>('');
+  const [editStatus, setEditStatus] = useState<string>('active');
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [selectedRoleId, setSelectedRoleId] = useState<string>('');
 
@@ -330,6 +332,8 @@ export default function StaffManagement() {
 
   const handleEditStaff = (member: StaffMember) => {
     setSelectedStaff(member);
+    setEditDepartment(member.department || '');
+    setEditStatus(member.isActive ? 'active' : 'inactive');
     setShowEditDialog(true);
   };
 
@@ -1127,9 +1131,9 @@ export default function StaffManagement() {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Department</label>
-                  <Select defaultValue={selectedStaff.department || 'sales'}>
+                  <Select value={editDepartment} onValueChange={setEditDepartment}>
                     <SelectTrigger>
-                      <SelectValue />
+                      <SelectValue placeholder="Select department" />
                     </SelectTrigger>
                     <SelectContent>
                       {departmentOptions.map(d => (
@@ -1140,7 +1144,7 @@ export default function StaffManagement() {
                 </div>
                 <div>
                   <label className="text-sm font-medium">Status</label>
-                  <Select defaultValue={selectedStaff.isActive ? 'active' : 'inactive'}>
+                  <Select value={editStatus} onValueChange={setEditStatus}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -1161,7 +1165,7 @@ export default function StaffManagement() {
                   const phone = (document.getElementById('edit-phone') as HTMLInputElement)?.value;
                   updateStaffMutation.mutate({
                     id: selectedStaff.id,
-                    data: { fullName, email, phone }
+                    data: { fullName, email, phone, department: editDepartment || null, isActive: editStatus === 'active' }
                   });
                 }}>
                   Save Changes

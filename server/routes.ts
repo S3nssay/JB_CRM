@@ -175,6 +175,9 @@ function parsePrice(priceStr: string): number {
 import { crmRouter } from './crmRoutes';
 import { financeRouter } from './financeRoutes';
 import { pmWorkflowRouter } from './pmWorkflowRoutes';
+import { tenancyOnboardingRouter } from './tenancyOnboardingRoutes';
+import { slRouter } from './salesLettingsRoutes';
+import { messageRouterAgent } from './services/messageRouterAgent';
 import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
 import path from 'path';
 import express from 'express';
@@ -189,6 +192,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', crmRouter);
   app.use('/api/crm', financeRouter);
   app.use('/api/crm', pmWorkflowRouter);
+  app.use('/api/crm/pm', pmWorkflowRouter);  // Also mount at /pm/ prefix for frontend compatibility
+  app.use('/api/crm', tenancyOnboardingRouter);
+  app.use('/api/crm', slRouter);
+  app.use('/api/crm', messageRouterAgent.router);
 
   // ==========================================
   // TWILIO VOICE WEBHOOKS (at /api/voice/*)
@@ -1243,26 +1250,154 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Book a viewing (public, token-verified)
+  // Public endpoint: get viewing availability for a property (used by chatbot)
+  app.get('/api/public/properties/:id/viewing-slots', async (req: Request, res: Response) => {
+    try {
+      const propertyId = parseInt(req.params.id);
+      if (isNaN(propertyId)) return res.status(400).json({ error: 'Invalid property ID' });
+
+      const propResult = await pool.query(
+        `SELECT id, group_viewings_only, title, address_line1, postcode FROM properties WHERE id = $1`,
+        [propertyId]
+      );
+      if (propResult.rows.length === 0) return res.status(404).json({ error: 'Property not found' });
+      const property = propResult.rows[0];
+
+      const now = new Date();
+      const thirtyDaysLater = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      const eventsResult = await pool.query(`
+        SELECT id, title, start_time, end_time, is_group_viewing, max_attendees, current_attendees_count, status
+        FROM calendar_event
+        WHERE property_id = $1 AND start_time >= $2 AND start_time <= $3
+          AND status NOT IN ('cancelled') AND event_type = 'viewing'
+        ORDER BY start_time ASC
+      `, [propertyId, now, thirtyDaysLater]);
+
+      const events = eventsResult.rows;
+      const groupOnly = property.group_viewings_only;
+
+      if (groupOnly) {
+        const groupSlots = events
+          .filter((e: any) => e.is_group_viewing && (e.current_attendees_count || 0) < (e.max_attendees || 10))
+          .map((e: any) => ({
+            id: e.id,
+            startTime: e.start_time,
+            endTime: e.end_time,
+            spotsLeft: (e.max_attendees || 10) - (e.current_attendees_count || 0),
+            maxAttendees: e.max_attendees || 10,
+          }));
+        return res.json({ groupViewingsOnly: true, slots: groupSlots });
+      }
+
+      // Return busy times and available group slots
+      const busySlots = events.map((e: any) => ({ startTime: e.start_time, endTime: e.end_time }));
+      const groupSlots = events
+        .filter((e: any) => e.is_group_viewing && (e.current_attendees_count || 0) < (e.max_attendees || 10))
+        .map((e: any) => ({
+          id: e.id,
+          startTime: e.start_time,
+          endTime: e.end_time,
+          spotsLeft: (e.max_attendees || 10) - (e.current_attendees_count || 0),
+          maxAttendees: e.max_attendees || 10,
+        }));
+
+      res.json({ groupViewingsOnly: false, busySlots, groupSlots });
+    } catch (error) {
+      console.error('Error fetching public viewing slots:', error);
+      res.status(500).json({ error: 'Failed to fetch viewing slots' });
+    }
+  });
+
   app.post('/api/public/leads/:id/viewings', async (req: Request, res: Response) => {
     try {
       const leadId = parseInt(req.params.id);
-      const { leadToken, propertyId, scheduledAt } = req.body;
+      const { leadToken, propertyId, scheduledAt, groupSlotId } = req.body;
 
       if (isNaN(leadId) || !leadToken || !verifyLeadToken(leadId, leadToken)) {
         return res.status(403).json({ error: 'Invalid or missing lead token' });
       }
 
-      if (!propertyId || !scheduledAt) {
-        return res.status(400).json({ error: 'Property ID and scheduled time are required' });
+      if (!propertyId || (!scheduledAt && !groupSlotId)) {
+        return res.status(400).json({ error: 'Property ID and scheduled time (or group slot) are required' });
       }
 
+      // Get lead and property info
+      const leadRow = await pool.query(`SELECT name, email, phone FROM lead WHERE id = $1`, [leadId]);
+      const propRow = await pool.query(`SELECT id, group_viewings_only, address, address_line1, postcode FROM properties WHERE id = $1`, [propertyId]);
+      const leadName = leadRow.rows[0]?.name || 'Website Lead';
+      const propAddress = propRow.rows[0]?.address || propRow.rows[0]?.address_line1 || `Property #${propertyId}`;
+      const groupOnly = propRow.rows[0]?.group_viewings_only;
+
+      // If group viewings only and no group slot selected, reject
+      if (groupOnly && !groupSlotId) {
+        return res.status(400).json({ error: 'This property only accepts group viewing bookings. Please select a group viewing slot.' });
+      }
+
+      let actualScheduledAt = scheduledAt;
+
+      // If joining a group slot
+      if (groupSlotId) {
+        const slotResult = await pool.query(`
+          SELECT id, start_time, max_attendees, current_attendees_count, attendees, is_group_viewing
+          FROM calendar_event WHERE id = $1 AND property_id = $2 AND is_group_viewing = true AND status != 'cancelled'
+        `, [groupSlotId, propertyId]);
+
+        if (slotResult.rows.length === 0) {
+          return res.status(404).json({ error: 'Group viewing slot not found' });
+        }
+
+        const slot = slotResult.rows[0];
+        if ((slot.current_attendees_count || 0) >= (slot.max_attendees || 10)) {
+          return res.status(409).json({ error: 'This group viewing slot is full' });
+        }
+
+        // Add lead to the group slot attendees
+        const existingAttendees = slot.attendees || [];
+        const updatedAttendees = [...existingAttendees, { name: leadName, email: leadRow.rows[0]?.email, phone: leadRow.rows[0]?.phone, type: 'lead' }];
+        await pool.query(`
+          UPDATE calendar_event SET attendees = $1, current_attendees_count = current_attendees_count + 1 WHERE id = $2
+        `, [JSON.stringify(updatedAttendees), groupSlotId]);
+
+        actualScheduledAt = slot.start_time;
+      } else {
+        // Individual booking: check for conflicts
+        const startTime = new Date(scheduledAt);
+        const endTime = new Date(startTime.getTime() + 30 * 60000);
+
+        const conflictResult = await pool.query(`
+          SELECT id FROM calendar_event
+          WHERE property_id = $1 AND status != 'cancelled' AND event_type = 'viewing'
+            AND start_time < $3 AND end_time > $2
+        `, [propertyId, startTime, endTime]);
+
+        if (conflictResult.rows.length > 0) {
+          return res.status(409).json({ error: 'This time slot is not available. Please choose a different time.' });
+        }
+
+        // Create a new calendar event
+        await pool.query(`
+          INSERT INTO calendar_event (title, description, event_type, start_time, end_time, location, property_id, organizer_id, attendees, status, notes)
+          VALUES ($1, $2, 'viewing', $3, $4, $5, $6, 1, $7, 'scheduled', 'Auto-created from website chatbot booking')
+        `, [
+          `Viewing: ${propAddress}`,
+          `Website viewing with ${leadName}`,
+          startTime,
+          endTime,
+          propAddress,
+          propertyId,
+          JSON.stringify([{ name: leadName, email: leadRow.rows[0]?.email, phone: leadRow.rows[0]?.phone, type: 'lead' }]),
+        ]);
+      }
+
+      // Create lead_viewing record
       const result = await pool.query(`
         INSERT INTO lead_viewing (lead_id, property_id, scheduled_at, duration, viewing_type, status)
         VALUES ($1, $2, $3, 30, 'in_person', 'scheduled')
         RETURNING *
-      `, [leadId, propertyId, scheduledAt]);
+      `, [leadId, propertyId, actualScheduledAt]);
 
-      // Update lead status to viewing_booked
+      // Update lead status
       await pool.query(`
         UPDATE lead SET
           status = CASE WHEN status IN ('new', 'contacted', 'qualified') THEN 'viewing_booked' ELSE status END,
@@ -1270,10 +1405,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         WHERE id = $1
       `, [leadId]);
 
+      // Log activity
       await pool.query(`
         INSERT INTO lead_activity (lead_id, activity_type, description, related_viewing_id, related_property_id)
-        VALUES ($1, 'viewing_booked', 'Viewing booked via website chatbot', $2, $3)
-      `, [leadId, result.rows[0].id, propertyId]);
+        VALUES ($1, 'viewing_booked', $2, $3, $4)
+      `, [leadId, groupSlotId ? 'Viewing booked via chatbot (group slot)' : 'Viewing booked via website chatbot', result.rows[0].id, propertyId]);
 
       res.json(result.rows[0]);
     } catch (error) {

@@ -14,6 +14,7 @@ import {
   User, Home, FileText, CheckCircle, Loader2, Building2,
   Clock, Edit, MessageSquare, Send, ChevronRight
 } from 'lucide-react';
+import { CallButton, EmailButton } from '@/components/CRMCommunications';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
@@ -43,13 +44,15 @@ export default function LandlordLeadDetails() {
   const [scheduledDate, setScheduledDate] = useState('');
   const [valuationAmount, setValuationAmount] = useState('');
   const [valuationNotes, setValuationNotes] = useState('');
+  const [valuationReportFile, setValuationReportFile] = useState<File | null>(null);
+  const [isUploadingReport, setIsUploadingReport] = useState(false);
   const [propertyTitle, setPropertyTitle] = useState('');
 
   // Fetch lead details
   const { data: lead, isLoading, error } = useQuery({
     queryKey: ['/api/crm/landlord-leads', leadId],
     queryFn: async () => {
-      const response = await fetch(`/api/crm/landlord-leads/${leadId}`);
+      const response = await fetch(`/api/crm/landlord-leads/${leadId}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch lead');
       return response.json();
     }
@@ -59,7 +62,7 @@ export default function LandlordLeadDetails() {
   const { data: agents = [] } = useQuery({
     queryKey: ['/api/crm/users'],
     queryFn: async () => {
-      const response = await fetch('/api/crm/users');
+      const response = await fetch('/api/crm/users', { credentials: 'include' });
       if (!response.ok) return [];
       return response.json();
     }
@@ -71,6 +74,7 @@ export default function LandlordLeadDetails() {
       const response = await fetch(`/api/crm/landlord-leads/${leadId}/stage`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ stage })
       });
       if (!response.ok) throw new Error('Failed to update stage');
@@ -92,6 +96,7 @@ export default function LandlordLeadDetails() {
       const response = await fetch(`/api/crm/landlord-leads/${leadId}/schedule-valuation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ scheduledDate })
       });
       if (!response.ok) throw new Error('Failed to schedule valuation');
@@ -111,12 +116,49 @@ export default function LandlordLeadDetails() {
   // Complete valuation mutation
   const completeValuationMutation = useMutation({
     mutationFn: async () => {
+      let valuationReportUrl: string | null = null;
+
+      // Upload report file first if provided
+      if (valuationReportFile) {
+        setIsUploadingReport(true);
+        const formData = new FormData();
+        formData.append('document', valuationReportFile);
+        const uploadRes = await fetch('/api/crm/upload/document', {
+          method: 'POST',
+          credentials: 'include',
+          body: formData
+        });
+        if (!uploadRes.ok) throw new Error('Failed to upload valuation report');
+        const uploadData = await uploadRes.json();
+        valuationReportUrl = uploadData.url;
+
+        // Also create a document record in the repository
+        await fetch('/api/crm/documents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: `Valuation Report - ${lead?.property_address || 'Property'}`,
+            originalName: valuationReportFile.name,
+            documentType: 'report',
+            storageUrl: uploadData.url,
+            mimeType: uploadData.mimeType || valuationReportFile.type,
+            size: uploadData.size || valuationReportFile.size,
+            entityType: 'property',
+            description: `Valuation report for ${lead?.property_address || 'property'}`
+          })
+        });
+        setIsUploadingReport(false);
+      }
+
       const response = await fetch(`/api/crm/landlord-leads/${leadId}/complete-valuation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           valuationAmount: Math.round(parseFloat(valuationAmount) * 100),
-          notes: valuationNotes
+          notes: valuationNotes,
+          valuationReportUrl
         })
       });
       if (!response.ok) throw new Error('Failed to complete valuation');
@@ -127,9 +169,11 @@ export default function LandlordLeadDetails() {
       setShowValuationDialog(false);
       setValuationAmount('');
       setValuationNotes('');
-      toast({ title: 'Valuation completed', description: 'The valuation has been recorded.' });
+      setValuationReportFile(null);
+      toast({ title: 'Valuation completed', description: 'The valuation and report have been recorded.' });
     },
     onError: () => {
+      setIsUploadingReport(false);
       toast({ title: 'Error', description: 'Failed to complete valuation', variant: 'destructive' });
     }
   });
@@ -139,7 +183,8 @@ export default function LandlordLeadDetails() {
     mutationFn: async () => {
       const response = await fetch(`/api/crm/landlord-leads/${leadId}/sign-instruction`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to sign instruction');
       return response.json();
@@ -159,6 +204,7 @@ export default function LandlordLeadDetails() {
       const response = await fetch(`/api/crm/landlord-leads/${leadId}/convert-to-listing`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           propertyData: { title: propertyTitle }
         })
@@ -318,15 +364,26 @@ export default function LandlordLeadDetails() {
                   </div>
                   <div className="flex items-center gap-2">
                     <Mail className="h-4 w-4 text-muted-foreground" />
-                    <a href={`mailto:${lead.email}`} className="text-[#791E75] hover:underline">
-                      {lead.email}
-                    </a>
+                    <span className="text-sm">{lead.email}</span>
+                    <EmailButton
+                      email={lead.email}
+                      contactName={lead.full_name}
+                      defaultSubject={`Re: ${lead.inquiry_type} inquiry - ${lead.property_address || ''}`}
+                      entityType="contact"
+                      entityId={lead.id}
+                      size="sm"
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                    <a href={`tel:${lead.phone}`} className="text-[#791E75] hover:underline">
-                      {lead.phone}
-                    </a>
+                    <span className="text-sm">{lead.phone}</span>
+                    <CallButton
+                      phoneNumber={lead.phone}
+                      contactName={lead.full_name}
+                      entityType="contact"
+                      entityId={lead.id}
+                      size="sm"
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -527,18 +584,24 @@ export default function LandlordLeadDetails() {
 
                 <hr className="my-2" />
 
-                {/* Contact Actions */}
-                <Button variant="outline" className="w-full" asChild>
-                  <a href={`mailto:${lead.email}`}>
-                    <Mail className="mr-2 h-4 w-4" />
-                    Send Email
-                  </a>
+                {/* Contact Actions - auto-mark as contacted */}
+                <Button variant="outline" className="w-full" onClick={() => {
+                  window.open(`mailto:${lead.email}?subject=Re: ${lead.inquiry_type || 'Property'} enquiry - ${lead.property_address || ''}`, '_blank');
+                  if (lead.workflow_stage === 'new') {
+                    updateStageMutation.mutate('contacted');
+                  }
+                }}>
+                  <Mail className="mr-2 h-4 w-4" />
+                  Send Email
                 </Button>
-                <Button variant="outline" className="w-full" asChild>
-                  <a href={`tel:${lead.phone}`}>
-                    <Phone className="mr-2 h-4 w-4" />
-                    Call
-                  </a>
+                <Button variant="outline" className="w-full" onClick={() => {
+                  window.open(`tel:${lead.phone}`, '_self');
+                  if (lead.workflow_stage === 'new') {
+                    updateStageMutation.mutate('contacted');
+                  }
+                }}>
+                  <Phone className="mr-2 h-4 w-4" />
+                  Call
                 </Button>
               </CardContent>
             </Card>
@@ -621,6 +684,16 @@ export default function LandlordLeadDetails() {
               />
             </div>
             <div>
+              <Label>Valuation Report</Label>
+              <Input
+                type="file"
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => setValuationReportFile(e.target.files?.[0] || null)}
+                className="cursor-pointer"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Upload the valuation report (PDF, Word or image). This will be saved to the property document repository.</p>
+            </div>
+            <div>
               <Label>Notes</Label>
               <Textarea
                 placeholder="Any notes about the valuation..."
@@ -635,12 +708,12 @@ export default function LandlordLeadDetails() {
             </Button>
             <Button
               onClick={() => completeValuationMutation.mutate()}
-              disabled={completeValuationMutation.isPending}
+              disabled={completeValuationMutation.isPending || isUploadingReport}
             >
-              {completeValuationMutation.isPending ? (
+              {(completeValuationMutation.isPending || isUploadingReport) ? (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
-              Complete Valuation
+              {isUploadingReport ? 'Uploading Report...' : 'Complete Valuation'}
             </Button>
           </DialogFooter>
         </DialogContent>

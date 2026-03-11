@@ -75,6 +75,7 @@ export default function TenantManagement() {
   const [user, setUser] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [cardFilter, setCardFilter] = useState<'all' | 'total' | 'active' | 'portal' | 'new'>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -246,7 +247,7 @@ export default function TenantManagement() {
     }
   };
 
-  // Filter tenants by search and status
+  // Filter tenants by search, status, and card filter
   const filteredTenants = tenants.filter((t: Tenant) => {
     const matchesSearch = !searchTerm ||
       t.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -257,7 +258,18 @@ export default function TenantManagement() {
 
     const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
 
-    return matchesSearch && matchesStatus;
+    let matchesCardFilter = true;
+    if (cardFilter === 'active') {
+      matchesCardFilter = t.status === 'active';
+    } else if (cardFilter === 'portal') {
+      matchesCardFilter = !!t.email;
+    } else if (cardFilter === 'new') {
+      const created = new Date(t.createdAt);
+      const now = new Date();
+      matchesCardFilter = created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+    }
+
+    return matchesSearch && matchesStatus && matchesCardFilter;
   });
 
   // Format currency helper
@@ -317,7 +329,10 @@ export default function TenantManagement() {
         <div className="space-y-6">
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card>
+            <Card
+              className={`cursor-pointer transition-all hover:shadow-md ${cardFilter === 'all' || cardFilter === 'total' ? 'ring-2 ring-[#791E75]' : ''}`}
+              onClick={() => setCardFilter(cardFilter === 'total' ? 'all' : 'total')}
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -331,7 +346,10 @@ export default function TenantManagement() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card
+              className={`cursor-pointer transition-all hover:shadow-md ${cardFilter === 'active' ? 'ring-2 ring-green-500' : ''}`}
+              onClick={() => setCardFilter(cardFilter === 'active' ? 'all' : 'active')}
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -347,7 +365,10 @@ export default function TenantManagement() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card
+              className={`cursor-pointer transition-all hover:shadow-md ${cardFilter === 'portal' ? 'ring-2 ring-[#F8B324]' : ''}`}
+              onClick={() => setCardFilter(cardFilter === 'portal' ? 'all' : 'portal')}
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -363,7 +384,10 @@ export default function TenantManagement() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card
+              className={`cursor-pointer transition-all hover:shadow-md ${cardFilter === 'new' ? 'ring-2 ring-purple-500' : ''}`}
+              onClick={() => setCardFilter(cardFilter === 'new' ? 'all' : 'new')}
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -416,8 +440,26 @@ export default function TenantManagement() {
           {/* Tenants Table */}
           <Card>
             <CardHeader>
-              <CardTitle>Tenants Directory</CardTitle>
-              <CardDescription>Manage all tenants and their property assignments</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>
+                    {cardFilter === 'all' || cardFilter === 'total' ? 'Tenants Directory' :
+                     cardFilter === 'active' ? 'Active Tenants' :
+                     cardFilter === 'portal' ? 'Tenants With Portal Access' :
+                     'New Tenants This Month'}
+                  </CardTitle>
+                  <CardDescription>
+                    {cardFilter === 'all' || cardFilter === 'total'
+                      ? 'Manage all tenants and their property assignments'
+                      : `Showing ${filteredTenants.length} tenants`}
+                  </CardDescription>
+                </div>
+                {cardFilter !== 'all' && cardFilter !== 'total' && (
+                  <Button variant="ghost" size="sm" onClick={() => setCardFilter('all')}>
+                    Clear filter
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (

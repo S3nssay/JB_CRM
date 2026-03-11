@@ -176,6 +176,7 @@ export default function CRMDashboard() {
   const [showTicketDialog, setShowTicketDialog] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importUrl, setImportUrl] = useState('');
+  const [importListingType, setImportListingType] = useState<'sale' | 'rental'>('sale');
   const [isImporting, setIsImporting] = useState(false);
   const [propertySearch, setPropertySearch] = useState('');
   const [propertyFilter, setPropertyFilter] = useState<'all' | 'sale' | 'rental' | 'commercial_sale' | 'commercial_rental'>('all');
@@ -358,14 +359,17 @@ export default function CRMDashboard() {
 
     try {
       const response = await fetch(`/api/crm/properties/${propertyId}`, {
-        method: 'DELETE'
+        method: 'DELETE',
+        credentials: 'include'
       });
-      if (response.ok) {
-        toast({ title: 'Property deleted', description: 'The property has been removed.' });
-        refetchProperties();
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({ error: 'Failed to delete property' }));
+        throw new Error(err.error || 'Failed to delete property');
       }
-    } catch (error) {
-      toast({ title: 'Error', description: 'Failed to delete property', variant: 'destructive' });
+      toast({ title: 'Property deleted', description: 'The property has been removed.' });
+      refetchProperties();
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message || 'Failed to delete property', variant: 'destructive' });
     }
   };
 
@@ -378,7 +382,7 @@ export default function CRMDashboard() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ url: importUrl })
+        body: JSON.stringify({ url: importUrl, listingType: importListingType })
       });
 
       if (!response.ok) {
@@ -505,6 +509,25 @@ export default function CRMDashboard() {
                   <p className="text-xs text-muted-foreground">
                     Paste the full URL from the John Barclay website. The system will scrape details and download images.
                   </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Listing Type</label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${importListingType === 'sale' ? 'bg-[#791E75] text-white border-[#791E75]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                      onClick={() => setImportListingType('sale')}
+                    >
+                      Sale
+                    </button>
+                    <button
+                      type="button"
+                      className={`flex-1 px-4 py-2 rounded-lg border text-sm font-medium transition-all ${importListingType === 'rental' ? 'bg-[#791E75] text-white border-[#791E75]' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                      onClick={() => setImportListingType('rental')}
+                    >
+                      Rental
+                    </button>
+                  </div>
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button variant="outline" onClick={() => setShowImportDialog(false)}>Cancel</Button>
@@ -895,7 +918,7 @@ export default function CRMDashboard() {
                                 </Badge>
                               </TableCell>
                               <TableCell className="font-semibold">
-                                {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(property.price)}
+                                {new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(property.price / 100)}
                                 {property.isRental === true && '/mo'}
                               </TableCell>
                               <TableCell>

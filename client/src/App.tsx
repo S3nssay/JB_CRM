@@ -74,6 +74,7 @@ import ContactManagement from "@/pages/ContactManagement";
 import SalesProgressionPage from "@/pages/SalesProgressionPage";
 import ContractorManagement from "@/pages/ContractorManagement";
 import LandlordLeadPipeline from "@/pages/LandlordLeadPipeline";
+import PropertyPipeline from "@/pages/PropertyPipeline";
 import LandlordLeadDetails from "@/pages/LandlordLeadDetails";
 import PropertyImport from "@/pages/PropertyImport";
 import TermsAndConditions from "@/pages/TermsAndConditions";
@@ -81,7 +82,7 @@ import PrivacyPolicy from "@/pages/PrivacyPolicy";
 import SecurityMatrix from "@/pages/SecurityMatrix";
 import MyDesk from "@/pages/MyDesk";
 import DashboardOverview from "@/pages/DashboardOverview";
-import MaintenanceTasks from "@/pages/MaintenanceTasks";
+
 import CMSManagement from "@/pages/CMSManagement";
 import CMSPageEditor from "@/pages/CMSPageEditor";
 import CMSMediaLibrary from "@/pages/CMSMediaLibrary";
@@ -107,6 +108,7 @@ import AdminInbox from "@/pages/AdminInbox";
 
 // PM Workflow Pages
 import PMTrackingDashboard from "@/pages/PMTrackingDashboard";
+import SalesLettingsDashboard from "@/pages/SalesLettingsDashboard";
 import RentCollection from "@/pages/RentCollection";
 import DepositManagement from "@/pages/DepositManagement";
 import ComplianceCalendar from "@/pages/ComplianceCalendar";
@@ -115,6 +117,7 @@ import TenancyExpiryCalendar from "@/pages/TenancyExpiryCalendar";
 import EndOfTenancy from "@/pages/EndOfTenancy";
 import InventoryTracking from "@/pages/InventoryTracking";
 import CompanySettings from "@/pages/CompanySettings";
+import TenancyOnboarding from "@/pages/TenancyOnboarding";
 
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
@@ -238,6 +241,8 @@ function Router() {
         <Route path="/crm/login" component={CRMLogin} />
 
         {/* CRM Routes - all wrapped with persistent sidebar layout */}
+        <Route path="/crm/tenancy-onboarding"><CRMLayout><TenancyOnboarding /></CRMLayout></Route>
+        <Route path="/crm/sl-dashboard"><CRMLayout><SalesLettingsDashboard /></CRMLayout></Route>
         <Route path="/crm"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/dashboard"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/properties/create"><CRMLayout><PropertyCreate /></CRMLayout></Route>
@@ -246,7 +251,7 @@ function Router() {
         <Route path="/crm/properties/:id">{(params: any) => <CRMLayout><PropertyEdit {...params} /></CRMLayout>}</Route>
         <Route path="/crm/properties"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/workflows"><CRMLayout><WorkflowManagement /></CRMLayout></Route>
-        <Route path="/crm/maintenance"><CRMLayout><MaintenanceTasks /></CRMLayout></Route>
+
         <Route path="/crm/property-management"><CRMLayout><PropertyManagement /></CRMLayout></Route>
         <Route path="/crm/voice-agent"><CRMLayout><VoiceAgentDashboard /></CRMLayout></Route>
         <Route path="/crm/users"><CRMLayout><UserManagement /></CRMLayout></Route>
@@ -280,11 +285,14 @@ function Router() {
         <Route path="/crm/leads"><CRMLayout><LeadManagement /></CRMLayout></Route>
         <Route path="/crm/website-leads"><CRMLayout><WebsiteLeads /></CRMLayout></Route>
         <Route path="/crm/landlord-lead-pipeline"><CRMLayout><LandlordLeadPipeline /></CRMLayout></Route>
+        <Route path="/crm/property-pipeline"><CRMLayout><PropertyPipeline /></CRMLayout></Route>
         <Route path="/crm/landlord-lead/:id">{(params: any) => <CRMLayout><LandlordLeadDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/ai-agents"><CRMLayout><AIAgentDashboard /></CRMLayout></Route>
         <Route path="/crm/landlords"><CRMLayout><LandlordManagement /></CRMLayout></Route>
         <Route path="/crm/landlords/:id">{(params: any) => <CRMLayout><LandlordDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/landlords/:id/properties">{(params: any) => <CRMLayout><LandlordProperties {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/tenants/:id/tickets">{(params: any) => <CRMLayout><TenantDetails {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/tenants/:id">{(params: any) => <CRMLayout><TenantDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/tenants"><CRMLayout><TenantManagement /></CRMLayout></Route>
         <Route path="/crm/contacts"><CRMLayout><ContactManagement /></CRMLayout></Route>
         <Route path="/crm/contacts/:id">{(params: any) => <CRMLayout><ContactManagement {...params} /></CRMLayout>}</Route>
@@ -300,6 +308,7 @@ function Router() {
         <Route path="/crm/sales-progression"><CRMLayout><SalesProgressionPage /></CRMLayout></Route>
         <Route path="/crm/contractors"><CRMLayout><ContractorManagement /></CRMLayout></Route>
         <Route path="/crm/invoices"><CRMLayout><InvoiceManagement /></CRMLayout></Route>
+        <Route path="/crm/business-invoices"><CRMLayout><InvoiceManagement /></CRMLayout></Route>
         <Route path="/crm/arrears"><CRMLayout><ArrearsTracker /></CRMLayout></Route>
         <Route path="/crm/statements"><CRMLayout><LandlordStatements /></CRMLayout></Route>
         <Route path="/crm/financials"><CRMLayout><PortfolioFinancials /></CRMLayout></Route>

@@ -231,7 +231,7 @@ export default function PropertyCreate() {
         propertyType: parsedData.propertyType || (finalIsResidential ? 'flat' : 'retail'),
         title: parsedData.title || `${parsedData.bedrooms} Bed Property in ${parsedData.postcode}`,
         description: parsedData.description || '',
-        price: Math.round(parseFloat(price) * 100),
+        price: Math.round(parseFloat(price)),
         bedrooms: finalIsResidential ? (parsedData.bedrooms || 1) : 0,
         bathrooms: finalIsResidential ? (parsedData.bathrooms || 1) : 0,
         receptions: parsedData.receptions || 0,
