@@ -16,6 +16,7 @@ import { Shield, ShieldAlert, ShieldCheck, PoundSterling, Calendar } from 'lucid
 import { format } from 'date-fns';
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { toast } from "@/hooks/use-toast";
+import { formatPence } from '@/lib/utils';
 
 interface Deposit {
   tenancy_id: number;
@@ -37,10 +38,6 @@ interface DepositsResponse {
     unprotected: number;
     totalValue: number;
   };
-}
-
-function formatAmount(pence: number): string {
-  return `\u00A3${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 export default function DepositManagement() {
@@ -141,7 +138,7 @@ export default function DepositManagement() {
             <PoundSterling className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatAmount(stats?.totalValue ?? 0)}</div>
+            <div className="text-2xl font-bold">{formatPence(stats?.totalValue ?? 0)}</div>
           </CardContent>
         </Card>
       </div>
@@ -182,7 +179,7 @@ export default function DepositManagement() {
                         <TableCell className="font-medium">{deposit.tenant_name}</TableCell>
                         <TableCell>{deposit.property_address}</TableCell>
                         <TableCell>{deposit.landlord_name}</TableCell>
-                        <TableCell className="text-right">{formatAmount(deposit.deposit_amount)}</TableCell>
+                        <TableCell className="text-right">{formatPence(deposit.deposit_amount)}</TableCell>
                         <TableCell>{deposit.deposit_scheme ?? '-'}</TableCell>
                         <TableCell>{deposit.deposit_holder_type ?? '-'}</TableCell>
                         <TableCell>{deposit.deposit_certificate_number ?? '-'}</TableCell>

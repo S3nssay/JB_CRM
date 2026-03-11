@@ -15,63 +15,42 @@ const requireAgent = (req: any, res: any, next: any) => {
 
 pmWorkflowRouter.get("/pm-dashboard/summary", requireAgent, async (req, res) => {
   try {
-    // Tenancy counts by status
-    const tenancyResult = await pool.query(
-      "SELECT status, COUNT(*)::int as count FROM tenancy GROUP BY status"
-    );
+    // Run all independent queries in parallel
+    const [tenancyResult, rentResult, depositResult, complianceResult, arrearsResult, endingResult] = await Promise.all([
+      pool.query("SELECT status, COUNT(*)::int as count FROM tenancy GROUP BY status"),
+      pool.query("SELECT status, COUNT(*)::int as count, COALESCE(SUM(amount), 0)::numeric as total FROM invoice WHERE invoice_type = 'rent' AND date_trunc('month', due_date) = date_trunc('month', CURRENT_DATE) GROUP BY status"),
+      pool.query("SELECT CASE WHEN deposit_certificate_number IS NOT NULL AND deposit_certificate_number != '' THEN 'protected' ELSE 'unprotected' END as protection_status, COUNT(*)::int as count FROM tenancy WHERE deposit_amount IS NOT NULL GROUP BY protection_status"),
+      pool.query("SELECT CASE WHEN expiry_date < CURRENT_DATE THEN 'expired' WHEN expiry_date < CURRENT_DATE + INTERVAL '30 days' THEN 'expiring_soon' ELSE 'valid' END as compliance_status, COUNT(*)::int as count FROM property_certificate GROUP BY compliance_status"),
+      pool.query("SELECT COUNT(*)::int as active_cases, COALESCE(SUM(amount_outstanding), 0)::numeric as total_outstanding FROM arrears WHERE status = 'active'"),
+      pool.query("SELECT t.id, t.end_date, p.address as property_address, te.name as tenant_name FROM tenancy t LEFT JOIN property p ON t.property_id = p.id LEFT JOIN tenant te ON t.tenant_id = te.id WHERE t.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days' AND t.status = 'active' ORDER BY t.end_date ASC"),
+    ]);
+
     const tenancyCounts: Record<string, number> = { active: 0, pending: 0, ending: 0, closed: 0 };
     for (const row of tenancyResult.rows) {
-      if (row.status in tenancyCounts) {
-        tenancyCounts[row.status] = row.count;
-      }
+      if (row.status in tenancyCounts) tenancyCounts[row.status] = row.count;
     }
 
-    // Rent collection for current month
-    const rentResult = await pool.query(
-      "SELECT status, COUNT(*)::int as count, COALESCE(SUM(amount), 0)::numeric as total FROM invoice WHERE invoice_type = 'rent' AND date_trunc('month', due_date) = date_trunc('month', CURRENT_DATE) GROUP BY status"
-    );
     const rentCollection: Record<string, { count: number; total: number }> = {
-      paid: { count: 0, total: 0 },
-      pending: { count: 0, total: 0 },
-      overdue: { count: 0, total: 0 }
+      paid: { count: 0, total: 0 }, pending: { count: 0, total: 0 }, overdue: { count: 0, total: 0 }
     };
     for (const row of rentResult.rows) {
-      if (row.status in rentCollection) {
-        rentCollection[row.status] = { count: row.count, total: parseFloat(row.total) };
-      }
+      if (row.status in rentCollection) rentCollection[row.status] = { count: row.count, total: parseFloat(row.total) };
     }
 
-    // Deposit protection status
-    const depositResult = await pool.query(
-      "SELECT CASE WHEN deposit_certificate_number IS NOT NULL AND deposit_certificate_number != '' THEN 'protected' ELSE 'unprotected' END as protection_status, COUNT(*)::int as count FROM tenancy WHERE deposit_amount IS NOT NULL GROUP BY protection_status"
-    );
     const depositProtection: Record<string, number> = { protected: 0, unprotected: 0 };
     for (const row of depositResult.rows) {
       depositProtection[row.protection_status] = row.count;
     }
 
-    // Compliance status from property_certificate
-    const complianceResult = await pool.query(
-      "SELECT CASE WHEN expiry_date < CURRENT_DATE THEN 'expired' WHEN expiry_date < CURRENT_DATE + INTERVAL '30 days' THEN 'expiring_soon' ELSE 'valid' END as compliance_status, COUNT(*)::int as count FROM property_certificate GROUP BY compliance_status"
-    );
     const compliance: Record<string, number> = { valid: 0, expiring_soon: 0, expired: 0 };
     for (const row of complianceResult.rows) {
       compliance[row.compliance_status] = row.count;
     }
 
-    // Arrears summary
-    const arrearsResult = await pool.query(
-      "SELECT COUNT(*)::int as active_cases, COALESCE(SUM(amount_outstanding), 0)::numeric as total_outstanding FROM arrears WHERE status = 'active'"
-    );
     const arrears = {
       activeCases: arrearsResult.rows[0]?.active_cases || 0,
       totalOutstanding: parseFloat(arrearsResult.rows[0]?.total_outstanding || "0")
     };
-
-    // Tenancies ending in next 90 days
-    const endingResult = await pool.query(
-      "SELECT t.id, t.end_date, p.address as property_address, te.name as tenant_name FROM tenancy t LEFT JOIN property p ON t.property_id = p.id LEFT JOIN tenant te ON t.tenant_id = te.id WHERE t.end_date BETWEEN CURRENT_DATE AND CURRENT_DATE + INTERVAL '90 days' AND t.status = 'active' ORDER BY t.end_date ASC"
-    );
 
     res.json({
       tenancies: tenancyCounts,
@@ -83,7 +62,7 @@ pmWorkflowRouter.get("/pm-dashboard/summary", requireAgent, async (req, res) => 
     });
   } catch (error: any) {
     console.error("Error fetching PM dashboard summary:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 pmWorkflowRouter.get("/pm-dashboard/tenancies", requireAgent, async (req, res) => {
@@ -103,7 +82,7 @@ pmWorkflowRouter.get("/pm-dashboard/tenancies", requireAgent, async (req, res) =
     res.json(result.rows);
   } catch (error: any) {
     console.error("Error fetching tenancies:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -124,7 +103,7 @@ pmWorkflowRouter.get("/rent-collection/daily", requireAgent, async (req, res) =>
     res.json(result.rows);
   } catch (error: any) {
     console.error("Error fetching daily rent collection:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -135,15 +114,16 @@ pmWorkflowRouter.get("/rent-collection/monthly", requireAgent, async (req, res) 
     const targetMonth = month || new Date().getMonth() + 1;
     const startDate = targetYear + "-" + String(targetMonth).padStart(2, "0") + "-01";
 
-    const result = await pool.query(
-      "SELECT i.*, te.name as tenant_name, te.email as tenant_email, p.address as property_address, pay.amount as payment_amount, pay.payment_date, pay.payment_method FROM invoice i LEFT JOIN tenancy tn ON i.tenancy_id = tn.id LEFT JOIN tenant te ON tn.tenant_id = te.id LEFT JOIN property p ON tn.property_id = p.id LEFT JOIN payment pay ON pay.invoice_id = i.id WHERE i.invoice_type = 'rent' AND date_trunc('month', i.due_date) = date_trunc('month', $1::date) ORDER BY i.due_date ASC, p.address ASC",
-      [startDate]
-    );
-
-    const summaryResult = await pool.query(
-      "SELECT COUNT(*)::int as total_invoices, COUNT(CASE WHEN status = 'paid' THEN 1 END)::int as paid_count, COUNT(CASE WHEN status = 'pending' THEN 1 END)::int as pending_count, COUNT(CASE WHEN status = 'overdue' THEN 1 END)::int as overdue_count, COALESCE(SUM(amount), 0)::numeric as total_expected, COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0)::numeric as total_collected, COALESCE(SUM(CASE WHEN status \!= 'paid' THEN amount ELSE 0 END), 0)::numeric as total_outstanding FROM invoice WHERE invoice_type = 'rent' AND date_trunc('month', due_date) = date_trunc('month', $1::date)",
-      [startDate]
-    );
+    const [result, summaryResult] = await Promise.all([
+      pool.query(
+        "SELECT i.*, te.name as tenant_name, te.email as tenant_email, p.address as property_address, pay.amount as payment_amount, pay.payment_date, pay.payment_method FROM invoice i LEFT JOIN tenancy tn ON i.tenancy_id = tn.id LEFT JOIN tenant te ON tn.tenant_id = te.id LEFT JOIN property p ON tn.property_id = p.id LEFT JOIN payment pay ON pay.invoice_id = i.id WHERE i.invoice_type = 'rent' AND date_trunc('month', i.due_date) = date_trunc('month', $1::date) ORDER BY i.due_date ASC, p.address ASC",
+        [startDate]
+      ),
+      pool.query(
+        "SELECT COUNT(*)::int as total_invoices, COUNT(CASE WHEN status = 'paid' THEN 1 END)::int as paid_count, COUNT(CASE WHEN status = 'pending' THEN 1 END)::int as pending_count, COUNT(CASE WHEN status = 'overdue' THEN 1 END)::int as overdue_count, COALESCE(SUM(amount), 0)::numeric as total_expected, COALESCE(SUM(CASE WHEN status = 'paid' THEN amount ELSE 0 END), 0)::numeric as total_collected, COALESCE(SUM(CASE WHEN status \!= 'paid' THEN amount ELSE 0 END), 0)::numeric as total_outstanding FROM invoice WHERE invoice_type = 'rent' AND date_trunc('month', due_date) = date_trunc('month', $1::date)",
+        [startDate]
+      ),
+    ]);
 
     const summary = summaryResult.rows[0];
 
@@ -161,7 +141,7 @@ pmWorkflowRouter.get("/rent-collection/monthly", requireAgent, async (req, res) 
     });
   } catch (error: any) {
     console.error("Error fetching monthly rent collection:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -189,7 +169,7 @@ pmWorkflowRouter.get("/rent-collection/commission-report", requireAgent, async (
     });
   } catch (error: any) {
     console.error("Error fetching commission report:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 // ============================================================
@@ -214,18 +194,18 @@ pmWorkflowRouter.get("/deposits", requireAgent, async (req, res) => {
     res.json(result.rows);
   } catch (error: any) {
     console.error("Error fetching deposits:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 pmWorkflowRouter.put("/deposits/:tenancyId/protect", requireAgent, async (req, res) => {
   try {
     const { tenancyId } = req.params;
-    const { depositScheme, depositCertificateNumber, depositProtectedDate, depositHolderType } = req.body;
+    const { deposit_scheme, deposit_certificate_number, protected_date, deposit_holder_type } = req.body;
 
     const result = await pool.query(
       "UPDATE tenancy SET deposit_scheme = $1, deposit_certificate_number = $2, deposit_protected_date = $3, deposit_holder_type = $4, updated_at = NOW() WHERE id = $5 RETURNING *",
-      [depositScheme, depositCertificateNumber, depositProtectedDate, depositHolderType, tenancyId]
+      [deposit_scheme, deposit_certificate_number, protected_date, deposit_holder_type, tenancyId]
     );
 
     if (result.rows.length === 0) {
@@ -235,7 +215,7 @@ pmWorkflowRouter.put("/deposits/:tenancyId/protect", requireAgent, async (req, r
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error("Error updating deposit protection:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 // ============================================================
@@ -243,51 +223,52 @@ pmWorkflowRouter.put("/deposits/:tenancyId/protect", requireAgent, async (req, r
 // ============================================================
 
 pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/start", requireAgent, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { tenancyId } = req.params;
 
-    const tenancyResult = await pool.query(
+    await client.query("BEGIN");
+
+    const tenancyResult = await client.query(
       "UPDATE tenancy SET status = 'ending', updated_at = NOW() WHERE id = $1 RETURNING *",
       [tenancyId]
     );
 
     if (tenancyResult.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Tenancy not found" });
     }
 
-    // Create checkout checklist items
+    // Batch insert all checklist items in a single query
     const checklistItems = [
-      "serve_notice",
-      "checkout_inspection",
-      "inventory_checkout",
-      "meter_readings",
-      "key_return",
-      "deposit_return",
-      "final_account",
-      "utility_notifications",
-      "council_tax_notification",
-      "forwarding_address"
+      "serve_notice", "checkout_inspection", "inventory_checkout", "meter_readings",
+      "key_return", "deposit_return", "final_account", "utility_notifications",
+      "council_tax_notification", "forwarding_address"
     ];
 
-    for (const itemType of checklistItems) {
-      await pool.query(
-        "INSERT INTO tenancy_checklist_item (tenancy_id, item_type, is_completed) VALUES ($1, $2, false) ON CONFLICT DO NOTHING",
-        [tenancyId, itemType]
-      );
-    }
+    const values = checklistItems.map((_, i) => `($1, $${i + 2}, false)`).join(", ");
+    await client.query(
+      `INSERT INTO tenancy_checklist_item (tenancy_id, item_type, is_completed) VALUES ${values} ON CONFLICT DO NOTHING`,
+      [tenancyId, ...checklistItems]
+    );
 
-    const checklist = await pool.query(
+    const checklist = await client.query(
       "SELECT * FROM tenancy_checklist_item WHERE tenancy_id = $1 ORDER BY id ASC",
       [tenancyId]
     );
+
+    await client.query("COMMIT");
 
     res.json({
       tenancy: tenancyResult.rows[0],
       checklist: checklist.rows
     });
   } catch (error: any) {
+    await client.query("ROLLBACK");
     console.error("Error starting end of tenancy:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 });
 
@@ -304,16 +285,13 @@ pmWorkflowRouter.get("/end-of-tenancy/:tenancyId", requireAgent, async (req, res
       return res.status(404).json({ error: "Tenancy not found" });
     }
 
-    const checklistResult = await pool.query(
-      "SELECT * FROM tenancy_checklist_item WHERE tenancy_id = $1 ORDER BY id ASC",
-      [tenancyId]
-    );
-
     const tenancy = tenancyResult.rows[0];
-    const inventoryResult = await pool.query(
-      "SELECT * FROM property_inventory WHERE property_id = $1 ORDER BY created_at DESC LIMIT 1",
-      [tenancy.property_id]
-    );
+
+    // Checklist and inventory queries are independent — run in parallel
+    const [checklistResult, inventoryResult] = await Promise.all([
+      pool.query("SELECT * FROM tenancy_checklist_item WHERE tenancy_id = $1 ORDER BY id ASC", [tenancyId]),
+      pool.query("SELECT * FROM property_inventory WHERE property_id = $1 ORDER BY created_at DESC LIMIT 1", [tenancy.property_id]),
+    ]);
 
     res.json({
       tenancy,
@@ -322,20 +300,24 @@ pmWorkflowRouter.get("/end-of-tenancy/:tenancyId", requireAgent, async (req, res
     });
   } catch (error: any) {
     console.error("Error fetching end of tenancy details:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
 pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/complete", requireAgent, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { tenancyId } = req.params;
 
-    const tenancyResult = await pool.query(
+    await client.query("BEGIN");
+
+    const tenancyResult = await client.query(
       "UPDATE tenancy SET status = 'terminated', updated_at = NOW() WHERE id = $1 RETURNING *",
       [tenancyId]
     );
 
     if (tenancyResult.rows.length === 0) {
+      await client.query("ROLLBACK");
       return res.status(404).json({ error: "Tenancy not found" });
     }
 
@@ -343,16 +325,21 @@ pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/complete", requireAgent, async
 
     // Set tenant to inactive
     if (tenancy.tenant_id) {
-      await pool.query(
+      await client.query(
         "UPDATE tenant SET status = 'inactive', updated_at = NOW() WHERE id = $1",
         [tenancy.tenant_id]
       );
     }
 
-    res.json({ tenancy: tenancyResult.rows[0], message: "Tenancy terminated successfully" });
+    await client.query("COMMIT");
+
+    res.json({ tenancy, message: "Tenancy terminated successfully" });
   } catch (error: any) {
+    await client.query("ROLLBACK");
     console.error("Error completing end of tenancy:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 });
 // ============================================================
@@ -368,7 +355,7 @@ pmWorkflowRouter.get("/compliance/calendar", requireAgent, async (req, res) => {
     res.json(result.rows);
   } catch (error: any) {
     console.error("Error fetching compliance calendar:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -381,7 +368,7 @@ pmWorkflowRouter.get("/compliance/summary", requireAgent, async (req, res) => {
     res.json(result.rows);
   } catch (error: any) {
     console.error("Error fetching compliance summary:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -401,7 +388,7 @@ pmWorkflowRouter.get("/inventory/:propertyId", requireAgent, async (req, res) =>
     res.json(inventories.rows);
   } catch (error: any) {
     console.error("Error fetching inventories:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -416,13 +403,19 @@ pmWorkflowRouter.post("/inventory", requireAgent, async (req, res) => {
 
     const inventory = inventoryResult.rows[0];
 
-    if (items && Array.isArray(items)) {
+    if (items && Array.isArray(items) && items.length > 0) {
+      const placeholders: string[] = [];
+      const values: unknown[] = [];
+      let paramIdx = 1;
       for (const item of items) {
-        await pool.query(
-          "INSERT INTO inventory_item (inventory_id, room, item_name, description, condition, checkin_condition, quantity, notes, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())",
-          [inventory.id, item.room, item.itemName, item.description, item.condition, item.checkinCondition, item.quantity || 1, item.notes]
-        );
+        placeholders.push(`($${paramIdx}, $${paramIdx + 1}, $${paramIdx + 2}, $${paramIdx + 3}, $${paramIdx + 4}, $${paramIdx + 5}, $${paramIdx + 6}, $${paramIdx + 7}, NOW(), NOW())`);
+        values.push(inventory.id, item.room, item.itemName, item.description, item.condition, item.checkinCondition, item.quantity || 1, item.notes);
+        paramIdx += 8;
       }
+      await pool.query(
+        `INSERT INTO inventory_item (inventory_id, room, item_name, description, condition, checkin_condition, quantity, notes, created_at, updated_at) VALUES ${placeholders.join(", ")}`,
+        values
+      );
     }
 
     const fullInventory = await pool.query(
@@ -433,7 +426,7 @@ pmWorkflowRouter.post("/inventory", requireAgent, async (req, res) => {
     res.json(fullInventory.rows[0]);
   } catch (error: any) {
     console.error("Error creating inventory:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -450,7 +443,7 @@ pmWorkflowRouter.post("/inventory/:inventoryId/items", requireAgent, async (req,
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error("Error adding inventory item:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -471,7 +464,7 @@ pmWorkflowRouter.put("/inventory/:inventoryId/items/:itemId/checkout", requireAg
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error("Error updating checkout condition:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -491,7 +484,7 @@ pmWorkflowRouter.put("/inventory/:inventoryId/complete", requireAgent, async (re
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error("Error completing inventory:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });
 
@@ -504,17 +497,14 @@ pmWorkflowRouter.get("/inventory/:inventoryId/damage-summary", requireAgent, asy
       [inventoryId]
     );
 
-    const totalDamageResult = await pool.query(
-      "SELECT COALESCE(SUM(damage_amount), 0)::numeric as total_damage FROM inventory_item WHERE inventory_id = $1 AND damage_amount IS NOT NULL AND damage_amount > 0",
-      [inventoryId]
-    );
+    const totalDamageAmount = result.rows.reduce((sum: number, row: any) => sum + parseFloat(row.damage_amount || "0"), 0);
 
     res.json({
       damagedItems: result.rows,
-      totalDamageAmount: parseFloat(totalDamageResult.rows[0].total_damage)
+      totalDamageAmount
     });
   } catch (error: any) {
     console.error("Error fetching damage summary:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Internal server error" });
   }
 });

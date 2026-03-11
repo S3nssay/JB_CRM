@@ -14,6 +14,7 @@ import {
 import { format } from 'date-fns';
 import { Link } from 'wouter';
 import { apiRequest } from '@/lib/queryClient';
+import { formatPence } from '@/lib/utils';
 
 // --- Types ---
 
@@ -46,10 +47,6 @@ interface TenancyRow {
 }
 
 // --- Helpers ---
-
-function formatCurrency(pence: number): string {
-  return `\u00A3${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '-';
@@ -140,10 +137,10 @@ export default function PMTrackingDashboard() {
             <PoundSterling className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(summary?.rentCollectedThisMonth ?? 0)}</div>
+            <div className="text-2xl font-bold">{formatPence(summary?.rentCollectedThisMonth ?? 0)}</div>
             <Progress value={rentProgress} className="mt-2 h-2" />
             <p className="text-xs text-muted-foreground mt-1">
-              {formatCurrency(summary?.rentOutstandingThisMonth ?? 0)} outstanding
+              {formatPence(summary?.rentOutstandingThisMonth ?? 0)} outstanding
             </p>
           </CardContent>
         </Card>
@@ -199,7 +196,7 @@ export default function PMTrackingDashboard() {
           <CardContent>
             <div className="text-2xl font-bold">{summary?.arrearsCases ?? 0}</div>
             <p className="text-xs text-muted-foreground mt-1">
-              {formatCurrency(summary?.arrearsTotal ?? 0)} outstanding
+              {formatPence(summary?.arrearsTotal ?? 0)} outstanding
             </p>
           </CardContent>
         </Card>
@@ -263,7 +260,7 @@ export default function PMTrackingDashboard() {
                         </TableCell>
                         <TableCell>{t.tenantName}</TableCell>
                         <TableCell>{t.landlordName}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(t.rentAmount)}</TableCell>
+                        <TableCell className="text-right">{formatPence(t.rentAmount)}</TableCell>
                         <TableCell>{formatDate(t.startDate)}</TableCell>
                         <TableCell>{formatDate(t.endDate)}</TableCell>
                         <TableCell className="text-right">{t.commissionPercent}%</TableCell>
@@ -314,7 +311,7 @@ export default function PMTrackingDashboard() {
                         </TableCell>
                         <TableCell>{t.tenantName}</TableCell>
                         <TableCell>{t.landlordName}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(t.rentAmount)}</TableCell>
+                        <TableCell className="text-right">{formatPence(t.rentAmount)}</TableCell>
                         <TableCell>{formatDate(t.endDate)}</TableCell>
                         <TableCell className="text-right">
                           <Badge

@@ -13,6 +13,14 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+/** Format an amount stored in pence as a GBP currency string (e.g. £1,234.56) */
+export function formatPence(pence: number): string {
+  return new Intl.NumberFormat('en-GB', {
+    style: 'currency',
+    currency: 'GBP',
+  }).format(pence / 100);
+}
+
 export function generatePropertyOffer(propertyType: string, bedrooms: string, condition: string): { estimated: number, offer: number } {
   const baseValues: Record<string, number> = {
     'detached': 400000,
