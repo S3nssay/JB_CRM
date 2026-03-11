@@ -1,5 +1,7 @@
 # Project: JB_CRM
 
+A full-stack CRM and property management platform for John Barclay Estate Agents. Handles property sales, lettings, landlord/tenant management, lead tracking, finance, compliance, and multi-channel communications.
+
 ## CRITICAL: Following These Rules
 
 **These rules are mandatory and must be followed exactly.** Before ANY action:
@@ -9,6 +11,200 @@
 4. If unsure, ASK the user rather than guessing
 
 **Failure to follow these rules wastes time and causes production errors.**
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, TypeScript, Vite 5 |
+| UI Components | Shadcn/ui (Radix UI), Tailwind CSS 3 |
+| Client Routing | Wouter (lightweight, NOT React Router) |
+| Server State | TanStack React Query 5 |
+| Forms | React Hook Form + Zod validation |
+| Backend | Express.js 4, TypeScript |
+| Database | PostgreSQL (via Supabase or direct) |
+| ORM | Drizzle ORM 0.39 |
+| Auth | Passport.js (local strategy) + express-session |
+| Session Store | PostgreSQL (connect-pg-simple) |
+| AI/LLM | OpenAI SDK |
+| Communications | Twilio (voice/SMS), WhatsApp Business, SendGrid, Nodemailer (SMTP/IMAP) |
+| Payments | Stripe |
+| Document Signing | DocuSign |
+| Bundler | Vite (client) + esbuild (server) |
+| Runtime | Node.js 22 |
+
+## Project Structure
+
+```
+JB_CRM/
+├── client/                    # Frontend React application
+│   └── src/
+│       ├── App.tsx            # Main app with all route definitions
+│       ├── index.css          # Global styles, brand colors
+│       ├── components/        # React components
+│       │   ├── ui/            # Shadcn/ui primitives (button, dialog, form, etc.)
+│       │   └── *.tsx          # Feature components (CRMLayout, PropertyCard, etc.)
+│       ├── pages/             # ~104 page components
+│       │   ├── EstateAgentHome.tsx  # Public homepage
+│       │   ├── CRM*.tsx       # CRM pages (Dashboard, Login)
+│       │   ├── Property*.tsx  # Property pages (Create, Edit, Detail, Listings)
+│       │   ├── Landlord*.tsx  # Landlord management pages
+│       │   ├── Tenant*.tsx    # Tenant management pages
+│       │   ├── Lead*.tsx      # Lead management pages
+│       │   ├── Invoice*.tsx   # Finance pages
+│       │   └── ...            # Many more feature pages
+│       ├── hooks/             # Custom React hooks
+│       │   ├── use-auth.tsx   # Auth context & session management
+│       │   ├── use-permissions.tsx  # Role/clearance checking
+│       │   ├── use-toast.ts   # Toast notifications
+│       │   └── use-mobile.tsx # Mobile device detection
+│       ├── lib/               # Utilities
+│       │   ├── queryClient.ts # React Query config + apiRequest helper
+│       │   ├── protected-route.tsx  # Route protection components
+│       │   ├── addressService.ts    # Address lookup
+│       │   └── utils.ts       # General utilities (cn, etc.)
+│       └── services/          # API service layers
+│           ├── propertyData.ts
+│           ├── propertyListingsService.ts
+│           ├── propertyDataService.ts
+│           └── aiPropertySearchService.ts
+├── server/                    # Backend Express application
+│   ├── index.ts               # Server entry point
+│   ├── dev.ts                 # Development server setup (Vite middleware)
+│   ├── routes.ts              # Main route registration
+│   ├── crmRoutes.ts           # CRM API routes (largest route file)
+│   ├── financeRoutes.ts       # Finance/invoice API routes
+│   ├── pmWorkflowRoutes.ts    # Property management workflow routes
+│   ├── auth.ts                # Passport.js authentication setup
+│   ├── db.ts                  # Database connection + Drizzle instance
+│   ├── storage.ts             # File storage + session/data management
+│   ├── routes/
+│   │   └── emailIntegrationRoutes.ts  # Email integration endpoints
+│   ├── agents/                # AI agent system
+│   │   ├── BaseAgent.ts       # Base agent class
+│   │   ├── SupervisorAgent.ts # Supervisor coordination
+│   │   ├── AgentOrchestrator.ts  # Agent orchestration
+│   │   └── specialists/       # Domain-specific agents
+│   │       ├── MaintenanceAgent.ts
+│   │       ├── MarketingAgent.ts
+│   │       ├── SalesAgent.ts
+│   │       ├── RentalAgent.ts
+│   │       ├── LeadGenAgent.ts
+│   │       └── OfficeAdminAgent.ts
+│   ├── services/              # Modular services
+│   │   ├── email/             # Email subsystem
+│   │   │   ├── imapPollingService.ts
+│   │   │   ├── emailProcessor.ts
+│   │   │   ├── emailSender.ts
+│   │   │   ├── jobQueue.ts
+│   │   │   ├── smtpTransport.ts
+│   │   │   ├── emailAIAgent.ts
+│   │   │   ├── subscriptionManager.ts
+│   │   │   └── webhookHandler.ts
+│   │   └── microsoft/         # Microsoft 365 integration
+│   │       ├── graphApiClient.ts
+│   │       └── graphAuthService.ts
+│   ├── workers/
+│   │   └── emailWorker.ts     # Background email processing
+│   ├── lib/
+│   │   ├── encryption.ts      # Encryption utilities
+│   │   └── openaiClient.ts    # OpenAI client config
+│   └── *.ts                   # Service files (see Key Files below)
+├── shared/                    # Shared between client & server
+│   ├── schema.ts              # Drizzle ORM schema (~6700 lines, SOURCE OF TRUTH)
+│   ├── supabase.ts            # Supabase client config
+│   └── lettingServiceTerms.ts # Letting terms data
+├── migrations/                # Drizzle SQL migration files
+├── scripts/                   # Build & utility scripts
+├── uploads/                   # File upload storage
+├── public/                    # Static assets
+├── docs/                      # Documentation
+├── Dockerfile                 # Production Docker build
+├── Dockerfile.dev             # Development Docker build
+├── docker-compose.yml         # Docker Compose config
+├── render.yaml                # Render.io deployment config
+├── drizzle.config.ts          # Drizzle Kit configuration
+├── vite.config.ts             # Vite bundler configuration
+├── tailwind.config.ts         # Tailwind CSS configuration
+└── tsconfig.json              # TypeScript configuration
+```
+
+## Development Commands
+
+```bash
+npm run dev        # Start dev server (tsx server/dev.ts) - runs on port 5000
+npm run build      # Build for production (Vite client + esbuild server)
+npm start          # Production server (NODE_ENV=production node dist/index.js)
+npm run check      # TypeScript type checking (tsc)
+npm run db:push    # Push Drizzle schema changes to database
+```
+
+## Architecture & Conventions
+
+### API Routes
+- All API routes use the `/api/` prefix
+- Main route registration in `server/routes.ts`
+- CRM-specific routes in `server/crmRoutes.ts` (the largest route file)
+- Finance routes in `server/financeRoutes.ts`
+- PM workflow routes in `server/pmWorkflowRoutes.ts`
+- Email integration routes in `server/routes/emailIntegrationRoutes.ts`
+- Auth endpoints: `/api/auth/login`, `/api/auth/register`, `/api/auth/logout`
+- Health check: `/api/health`
+
+### Frontend Routing
+- Uses **Wouter** (not React Router) - `<Switch>`, `<Route>`, `useLocation`, `useParams`
+- All routes defined in `client/src/App.tsx`
+- Public routes: `/`, `/search`, `/sales`, `/rentals`, `/contact`, `/valuation`, `/property/:id`, `/area/:postcode`
+- CRM routes under `/crm/` prefix: `/crm/dashboard`, `/crm/properties/create`, etc.
+- Protected routes wrapped with `<ProtectedRoute>` component
+- Clearance-restricted routes use `<ClearanceProtectedRoute>`
+- CRM pages wrapped in `<CRMLayout>` for consistent sidebar navigation
+
+### Authentication & Authorization
+- Passport.js local strategy (username/password)
+- Passwords hashed with scrypt (16-byte salt, 64-byte output)
+- Sessions stored in PostgreSQL via connect-pg-simple
+- 7-day session cookie, secure in production
+- Frontend: 10-minute inactivity timeout (auto-logout)
+- Role-based access: `user.role` field
+- Security clearance levels: `user.securityClearance` field
+- Auth context: `client/src/hooks/use-auth.tsx`
+
+### State Management
+- **Server state**: TanStack React Query - query keys, caching, mutations
+- **Auth state**: React Context via `AuthContext`
+- **UI state**: Local component state (useState) - no Redux/MobX
+- **API helper**: `apiRequest()` from `client/src/lib/queryClient.ts`
+
+### Styling & Design
+- Tailwind CSS with shadcn/ui component library
+- Brand colors: Purple (#791E75) and Gold (#F8B324)
+- Fonts: Calibre, Inter, Roboto
+- Dark mode support (class-based toggle)
+- Component primitives in `client/src/components/ui/`
+
+### TypeScript Configuration
+- Strict mode enabled
+- Path aliases: `@/*` maps to `client/src/`, `@shared/*` maps to `shared/`
+- ESModule format throughout (package.json `"type": "module"`)
+
+### Deployment
+- **Docker**: Multi-stage build, Node 22 Alpine, port 5000
+- **Render.io**: Web service (Docker runtime), Frankfurt region
+- **Replit**: Also supported via `.replit` config
+- **Docker Compose**: App service + email worker service, uploads volume
+
+### Environment Variables
+Key env vars (see `.env.example` for full list):
+- `DATABASE_URL` - PostgreSQL connection string
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY` - Supabase config
+- `OPENAI_API_KEY` - AI features
+- `TWILIO_*` - Voice/SMS
+- `STRIPE_*` - Payments
+- `SMTP_*`, `IMAP_*` - Email integration
+- `MICROSOFT_*` - Microsoft 365 Graph API
 
 ---
 
@@ -236,6 +432,43 @@ grep -r "bank_account_no\|\.fullName\|full_name" server/
 
 ## Key Files
 
-- `server/crmRoutes.ts` - Main API routes
-- `server/db.ts` - Database connection pool
-- `shared/schema.ts` - Database schema definitions (SOURCE OF TRUTH)
+### Backend
+- `server/routes.ts` - Main route registration
+- `server/crmRoutes.ts` - CRM API routes (largest route file)
+- `server/financeRoutes.ts` - Finance/invoice routes
+- `server/pmWorkflowRoutes.ts` - Property management workflow routes
+- `server/auth.ts` - Passport.js authentication setup
+- `server/db.ts` - Database connection pool + Drizzle instance
+- `server/storage.ts` - File storage, session management, data operations
+- `server/index.ts` - Server entry point
+- `server/dev.ts` - Development server with Vite middleware
+
+### Frontend
+- `client/src/App.tsx` - Main app with all route definitions
+- `client/src/hooks/use-auth.tsx` - Auth context provider
+- `client/src/lib/queryClient.ts` - React Query config + API request helper
+- `client/src/lib/protected-route.tsx` - Route protection components
+- `client/src/components/CRMLayout.tsx` - CRM sidebar layout
+
+### Shared
+- `shared/schema.ts` - Database schema definitions (SOURCE OF TRUTH, ~6700 lines)
+
+### Services (Backend)
+- `server/emailService.ts` - Email management
+- `server/whatsappService.ts` - WhatsApp integration
+- `server/smsService.ts` - SMS via Twilio
+- `server/voiceAgentService.ts` - Voice AI agent
+- `server/paymentService.ts` - Stripe payments
+- `server/propertyManagementService.ts` - PM operations
+- `server/bankReconciliationService.ts` - Bank reconciliation
+- `server/portalSyndicationService.ts` - Property portal syndication
+- `server/leadGenerationService.ts` - Lead generation
+- `server/workflowAutomation.ts` - Workflow automation engine
+- `server/aiPropertySearch.ts` - AI-powered property search
+- `server/aiPropertyParser.ts` - AI document/property parsing
+
+### AI Agent System
+- `server/agents/BaseAgent.ts` - Base agent class
+- `server/agents/SupervisorAgent.ts` - Supervisor agent
+- `server/agents/AgentOrchestrator.ts` - Agent orchestration
+- `server/agents/specialists/` - Domain agents (Maintenance, Marketing, Sales, Rental, LeadGen, OfficeAdmin)
