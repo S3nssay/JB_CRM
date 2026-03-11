@@ -14,6 +14,53 @@ A full-stack CRM and property management platform for John Barclay Estate Agents
 
 ---
 
+## Workflow Orchestration
+
+### 1. Plan Mode Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately - don't keep pushing
+- Use plan mode for verification steps, not just building
+- Write detailed specs upfront to reduce ambiguity
+
+### 2. Subagent Strategy
+- Use subagents liberally to keep main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+- After ANY correction from the user: update `tasks/lessons.md` with the pattern
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review lessons at session start for relevant project context
+
+### 4. Verification Before Done
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness
+
+### 5. Demand Elegance (Balanced)
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
+- Skip this for simple, obvious fixes - don't over-engineer
+- Challenge your own work before presenting it
+
+### 6. Autonomous Bug Fixing
+- When given a bug report: just fix it. Don't ask for hand-holding
+- Point at logs, errors, failing tests - then resolve them
+- Zero context switching required from the user
+- Go fix failing CI tests without being told how
+
+### 7. Schema-First Development (MANDATORY)
+- **NEVER write ANY code that reads from or writes to the database without FIRST checking `shared/schema.ts`**
+- This applies to backend routes, Drizzle queries, raw SQL, API response shapes, frontend form fields, and frontend code that consumes API responses
+- The verification order is ALWAYS: check schema -> write code -> verify behavior
+- If you write code referencing a table or column without checking the schema first, you MUST stop, delete what you wrote, check the schema, and start over
+- See "BEFORE ANY CODE THAT USES DATABASE FIELDS" section below for the full procedure
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
