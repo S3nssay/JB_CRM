@@ -9,12 +9,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowLeft, User, Phone, Mail, Calendar, Building, FileText,
   ExternalLink, CheckCircle2, Clock, Home, Upload, Download,
-  Key, Loader2, AlertTriangle, Trash2, Banknote, Shield
+  Key, Loader2, AlertTriangle, Trash2, Banknote, Shield, XCircle
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { ComplianceChecklist, ComplianceItem, isExpired } from "@/components/ComplianceChecklist";
 
 export default function TenancyDetails() {
   const { id } = useParams();
@@ -339,7 +340,10 @@ export default function TenancyDetails() {
 
             {/* Overview Tab */}
             <TabsContent value="overview" className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Tenancy Compliance Status Panel */}
+              <TenancyCompliancePanel tenancy={tenancy} property={property} tenantData={tenantData} landlord={landlord} checklist={checklist} />
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <div className="space-y-4">
                   <h4 className="font-semibold">Tenancy Details</h4>
                   <div className="space-y-3">
@@ -636,5 +640,147 @@ export default function TenancyDetails() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function TenancyCompliancePanel({ tenancy, property, tenantData, landlord, checklist }: {
+  tenancy: any;
+  property: any;
+  tenantData: any;
+  landlord: any;
+  checklist: any[];
+}) {
+  const items: ComplianceItem[] = [];
+
+  // Deposit Protection - CRITICAL
+  const depositProtected = !!(tenancy.depositScheme && tenancy.depositCertificateNumber);
+  const hasDeposit = tenancy.depositAmount && Number(tenancy.depositAmount) > 0;
+  if (hasDeposit) {
+    items.push({
+      id: 'deposit_protection',
+      label: 'Deposit Protection',
+      description: depositProtected
+        ? `Protected with ${tenancy.depositScheme} - Certificate: ${tenancy.depositCertificateNumber}`
+        : tenancy.depositScheme
+          ? 'Deposit scheme selected but no certificate number recorded'
+          : 'Deposit not protected - must be protected within 30 days of receipt',
+      passed: depositProtected,
+      severity: 'critical',
+      penalty: 'Tenant can claim 1-3x deposit. Cannot serve Section 21 notice.',
+      legalReference: 'Housing Act 2004',
+    });
+  }
+
+  // Tenancy Agreement - CRITICAL
+  const hasTenancyAgreement = checklist.some((c: any) => c.itemType === 'tenancy_agreement' && c.isCompleted);
+  items.push({
+    id: 'tenancy_agreement',
+    label: 'Tenancy Agreement Signed',
+    description: hasTenancyAgreement
+      ? 'Tenancy agreement completed and signed'
+      : 'Tenancy agreement not yet completed',
+    passed: hasTenancyAgreement,
+    severity: 'critical',
+  });
+
+  // Gas Safety Certificate - CRITICAL
+  const hasGasSafety = checklist.some((c: any) => c.itemType === 'gas_safety_certificate' && c.isCompleted);
+  items.push({
+    id: 'gas_safety',
+    label: 'Gas Safety Certificate Provided to Tenant',
+    description: hasGasSafety
+      ? 'Gas safety certificate provided to tenant'
+      : 'Gas safety certificate must be provided to tenant before move-in',
+    passed: hasGasSafety,
+    severity: 'critical',
+    penalty: 'Fine up to £6,000',
+    legalReference: 'Gas Safety (Installation and Use) Regulations 1998',
+  });
+
+  // EICR - CRITICAL
+  const hasEicr = checklist.some((c: any) => c.itemType === 'electrical_certificate' && c.isCompleted);
+  items.push({
+    id: 'eicr',
+    label: 'EICR Provided to Tenant',
+    description: hasEicr
+      ? 'Electrical safety report provided to tenant'
+      : 'EICR must be provided to tenant within 28 days of tenancy start',
+    passed: hasEicr,
+    severity: 'critical',
+    penalty: 'Fine up to £30,000',
+    legalReference: 'Electrical Safety Standards Regulations 2020',
+  });
+
+  // EPC - CRITICAL
+  const hasEpc = checklist.some((c: any) => c.itemType === 'epc' && c.isCompleted);
+  items.push({
+    id: 'epc',
+    label: 'EPC Provided to Tenant',
+    description: hasEpc
+      ? 'Energy Performance Certificate provided to tenant'
+      : 'EPC must be provided to tenant at or before tenancy start',
+    passed: hasEpc,
+    severity: 'critical',
+    penalty: 'Fine up to £5,000',
+    legalReference: 'Energy Efficiency Regulations 2015',
+  });
+
+  // How to Rent Guide - CRITICAL
+  const hasHowToRent = checklist.some((c: any) => c.itemType === 'how_to_rent_guide' && c.isCompleted);
+  items.push({
+    id: 'how_to_rent',
+    label: 'How to Rent Guide Provided',
+    description: hasHowToRent
+      ? 'How to Rent guide provided to tenant'
+      : 'Must provide government How to Rent guide - required for valid Section 21 notice',
+    passed: hasHowToRent,
+    severity: 'critical',
+    legalReference: 'Deregulation Act 2015',
+  });
+
+  // Tenant ID Verified - WARNING
+  const hasTenantId = checklist.some((c: any) => c.itemType === 'tenants_id' && c.isCompleted);
+  items.push({
+    id: 'tenant_id',
+    label: 'Tenant ID Verified',
+    description: hasTenantId
+      ? 'Tenant identity verified and documented'
+      : 'Tenant ID not yet verified',
+    passed: hasTenantId,
+    severity: 'warning',
+  });
+
+  // Inventory - WARNING
+  const hasInventory = checklist.some((c: any) => c.itemType === 'inventory' && c.isCompleted);
+  items.push({
+    id: 'inventory',
+    label: 'Inventory Completed',
+    description: hasInventory
+      ? 'Check-in inventory completed and signed'
+      : 'Inventory not completed - needed for deposit disputes',
+    passed: hasInventory,
+    severity: 'warning',
+  });
+
+  // Standing Order - INFO
+  const hasStandingOrder = checklist.some((c: any) => c.itemType === 'standing_order' && c.isCompleted);
+  items.push({
+    id: 'standing_order',
+    label: 'Rent Payment Setup',
+    description: hasStandingOrder
+      ? 'Standing order or direct debit confirmed'
+      : 'Rent payment method not yet set up',
+    passed: hasStandingOrder,
+    severity: 'info',
+  });
+
+  return (
+    <ComplianceChecklist
+      title="Tenancy Compliance Status"
+      subtitle="Regulatory requirements for this tenancy"
+      items={items}
+      showSummary={true}
+      blockOnCritical={false}
+    />
   );
 }
