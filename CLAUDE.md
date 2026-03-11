@@ -1,5 +1,7 @@
 # Project: JB_CRM
 
+John Barclay CRM — a full-stack real estate CRM and property management platform for a London-based estate agency. Combines a public-facing property website with an internal CRM for managing sales, lettings, property management, finance, and communications.
+
 ## CRITICAL: Following These Rules
 
 **These rules are mandatory and must be followed exactly.** Before ANY action:
@@ -9,6 +11,198 @@
 4. If unsure, ASK the user rather than guessing
 
 **Failure to follow these rules wastes time and causes production errors.**
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Frontend** | React 18, TypeScript, Vite |
+| **Routing** | Wouter (lightweight client-side router) |
+| **State** | TanStack React Query v5 (server state), react-hook-form + Zod (forms) |
+| **UI** | shadcn/ui (Radix UI primitives), Tailwind CSS, Lucide icons |
+| **Animations** | Framer Motion, GSAP, Lenis (smooth scroll), Three.js / React Three Fiber |
+| **Backend** | Express.js (Node.js), TypeScript |
+| **Database** | PostgreSQL (Supabase-hosted), Drizzle ORM |
+| **Auth** | Passport.js (local strategy), express-session with PostgreSQL store |
+| **AI** | OpenAI GPT-4o (property parsing, NLP search, email AI, maintenance triage) |
+| **Payments** | Stripe, GoCardless (Direct Debit) |
+| **Communications** | Twilio (SMS + WhatsApp), Microsoft Graph (email), Retell AI (voice) |
+| **Documents** | DocuSign (e-signatures), Multer (file uploads) |
+| **Property Portals** | Zoopla, Rightmove (listing syndication via Playwright) |
+| **Build** | Vite (frontend), esbuild (server bundle) |
+| **Runtime** | Node.js with tsx (dev), esbuild bundle (production) |
+
+## Project Structure
+
+```
+JB_CRM/
+├── client/                     # React frontend
+│   └── src/
+│       ├── App.tsx             # Router config (Wouter Switch/Route)
+│       ├── main.tsx            # Entry point
+│       ├── index.css           # Tailwind + custom styles
+│       ├── components/
+│       │   ├── ui/             # shadcn/ui base components (40+)
+│       │   ├── CRMLayout.tsx   # CRM sidebar + header layout
+│       │   ├── Header.tsx      # Public site header
+│       │   ├── Footer.tsx      # Public site footer
+│       │   ├── ProtectedRoute.tsx  # Auth gate component
+│       │   └── ...             # Business logic components
+│       ├── hooks/
+│       │   ├── use-auth.tsx    # Auth context + session timeout
+│       │   ├── use-permissions.tsx  # Clearance-based access control
+│       │   ├── use-toast.ts    # Toast notifications
+│       │   └── use-mobile.tsx  # Responsive breakpoint detection
+│       ├── lib/
+│       │   ├── queryClient.ts  # React Query config + apiRequest()
+│       │   ├── utils.ts        # cn(), formatCurrency(), etc.
+│       │   └── protected-route.tsx
+│       ├── pages/              # 100+ page components
+│       │   ├── areas/          # Geographic area pages (11 locations)
+│       │   └── ...             # Public + CRM pages
+│       └── services/           # API service utilities
+│           ├── propertyListingsService.ts
+│           ├── propertyDataService.ts
+│           └── aiPropertySearchService.ts
+├── server/                     # Express backend
+│   ├── index.ts                # App initialization + startup
+│   ├── routes.ts               # Route registration hub (~95KB)
+│   ├── crmRoutes.ts            # Main CRM API routes
+│   ├── pmWorkflowRoutes.ts     # Property management workflow routes
+│   ├── financeRoutes.ts        # Finance/invoicing routes
+│   ├── storage.ts              # Data access layer (Drizzle queries)
+│   ├── db.ts                   # Database connection (Drizzle + pg pool)
+│   ├── auth.ts                 # Passport auth + session setup
+│   ├── agents/                 # Multi-agent AI system
+│   │   ├── BaseAgent.ts        # Abstract agent class
+│   │   ├── AgentOrchestrator.ts
+│   │   ├── SupervisorAgent.ts
+│   │   └── specialists/        # Sales, Rental, Maintenance, etc.
+│   ├── services/
+│   │   ├── email/              # Email processing pipeline
+│   │   │   ├── emailProcessor.ts
+│   │   │   ├── emailSender.ts
+│   │   │   ├── emailAIAgent.ts
+│   │   │   ├── imapPollingService.ts
+│   │   │   └── smtpTransport.ts
+│   │   └── microsoft/          # Microsoft Graph integration
+│   │       ├── graphAuthService.ts
+│   │       └── graphApiClient.ts
+│   ├── lib/
+│   │   ├── encryption.ts       # Token/credential encryption
+│   │   └── openaiClient.ts     # Centralized OpenAI initialization
+│   └── [*Service.ts]           # 20+ service modules (see below)
+├── shared/
+│   ├── schema.ts               # Drizzle schema (SOURCE OF TRUTH)
+│   ├── supabase.ts             # Supabase client
+│   └── lettingServiceTerms.ts  # Business logic constants
+├── scripts/                    # Utility/migration scripts
+├── migrations/                 # Drizzle database migrations
+├── public/                     # Static assets
+├── uploads/                    # User-uploaded files
+├── docs/                       # Documentation
+├── package.json
+├── vite.config.ts
+├── drizzle.config.ts
+├── tailwind.config.ts
+├── tsconfig.json
+├── docker-compose.yml
+├── Dockerfile / Dockerfile.dev
+├── render.yaml                 # Render.com deployment config
+└── theme.json                  # shadcn theme config
+```
+
+## Development Commands
+
+```bash
+npm run dev        # Start dev server (Vite + Express, hot reload)
+npm run build      # Build for production (vite build + esbuild server)
+npm run start      # Run production build (NODE_ENV=production)
+npm run check      # TypeScript type checking
+npm run db:push    # Push Drizzle schema changes to database
+```
+
+- Dev server runs on port **5000**
+- Frontend is served via Vite dev middleware in development, static files in production
+
+## Architecture Patterns
+
+### Frontend Patterns
+
+**Routing**: Wouter with `Switch`/`Route`. Public routes at `/`, CRM routes at `/crm/*` wrapped in `<CRMLayout>`.
+
+**API Calls**: Centralized `apiRequest()` in `client/src/lib/queryClient.ts`:
+```typescript
+apiRequest("GET", "/api/properties")
+apiRequest("POST", "/api/crm/landlords", data)
+```
+- Always includes credentials (cookies)
+- Used with React Query's `useQuery()` and `useMutation()`
+
+**Forms**: react-hook-form with Zod validation schemas. Form schemas often imported from `shared/schema.ts` via drizzle-zod.
+
+**Auth**: `useAuth()` hook provides `user`, `loginMutation`, `logoutMutation`. 10-minute session timeout with activity tracking.
+
+**Permissions**: Clearance levels 0-10. `usePermissions()` hook with `hasMinClearance(level)`, `isAdmin()`, `isStaffOrAbove()`, etc.
+
+### Backend Patterns
+
+**Route Structure**:
+- `/api/crm/*` — CRM routes (crmRoutes.ts, financeRoutes.ts, pmWorkflowRoutes.ts)
+- `/api/email-integration/*` — Email integration endpoints
+- `/api/auth/*` — Authentication endpoints
+- `/api/user` — Current user
+- `/uploads/*` — Static file serving
+
+**Auth Middleware**:
+```typescript
+requireAgent  // Authenticated user with admin/agent role
+requireAuth   // Any authenticated user
+```
+
+**Data Access**: `server/storage.ts` provides the data access layer using Drizzle ORM queries. Direct `pool.query()` used for complex raw SQL.
+
+**Services**: Each service file handles a specific domain (payments, email, SMS, WhatsApp, portal syndication, etc.). Services export functions/classes consumed by route handlers.
+
+### Backend Service Files
+
+| Service | Purpose |
+|---|---|
+| `paymentService.ts` | Stripe payment processing |
+| `gocardlessService.ts` | GoCardless Direct Debit |
+| `docusignService.ts` | DocuSign e-signature workflows |
+| `emailService.ts` | Email processing (IMAP/SMTP) |
+| `smsService.ts` | Twilio SMS |
+| `whatsappService.ts` | Twilio WhatsApp |
+| `voiceAgentService.ts` | Retell AI + Twilio voice |
+| `portalSyndicationService.ts` | Zoopla/Rightmove listing automation |
+| `propertyManagementService.ts` | Maintenance & operations |
+| `bankReconciliationService.ts` | Bank statement reconciliation |
+| `reconciliationEngine.ts` | Payment matching |
+| `leadGenerationService.ts` | Portal lead scraping |
+| `proactiveLeadGenService.ts` | AI-identified leads |
+| `tenantSupportService.ts` | Tenant support automation |
+| `collaborationHubService.ts` | Team messaging |
+| `schedulerService.ts` | Daily arrears & renewal reminders |
+| `workflowAutomation.ts` | Property workflow stages |
+| `aiPropertyParser.ts` | Property data extraction (GPT-4o) |
+| `aiPropertySearch.ts` | Natural language property search |
+| `websiteImportService.ts` | HTML scraping |
+| `pdfPropertyImportService.ts` | PDF document processing |
+
+## Application Startup Flow
+
+1. Load environment variables (dotenv)
+2. Create Express app with JSON/URL-encoded middleware
+3. Register request logging middleware
+4. Initialize routes via `registerRoutes(app)`
+5. Set up error handling middleware
+6. Serve static files (Vite dev middleware or production build)
+7. Start HTTP server on port 5000
+8. Start scheduler service (daily arrears/renewal checks)
+9. Start IMAP polling service (5-minute email sync intervals)
 
 ---
 
@@ -35,6 +229,8 @@ For any task involving multiple similar changes:
 1. Create a numbered checklist of ALL items BEFORE starting
 2. Check off each item as completed
 3. Do not skip items or mark task complete until all items are checked
+
+---
 
 ## Database & Schema Rules
 
@@ -234,8 +430,23 @@ grep -r "bank_account_no\|\.fullName\|full_name" server/
 - `proactive_leads` - AI-identified potential leads
 - `voice_lead_property_interests` - Voice call property discussions
 
+---
+
 ## Key Files
 
-- `server/crmRoutes.ts` - Main API routes
-- `server/db.ts` - Database connection pool
-- `shared/schema.ts` - Database schema definitions (SOURCE OF TRUTH)
+| File | Purpose |
+|---|---|
+| `shared/schema.ts` | Database schema definitions (SOURCE OF TRUTH for all field names) |
+| `server/routes.ts` | Route registration hub (mounts all route modules) |
+| `server/crmRoutes.ts` | Main CRM API routes (properties, tenants, documents, etc.) |
+| `server/pmWorkflowRoutes.ts` | Property management workflow routes |
+| `server/financeRoutes.ts` | Finance/invoicing/rent collection routes |
+| `server/storage.ts` | Data access layer (Drizzle ORM queries) |
+| `server/db.ts` | Database connection pool (Drizzle + pg) |
+| `server/auth.ts` | Passport auth + session configuration |
+| `server/index.ts` | Express app initialization + startup |
+| `client/src/App.tsx` | Frontend router configuration |
+| `client/src/components/CRMLayout.tsx` | CRM sidebar/header layout |
+| `client/src/lib/queryClient.ts` | React Query config + `apiRequest()` utility |
+| `client/src/hooks/use-auth.tsx` | Auth context + session timeout |
+| `client/src/hooks/use-permissions.tsx` | Clearance-based access control hook |
