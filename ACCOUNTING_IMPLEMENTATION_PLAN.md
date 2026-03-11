@@ -95,40 +95,72 @@ created_at          timestamp NOT NULL DEFAULT now()
 updated_at          timestamp NOT NULL DEFAULT now()
 ```
 
-**Default seed accounts:**
+**Default seed accounts (all seeded with `is_system_account = true`):**
+
 | Code | Name | Type | Sub-Type |
 |------|------|------|----------|
-| 1000 | Cash in Hand | asset | current_asset |
-| 1100 | Bank Current Account | asset | bank |
-| 1101 | Bank Deposit Account | asset | bank |
-| 1200 | Accounts Receivable | asset | current_asset |
-| 1300 | Prepayments | asset | current_asset |
-| 2000 | Accounts Payable | liability | current_liability |
-| 2100 | VAT Liability | liability | current_liability |
-| 2101 | VAT Input (Reclaimable) | asset | current_asset |
-| 2200 | PAYE/NI Payable | liability | current_liability |
-| 2300 | Corporation Tax Payable | liability | current_liability |
+| **Assets** | | | |
+| 1000 | Cash at Bank - Client Account | asset | current_asset |
+| 1001 | Cash at Bank - Office Account | asset | current_asset |
+| 1010 | Petty Cash | asset | current_asset |
+| 1100 | Accounts Receivable - Landlords | asset | current_asset |
+| 1101 | Accounts Receivable - Tenants | asset | current_asset |
+| 1102 | Accounts Receivable - Other | asset | current_asset |
+| 1200 | Prepayments | asset | current_asset |
+| 1300 | Tenant Deposits Held | asset | current_asset |
+| 1500 | Office Equipment | asset | fixed_asset |
+| 1501 | Computer Equipment | asset | fixed_asset |
+| 1510 | Accumulated Depreciation | asset | fixed_asset |
+| **Liabilities** | | | |
+| 2000 | Accounts Payable - Contractors | liability | current_liability |
+| 2001 | Accounts Payable - Other | liability | current_liability |
+| 2100 | VAT Output (Sales) | liability | current_liability |
+| 2101 | VAT Input (Purchases) | liability | current_liability |
+| 2102 | VAT Liability (Net) | liability | current_liability |
+| 2200 | PAYE/NI Liability | liability | current_liability |
+| 2300 | Tenant Deposits Liability | liability | current_liability |
+| 2400 | Corporation Tax Liability | liability | current_liability |
+| 2500 | Landlord Funds Held | liability | current_liability |
+| 9000 | Suspense Account | liability | current_liability |
+| **Equity** | | | |
 | 3000 | Share Capital | equity | equity |
 | 3100 | Retained Earnings | equity | equity |
+| 3200 | Current Year Profit/Loss | equity | equity |
+| **Revenue** | | | |
 | 4000 | Management Fee Income | revenue | income |
-| 4100 | Lettings Commission | revenue | income |
-| 4200 | Sales Commission | revenue | income |
-| 4300 | Other Income | revenue | other_income |
-| 4400 | Rent Collected (Client) | revenue | income |
-| 5000 | Staff Costs | expense | operating_expense |
-| 5100 | Office Rent | expense | operating_expense |
-| 5200 | Marketing & Advertising | expense | operating_expense |
-| 5300 | Professional Fees | expense | operating_expense |
-| 5400 | Software & IT | expense | operating_expense |
-| 5500 | Insurance | expense | operating_expense |
-| 5600 | Travel & Motor | expense | operating_expense |
-| 5700 | Utilities & Telecoms | expense | operating_expense |
-| 5800 | Maintenance Costs | expense | cost_of_sales |
-| 5900 | Contractor Payments | expense | cost_of_sales |
-| 6000 | Depreciation | expense | operating_expense |
-| 6100 | Bank Charges | expense | other_expense |
-| 6200 | Bad Debts | expense | other_expense |
-| 6300 | Sundry Expenses | expense | operating_expense |
+| 4001 | Management Fee - Full Management | revenue | income |
+| 4002 | Management Fee - Let Only | revenue | income |
+| 4003 | Management Fee - Tenant Find | revenue | income |
+| 4100 | Letting Commission Income | revenue | income |
+| 4200 | Sales Commission Income | revenue | income |
+| 4300 | Renewal Fee Income | revenue | income |
+| 4400 | Admin Fee Income | revenue | income |
+| 4500 | Inventory/Check-in Fee Income | revenue | income |
+| 4600 | Contractor Markup Income | revenue | income |
+| 4900 | Other Income | revenue | other_income |
+| 4910 | Interest Income | revenue | other_income |
+| **Cost of Sales** | | | |
+| 5000 | Contractor Costs | expense | cost_of_sales |
+| 5100 | Referral Fees | expense | cost_of_sales |
+| **Operating Expenses** | | | |
+| 6000 | Staff Salaries | expense | operating_expense |
+| 6010 | Employer NI Contributions | expense | operating_expense |
+| 6020 | Staff Pensions | expense | operating_expense |
+| 6100 | Office Rent | expense | operating_expense |
+| 6110 | Business Rates | expense | operating_expense |
+| 6120 | Office Utilities | expense | operating_expense |
+| 6200 | Insurance | expense | operating_expense |
+| 6300 | Marketing & Advertising | expense | operating_expense |
+| 6310 | Portal Listing Fees | expense | operating_expense |
+| 6400 | Professional Fees - Legal | expense | operating_expense |
+| 6410 | Professional Fees - Accounting | expense | operating_expense |
+| 6500 | Software & IT | expense | operating_expense |
+| 6600 | Telephone & Internet | expense | operating_expense |
+| 6700 | Travel & Motor | expense | operating_expense |
+| 6800 | Depreciation | expense | operating_expense |
+| 6900 | Bank Charges | expense | operating_expense |
+| 7000 | Bad Debts | expense | other_expense |
+| 7100 | Sundry Expenses | expense | other_expense |
 
 #### `tax_rates` — VAT and tax rate definitions
 ```
@@ -927,3 +959,61 @@ Add new **Accounting** section to CRM sidebar navigation:
 6. **Financial periods** — Prevent backdating entries into closed periods
 7. **Rechargeable expenses** — Purchase invoices can be marked rechargeable, auto-generating a corresponding sales invoice to the landlord
 8. **UK-specific** — VAT scheme options (standard, flat rate, cash accounting), corporation tax rates, HMRC 9-box return format, April financial year default
+9. **Three VAT accounts** — Separate VAT Output (2100, sales), VAT Input (2101, purchases), and VAT Liability (2102, net) for clean VAT return calculations
+10. **Client money ring-fencing** — Tenant Deposits Held (1300 asset) matched by Tenant Deposits Liability (2300), and Landlord Funds Held (2500 liability) — regulatory requirement for UK estate agents
+11. **Polymorphic FKs** — Uses `source_type`/`source_id` pattern already established in the codebase (e.g., `document` table's `entity_type`/`entity_id`)
+
+---
+
+## Bridge Columns on Existing Tables
+
+To connect the new accounting system to existing operational tables without disrupting current workflows:
+
+| Table | New Column | Type | Purpose |
+|-------|-----------|------|---------|
+| `invoice` (existing rent invoices) | `business_invoice_id` | `integer` nullable | FK to `business_invoice.id` — set when operational invoice is posted to accounting |
+| `property_transaction` | `journal_entry_id` | `integer` nullable | FK to `journal_entry.id` — bridges single-entry to double-entry |
+
+---
+
+## New Backend Service Files
+
+| File | Purpose |
+|------|---------|
+| `server/accountingRoutes.ts` | All accounting API endpoints (separate from financeRoutes.ts to avoid bloating) |
+| `server/services/journalService.ts` | Journal entry creation with double-entry validation |
+| `server/services/businessInvoiceService.ts` | Invoice generation, numbering, PDF creation |
+| `server/services/vatService.ts` | VAT return calculation from journal entry data |
+| `server/services/accountingReconciliationService.ts` | Payment allocation and bank reconciliation bridge |
+
+---
+
+## Integration Points in Existing Code
+
+| File | Line(s) | What to Hook |
+|------|---------|--------------|
+| `server/financeRoutes.ts` | ~61-98 | Invoice creation → create journal entry |
+| `server/financeRoutes.ts` | ~424-528 | Statement generation → create management fee journal entries |
+| `server/financeRoutes.ts` | ~468 | **Replace hardcoded 20% VAT** with `tax_rates` table lookup |
+| `server/financeRoutes.ts` | ~1171-1198 | Bank import matching → create payment allocation + journal entry |
+| `server/financeRoutes.ts` | ~1429+ | GoCardless webhook → create journal entry |
+| `server/reconciliationEngine.ts` | ~38-100 | `recordPaymentAndReconcile` → create journal entry |
+| `server/schedulerService.ts` | daily scheduler | Add recurring invoice generation + overdue detection |
+
+---
+
+## Historical Data Migration Strategy
+
+Two options:
+
+**Option A: Fresh Start (Recommended)**
+- Set an "accounting start date" (e.g., start of current financial year)
+- Enter opening balances in chart of accounts as of that date
+- Only new transactions from that date forward create journal entries
+- Simpler, less risk of historical data inconsistencies
+
+**Option B: Full Backfill**
+- Script to generate journal entries from existing `property_transaction`, `invoice`, and `payment` records
+- Requires careful mapping of legacy categories to chart of accounts codes
+- Risk: existing data may have inconsistencies that would cause unbalanced entries
+- Only recommended if historical accounting reports are required
