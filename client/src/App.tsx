@@ -119,6 +119,23 @@ import InventoryTracking from "@/pages/InventoryTracking";
 import CompanySettings from "@/pages/CompanySettings";
 import TenancyOnboarding from "@/pages/TenancyOnboarding";
 
+// Accounting Pages
+import BusinessSettings from "@/pages/BusinessSettings";
+import ChartOfAccounts from "@/pages/ChartOfAccounts";
+import JournalEntries from "@/pages/JournalEntries";
+import GeneralLedger from "@/pages/GeneralLedger";
+import TrialBalance from "@/pages/TrialBalance";
+import BusinessInvoices from "@/pages/BusinessInvoices";
+import PurchaseInvoices from "@/pages/PurchaseInvoices";
+import CreditNotes from "@/pages/CreditNotes";
+import RecurringTemplates from "@/pages/RecurringTemplates";
+import VATReturns from "@/pages/VATReturns";
+import ProfitAndLoss from "@/pages/ProfitAndLoss";
+import BalanceSheet from "@/pages/BalanceSheet";
+import AgedDebtors from "@/pages/AgedDebtors";
+import AgedCreditors from "@/pages/AgedCreditors";
+import TaxReports from "@/pages/TaxReports";
+
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
 import HarlesdenPage from "@/pages/areas/HarlesdenPage";
@@ -243,6 +260,24 @@ function Router() {
         {/* CRM Routes - all wrapped with persistent sidebar layout */}
         <Route path="/crm/tenancy-onboarding"><CRMLayout><TenancyOnboarding /></CRMLayout></Route>
         <Route path="/crm/sl-dashboard"><CRMLayout><SalesLettingsDashboard /></CRMLayout></Route>
+
+        {/* Accounting Routes */}
+        <Route path="/crm/accounting/settings"><CRMLayout><BusinessSettings /></CRMLayout></Route>
+        <Route path="/crm/accounting/chart-of-accounts"><CRMLayout><ChartOfAccounts /></CRMLayout></Route>
+        <Route path="/crm/accounting/journal-entries"><CRMLayout><JournalEntries /></CRMLayout></Route>
+        <Route path="/crm/accounting/general-ledger"><CRMLayout><GeneralLedger /></CRMLayout></Route>
+        <Route path="/crm/accounting/trial-balance"><CRMLayout><TrialBalance /></CRMLayout></Route>
+        <Route path="/crm/accounting/business-invoices"><CRMLayout><BusinessInvoices /></CRMLayout></Route>
+        <Route path="/crm/accounting/purchase-invoices"><CRMLayout><PurchaseInvoices /></CRMLayout></Route>
+        <Route path="/crm/accounting/credit-notes"><CRMLayout><CreditNotes /></CRMLayout></Route>
+        <Route path="/crm/accounting/recurring-templates"><CRMLayout><RecurringTemplates /></CRMLayout></Route>
+        <Route path="/crm/accounting/vat-returns"><CRMLayout><VATReturns /></CRMLayout></Route>
+        <Route path="/crm/accounting/reports/profit-and-loss"><CRMLayout><ProfitAndLoss /></CRMLayout></Route>
+        <Route path="/crm/accounting/reports/balance-sheet"><CRMLayout><BalanceSheet /></CRMLayout></Route>
+        <Route path="/crm/accounting/reports/aged-debtors"><CRMLayout><AgedDebtors /></CRMLayout></Route>
+        <Route path="/crm/accounting/reports/aged-creditors"><CRMLayout><AgedCreditors /></CRMLayout></Route>
+        <Route path="/crm/accounting/reports/tax"><CRMLayout><TaxReports /></CRMLayout></Route>
+
         <Route path="/crm"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/dashboard"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/properties/create"><CRMLayout><PropertyCreate /></CRMLayout></Route>

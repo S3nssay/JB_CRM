@@ -1,7 +1,8 @@
-import { db } from './db';
+import { db, pool } from './db';
 import { payments, invoices, arrears, propertyTransactions } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 import { storage } from './storage';
+import { accountingRecordRentPayment } from './accountingIntegration';
 
 /**
  * Shared reconciliation engine used by:
@@ -94,7 +95,7 @@ export async function recordPaymentAndReconcile(
         // 4. Create property transaction (income record)
         if (propId) {
           try {
-            await storage.createPropertyTransaction({
+            const txn = await storage.createPropertyTransaction({
               propertyId: propId,
               landlordId: llId || null,
               transactionType: 'income',
@@ -106,6 +107,24 @@ export async function recordPaymentAndReconcile(
               paymentId: payment.id,
             });
             result.transactionCreated = true;
+
+            // 5. Accounting integration: record rent payment journal entry
+            try {
+              const propResult = await pool.query('SELECT address_line1, postcode FROM property WHERE id = $1', [propId]);
+              const propAddr = propResult.rows.length > 0
+                ? [propResult.rows[0].address_line1, propResult.rows[0].postcode].filter(Boolean).join(', ')
+                : `Property #${propId}`;
+              await accountingRecordRentPayment(
+                paymentData.amount,
+                `Tenant #${paymentData.tenantId}`,
+                propAddr,
+                invoice.invoiceNumber,
+                paymentData.paidAt || new Date(),
+                txn.id
+              );
+            } catch (acctErr) {
+              console.error('[Accounting] Error recording journal entry during reconciliation:', acctErr);
+            }
           } catch (e) {
             console.error('Error creating property transaction during reconciliation:', e);
           }

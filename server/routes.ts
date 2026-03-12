@@ -177,6 +177,7 @@ import { financeRouter } from './financeRoutes';
 import { pmWorkflowRouter } from './pmWorkflowRoutes';
 import { tenancyOnboardingRouter } from './tenancyOnboardingRoutes';
 import { slRouter } from './salesLettingsRoutes';
+import { accountingRouter } from './accountingRoutes';
 import { messageRouterAgent } from './services/messageRouterAgent';
 import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
 import path from 'path';
@@ -195,6 +196,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm/pm', pmWorkflowRouter);  // Also mount at /pm/ prefix for frontend compatibility
   app.use('/api/crm', tenancyOnboardingRouter);
   app.use('/api/crm', slRouter);
+  app.use('/api/crm', accountingRouter);
   app.use('/api/crm', messageRouterAgent.router);
 
   // ==========================================

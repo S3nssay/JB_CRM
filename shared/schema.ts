@@ -6469,6 +6469,7 @@ export const invoices = pgTable("invoice", {
   pdfUrl: text("pdf_url"),
   notes: text("notes"),
   sentAt: timestamp("sent_at"),
+  businessInvoiceId: integer("business_invoice_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
@@ -6589,6 +6590,7 @@ export const propertyTransactions = pgTable("property_transaction", {
   maintenanceTicketId: integer("maintenance_ticket_id"),
   supportTicketId: integer("support_ticket_id"),
   notes: text("notes"),
+  journalEntryId: integer("journal_entry_id"),
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
 
@@ -7086,3 +7088,428 @@ export const tenancyOnboardingSteps = pgTable("tenancy_onboarding_step", {
 
 export type TenancyOnboardingStep = typeof tenancyOnboardingSteps.$inferSelect;
 export type InsertTenancyOnboardingStep = typeof tenancyOnboardingSteps.$inferInsert;
+
+// ==========================================
+// BUSINESS ACCOUNTING: SETTINGS
+// ==========================================
+
+export const businessSettings = pgTable("business_settings", {
+  id: serial("id").primaryKey(),
+  financialYearStart: integer("financial_year_start").default(4), // month 1-12, default April
+  baseCurrency: text("base_currency").default("GBP"),
+  vatRegistered: boolean("vat_registered").default(false),
+  vatNumber: text("vat_number"),
+  vatScheme: text("vat_scheme"), // standard, flat_rate, cash
+  flatRatePercentage: decimal("flat_rate_percentage"),
+  defaultPaymentTermsDays: integer("default_payment_terms_days").default(30),
+  salesInvoicePrefix: text("sales_invoice_prefix").default("JBINV"),
+  salesInvoiceNextNumber: integer("sales_invoice_next_number").default(1),
+  purchaseInvoicePrefix: text("purchase_invoice_prefix").default("JBPI"),
+  purchaseInvoiceNextNumber: integer("purchase_invoice_next_number").default(1),
+  creditNotePrefix: text("credit_note_prefix").default("JBCN"),
+  creditNoteNextNumber: integer("credit_note_next_number").default(1),
+  journalEntryPrefix: text("journal_entry_prefix").default("JE"),
+  journalEntryNextNumber: integer("journal_entry_next_number").default(1),
+  defaultSalesAccountId: integer("default_sales_account_id"),
+  defaultPurchaseAccountId: integer("default_purchase_account_id"),
+  defaultBankAccountId: integer("default_bank_account_id"),
+  accountingStartDate: timestamp("accounting_start_date"),
+  logoUrl: text("logo_url"),
+  // Company Information
+  companyName: text("company_name"),
+  tradingName: text("trading_name"),
+  companyRegistrationNumber: text("company_registration_number"),
+  taxReference: text("tax_reference"),
+  email: text("email"),
+  phone: text("phone"),
+  website: text("website"),
+  // Registered Address
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  country: text("country").default("United Kingdom"),
+  // Bank Details
+  bankName: text("bank_name"),
+  bankAccountName: text("bank_account_name"),
+  bankAccountNumber: text("bank_account_number"),
+  bankSortCode: text("bank_sort_code"),
+  bankIban: text("bank_iban"),
+  bankSwift: text("bank_swift"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBusinessSettingsSchema = createInsertSchema(businessSettings).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertBusinessSettings = z.infer<typeof insertBusinessSettingsSchema>;
+export type BusinessSettings = typeof businessSettings.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: CHART OF ACCOUNTS
+// ==========================================
+
+export const chartOfAccounts = pgTable("chart_of_accounts", {
+  id: serial("id").primaryKey(),
+  accountCode: text("account_code").notNull().unique(),
+  accountName: text("account_name").notNull(),
+  accountType: text("account_type").notNull(), // asset, liability, equity, revenue, expense
+  parentAccountId: integer("parent_account_id"),
+  isSystemAccount: boolean("is_system_account").default(false),
+  isActive: boolean("is_active").default(true),
+  description: text("description"),
+  normalBalance: text("normal_balance"), // debit, credit
+  defaultTaxRateId: integer("default_tax_rate_id"),
+  openingBalance: integer("opening_balance").default(0), // pence
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertChartOfAccountsSchema = createInsertSchema(chartOfAccounts).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertChartOfAccounts = z.infer<typeof insertChartOfAccountsSchema>;
+export type ChartOfAccounts = typeof chartOfAccounts.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: TAX RATES
+// ==========================================
+
+export const taxRates = pgTable("tax_rates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  rate: decimal("rate").notNull(), // percentage e.g. 20.00
+  taxType: text("tax_type"), // vat, corporation, other
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  description: text("description"),
+  effectiveFrom: timestamp("effective_from"),
+  effectiveTo: timestamp("effective_to"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertTaxRateSchema = createInsertSchema(taxRates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertTaxRate = z.infer<typeof insertTaxRateSchema>;
+export type TaxRate = typeof taxRates.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: FINANCIAL PERIODS
+// ==========================================
+
+export const financialPeriods = pgTable("financial_periods", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  status: text("status").default("open"), // open, closed, locked
+  periodType: text("period_type"), // monthly, quarterly, annual
+  financialYear: integer("financial_year"),
+  closedAt: timestamp("closed_at"),
+  closedById: integer("closed_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertFinancialPeriodSchema = createInsertSchema(financialPeriods).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFinancialPeriod = z.infer<typeof insertFinancialPeriodSchema>;
+export type FinancialPeriod = typeof financialPeriods.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: JOURNAL ENTRIES
+// ==========================================
+
+export const journalEntries = pgTable("journal_entries", {
+  id: serial("id").primaryKey(),
+  entryNumber: text("entry_number").notNull().unique(),
+  entryDate: timestamp("entry_date").notNull(),
+  description: text("description").notNull(),
+  sourceType: text("source_type"), // manual, sales_invoice, purchase_invoice, credit_note, payment, bank_import, vat_return, opening_balance
+  sourceId: integer("source_id"),
+  financialPeriodId: integer("financial_period_id"),
+  status: text("status").default("draft"), // draft, posted, reversed
+  postedAt: timestamp("posted_at"),
+  postedById: integer("posted_by_id"),
+  reversedEntryId: integer("reversed_entry_id"),
+  notes: text("notes"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertJournalEntrySchema = createInsertSchema(journalEntries).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertJournalEntry = z.infer<typeof insertJournalEntrySchema>;
+export type JournalEntry = typeof journalEntries.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: JOURNAL ENTRY LINES
+// ==========================================
+
+export const journalEntryLines = pgTable("journal_entry_lines", {
+  id: serial("id").primaryKey(),
+  journalEntryId: integer("journal_entry_id").notNull(),
+  accountId: integer("account_id").notNull(),
+  description: text("description"),
+  debitAmount: integer("debit_amount").default(0), // pence
+  creditAmount: integer("credit_amount").default(0), // pence
+  taxRateId: integer("tax_rate_id"),
+  taxAmount: integer("tax_amount").default(0), // pence
+  propertyId: integer("property_id"),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertJournalEntryLineSchema = createInsertSchema(journalEntryLines).omit({ id: true, createdAt: true });
+export type InsertJournalEntryLine = z.infer<typeof insertJournalEntryLineSchema>;
+export type JournalEntryLine = typeof journalEntryLines.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: BUSINESS INVOICES (SALES)
+// ==========================================
+
+export const businessInvoices = pgTable("business_invoices", {
+  id: serial("id").primaryKey(),
+  invoiceNumber: text("invoice_number").notNull().unique(),
+  invoiceDate: timestamp("invoice_date").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  customerType: text("customer_type"), // landlord, tenant, vendor, other
+  customerId: integer("customer_id"),
+  customerName: text("customer_name").notNull(),
+  customerEmail: text("customer_email"),
+  customerAddress: text("customer_address"),
+  customerVatNumber: text("customer_vat_number"),
+  subtotal: integer("subtotal").notNull().default(0), // pence
+  vatAmount: integer("vat_amount").notNull().default(0), // pence
+  totalAmount: integer("total_amount").notNull().default(0), // pence
+  amountPaid: integer("amount_paid").notNull().default(0), // pence
+  status: text("status").default("draft"), // draft, sent, partially_paid, paid, overdue, void, credited
+  propertyId: integer("property_id"),
+  journalEntryId: integer("journal_entry_id"),
+  sentAt: timestamp("sent_at"),
+  paidAt: timestamp("paid_at"),
+  voidedAt: timestamp("voided_at"),
+  pdfUrl: text("pdf_url"),
+  notes: text("notes"),
+  internalNotes: text("internal_notes"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBusinessInvoiceSchema = createInsertSchema(businessInvoices).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertBusinessInvoice = z.infer<typeof insertBusinessInvoiceSchema>;
+export type BusinessInvoice = typeof businessInvoices.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: BUSINESS INVOICE LINES
+// ==========================================
+
+export const businessInvoiceLines = pgTable("business_invoice_lines", {
+  id: serial("id").primaryKey(),
+  businessInvoiceId: integer("business_invoice_id").notNull(),
+  description: text("description").notNull(),
+  quantity: decimal("quantity").notNull().default("1"),
+  unitPrice: integer("unit_price").notNull(), // pence
+  lineTotal: integer("line_total").notNull(), // pence
+  taxRateId: integer("tax_rate_id"),
+  taxAmount: integer("tax_amount").default(0), // pence
+  accountId: integer("account_id"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertBusinessInvoiceLineSchema = createInsertSchema(businessInvoiceLines).omit({ id: true, createdAt: true });
+export type InsertBusinessInvoiceLine = z.infer<typeof insertBusinessInvoiceLineSchema>;
+export type BusinessInvoiceLine = typeof businessInvoiceLines.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: PURCHASE INVOICES
+// ==========================================
+
+export const purchaseInvoices = pgTable("purchase_invoices", {
+  id: serial("id").primaryKey(),
+  invoiceNumber: text("invoice_number").notNull(),
+  supplierType: text("supplier_type"), // contractor, supplier, other
+  supplierId: integer("supplier_id"),
+  supplierName: text("supplier_name").notNull(),
+  supplierEmail: text("supplier_email"),
+  supplierAddress: text("supplier_address"),
+  supplierVatNumber: text("supplier_vat_number"),
+  invoiceDate: timestamp("invoice_date").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  subtotal: integer("subtotal").notNull().default(0), // pence
+  vatAmount: integer("vat_amount").notNull().default(0), // pence
+  totalAmount: integer("total_amount").notNull().default(0), // pence
+  amountPaid: integer("amount_paid").notNull().default(0), // pence
+  status: text("status").default("draft"), // draft, awaiting_approval, approved, partially_paid, paid, void
+  propertyId: integer("property_id"),
+  landlordId: integer("landlord_id"),
+  isRechargeable: boolean("is_rechargeable").default(false),
+  rechargeInvoiceId: integer("recharge_invoice_id"), // FK to business_invoices if recharged
+  journalEntryId: integer("journal_entry_id"),
+  approvedById: integer("approved_by_id"),
+  approvedAt: timestamp("approved_at"),
+  paidAt: timestamp("paid_at"),
+  pdfUrl: text("pdf_url"),
+  notes: text("notes"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPurchaseInvoiceSchema = createInsertSchema(purchaseInvoices).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPurchaseInvoice = z.infer<typeof insertPurchaseInvoiceSchema>;
+export type PurchaseInvoice = typeof purchaseInvoices.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: PURCHASE INVOICE LINES
+// ==========================================
+
+export const purchaseInvoiceLines = pgTable("purchase_invoice_lines", {
+  id: serial("id").primaryKey(),
+  purchaseInvoiceId: integer("purchase_invoice_id").notNull(),
+  description: text("description").notNull(),
+  quantity: decimal("quantity").notNull().default("1"),
+  unitPrice: integer("unit_price").notNull(), // pence
+  lineTotal: integer("line_total").notNull(), // pence
+  taxRateId: integer("tax_rate_id"),
+  taxAmount: integer("tax_amount").default(0), // pence
+  accountId: integer("account_id"),
+  sortOrder: integer("sort_order").default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPurchaseInvoiceLineSchema = createInsertSchema(purchaseInvoiceLines).omit({ id: true, createdAt: true });
+export type InsertPurchaseInvoiceLine = z.infer<typeof insertPurchaseInvoiceLineSchema>;
+export type PurchaseInvoiceLine = typeof purchaseInvoiceLines.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: CREDIT NOTES
+// ==========================================
+
+export const creditNotes = pgTable("credit_notes", {
+  id: serial("id").primaryKey(),
+  creditNoteNumber: text("credit_note_number").notNull().unique(),
+  creditNoteDate: timestamp("credit_note_date").notNull(),
+  originalInvoiceId: integer("original_invoice_id"), // FK to business_invoices
+  customerType: text("customer_type"),
+  customerId: integer("customer_id"),
+  customerName: text("customer_name").notNull(),
+  subtotal: integer("subtotal").notNull().default(0), // pence
+  vatAmount: integer("vat_amount").notNull().default(0), // pence
+  totalAmount: integer("total_amount").notNull().default(0), // pence
+  amountApplied: integer("amount_applied").notNull().default(0), // pence
+  status: text("status").default("draft"), // draft, issued, partially_applied, fully_applied, void
+  reason: text("reason"),
+  journalEntryId: integer("journal_entry_id"),
+  notes: text("notes"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertCreditNoteSchema = createInsertSchema(creditNotes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCreditNote = z.infer<typeof insertCreditNoteSchema>;
+export type CreditNote = typeof creditNotes.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: PAYMENT ALLOCATIONS
+// ==========================================
+
+export const paymentAllocations = pgTable("payment_allocations", {
+  id: serial("id").primaryKey(),
+  paymentDate: timestamp("payment_date").notNull(),
+  amount: integer("amount").notNull(), // pence
+  paymentMethod: text("payment_method"), // bank_transfer, card, direct_debit, cash, cheque
+  paymentReference: text("payment_reference"),
+  allocationType: text("allocation_type"), // sales_invoice, purchase_invoice, credit_note
+  allocationId: integer("allocation_id"),
+  bankAccountId: integer("bank_account_id"),
+  journalEntryId: integer("journal_entry_id"),
+  notes: text("notes"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertPaymentAllocationSchema = createInsertSchema(paymentAllocations).omit({ id: true, createdAt: true });
+export type InsertPaymentAllocation = z.infer<typeof insertPaymentAllocationSchema>;
+export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: VAT RETURNS
+// ==========================================
+
+export const vatReturns = pgTable("vat_returns", {
+  id: serial("id").primaryKey(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  box1VatDueSales: integer("box1_vat_due_sales").default(0), // pence
+  box2VatDueAcquisitions: integer("box2_vat_due_acquisitions").default(0), // pence
+  box3TotalVatDue: integer("box3_total_vat_due").default(0), // pence
+  box4VatReclaimedInput: integer("box4_vat_reclaimed_input").default(0), // pence
+  box5NetVatDue: integer("box5_net_vat_due").default(0), // pence
+  box6TotalSalesExVat: integer("box6_total_sales_ex_vat").default(0), // pence
+  box7TotalPurchasesExVat: integer("box7_total_purchases_ex_vat").default(0), // pence
+  box8TotalSuppliesExVat: integer("box8_total_supplies_ex_vat").default(0), // pence
+  box9TotalAcquisitionsExVat: integer("box9_total_acquisitions_ex_vat").default(0), // pence
+  status: text("status").default("draft"), // draft, calculated, submitted, paid
+  submittedAt: timestamp("submitted_at"),
+  submittedById: integer("submitted_by_id"),
+  settlementJournalEntryId: integer("settlement_journal_entry_id"),
+  hmrcCorrelationId: text("hmrc_correlation_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertVatReturnSchema = createInsertSchema(vatReturns).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertVatReturn = z.infer<typeof insertVatReturnSchema>;
+export type VatReturn = typeof vatReturns.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: VAT RETURN TRANSACTIONS
+// ==========================================
+
+export const vatReturnTransactions = pgTable("vat_return_transactions", {
+  id: serial("id").primaryKey(),
+  vatReturnId: integer("vat_return_id").notNull(),
+  journalEntryLineId: integer("journal_entry_line_id").notNull(),
+  boxNumber: integer("box_number").notNull(), // 1-9
+  amount: integer("amount").notNull(), // pence
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertVatReturnTransactionSchema = createInsertSchema(vatReturnTransactions).omit({ id: true, createdAt: true });
+export type InsertVatReturnTransaction = z.infer<typeof insertVatReturnTransactionSchema>;
+export type VatReturnTransaction = typeof vatReturnTransactions.$inferSelect;
+
+// ==========================================
+// BUSINESS ACCOUNTING: RECURRING INVOICE TEMPLATES
+// ==========================================
+
+export const recurringInvoiceTemplates = pgTable("recurring_invoice_templates", {
+  id: serial("id").primaryKey(),
+  templateName: text("template_name").notNull(),
+  customerType: text("customer_type"),
+  customerId: integer("customer_id"),
+  customerName: text("customer_name").notNull(),
+  frequency: text("frequency").notNull(), // weekly, monthly, quarterly, annually
+  dayOfMonth: integer("day_of_month"),
+  lineItems: json("line_items"),
+  subtotal: integer("subtotal").default(0), // pence
+  vatAmount: integer("vat_amount").default(0), // pence
+  totalAmount: integer("total_amount").default(0), // pence
+  propertyId: integer("property_id"),
+  accountId: integer("account_id"),
+  taxRateId: integer("tax_rate_id"),
+  nextGenerationDate: timestamp("next_generation_date"),
+  lastGeneratedDate: timestamp("last_generated_date"),
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertRecurringInvoiceTemplateSchema = createInsertSchema(recurringInvoiceTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertRecurringInvoiceTemplate = z.infer<typeof insertRecurringInvoiceTemplateSchema>;
+export type RecurringInvoiceTemplate = typeof recurringInvoiceTemplates.$inferSelect;

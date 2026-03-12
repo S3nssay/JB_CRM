@@ -7,6 +7,7 @@ import { importBankStatement, autoReconcile, manualMatch } from './bankReconcili
 import { recordPaymentAndReconcile } from './reconciliationEngine';
 import { createRedirectFlow, completeRedirectFlow, collectPayment, cancelMandate, verifyWebhookSignature, processWebhookEvents, isGoCardlessConfigured } from './gocardlessService';
 import multer from 'multer';
+import { accountingRecordRentPayment, accountingRecordManagementFee, accountingRecordLandlordPayment, accountingRecordExpense } from './accountingIntegration';
 
 export const financeRouter = Router();
 
@@ -78,7 +79,7 @@ financeRouter.put('/invoices/:id', requireAgent, async (req: any, res) => {
 
     // Auto-record transaction when invoice marked as paid
     if (req.body.status === 'paid' && invoice.propertyId) {
-      await storage.createPropertyTransaction({
+      const txn = await storage.createPropertyTransaction({
         propertyId: invoice.propertyId,
         landlordId: invoice.landlordId,
         transactionType: 'income',
@@ -89,6 +90,24 @@ financeRouter.put('/invoices/:id', requireAgent, async (req: any, res) => {
         invoiceId: invoice.id,
         paymentId: invoice.paymentId,
       });
+
+      // Accounting integration: record rent payment journal entry
+      try {
+        const propResult = await pool.query('SELECT address_line1, postcode FROM property WHERE id = $1', [invoice.propertyId]);
+        const propAddr = propResult.rows.length > 0
+          ? [propResult.rows[0].address_line1, propResult.rows[0].postcode].filter(Boolean).join(', ')
+          : `Property #${invoice.propertyId}`;
+        await accountingRecordRentPayment(
+          invoice.totalAmount,
+          `Tenant #${invoice.tenantId}`,
+          propAddr,
+          invoice.invoiceNumber,
+          new Date(),
+          txn.id
+        );
+      } catch (e) {
+        console.error('[Accounting] Error recording rent payment journal entry:', e);
+      }
     }
 
     res.json(invoice);
@@ -520,6 +539,18 @@ financeRouter.post('/statements/generate', requireAgent, async (req: any, res) =
       });
     }
 
+    // Accounting integration: record management fee journal entry
+    if (totalFees > 0) {
+      try {
+        const llResult = await pool.query('SELECT name FROM landlord WHERE id = $1', [landlordId]);
+        const llName = llResult.rows.length > 0 ? llResult.rows[0].name : `Landlord #${landlordId}`;
+        const periodDesc = `${start.toLocaleDateString('en-GB')} - ${end.toLocaleDateString('en-GB')}`;
+        await accountingRecordManagementFee(totalFees, vatOnFees, llName, periodDesc, statement.id);
+      } catch (e) {
+        console.error('[Accounting] Error recording management fee journal entry:', e);
+      }
+    }
+
     res.status(201).json(statement);
   } catch (error) {
     console.error('Error generating statement:', error);
@@ -572,6 +603,21 @@ financeRouter.put('/statements/:id/mark-paid', requireAgent, async (req: any, re
       paymentReference: req.body.paymentReference,
     });
     if (!updated) return res.status(404).json({ error: 'Statement not found' });
+
+    // Accounting integration: record landlord payment journal entry
+    try {
+      const llResult = await pool.query('SELECT name FROM landlord WHERE id = $1', [updated.landlordId]);
+      const llName = llResult.rows.length > 0 ? llResult.rows[0].name : `Landlord #${updated.landlordId}`;
+      await accountingRecordLandlordPayment(
+        updated.netPayable,
+        llName,
+        req.body.paymentReference || `STMT-${id}`,
+        id
+      );
+    } catch (e) {
+      console.error('[Accounting] Error recording landlord payment journal entry:', e);
+    }
+
     res.json(updated);
   } catch (error) {
     console.error('Error marking statement paid:', error);
@@ -960,6 +1006,23 @@ financeRouter.post('/property-transactions', requireAgent, async (req: any, res)
   try {
     const data = insertPropertyTransactionSchema.parse(req.body);
     const txn = await storage.createPropertyTransaction(data);
+
+    // Accounting integration: record expense journal entry
+    if (data.transactionType === 'expense') {
+      try {
+        await accountingRecordExpense(
+          data.amount,
+          data.category,
+          data.description,
+          false, // default to company expense; rechargeable flag could be added to the request
+          txn.id,
+          data.transactionDate
+        );
+      } catch (e) {
+        console.error('[Accounting] Error recording expense journal entry:', e);
+      }
+    }
+
     res.status(201).json(txn);
   } catch (error) {
     console.error('Error creating transaction:', error);

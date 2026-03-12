@@ -13,7 +13,8 @@ import {
   RotateCcw, CalendarClock, Send, CheckSquare,
   CreditCard, ArrowRightLeft, Mail,
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
-  ChevronDown, ChevronRight as ChevronRightIcon
+  ChevronDown, ChevronRight as ChevronRightIcon,
+  BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -26,6 +27,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
   const [showImportKeyDataDialog, setShowImportKeyDataDialog] = useState(false);
   const [pmExpanded, setPmExpanded] = useState(true);
   const [salesExpanded, setSalesExpanded] = useState(true);
+  const [accountingExpanded, setAccountingExpanded] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(true);
 
   useEffect(() => {
@@ -429,6 +431,94 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                       {newBuyerRenterLeadsCount > 99 ? '99+' : newBuyerRenterLeadsCount}
                     </span>
                   )}
+                </button>
+              </div>
+              </>}
+            </div>
+
+            {/* Accounting Section */}
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <button
+                className="w-full flex items-center justify-between px-3 mb-1.5 group"
+                onClick={() => setAccountingExpanded(!accountingExpanded)}
+              >
+                <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider">
+                  Accounting
+                </p>
+                {accountingExpanded ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" />}
+              </button>
+              {accountingExpanded && <><div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/settings') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/settings')}>
+                  <Settings2 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/settings') ? 'text-white' : 'text-gray-400'}`} />
+                  Business Settings
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/chart-of-accounts') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/chart-of-accounts')}>
+                  <BookOpen className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/chart-of-accounts') ? 'text-white' : 'text-gray-400'}`} />
+                  Chart of Accounts
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/journal-entries') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/journal-entries')}>
+                  <FileSpreadsheet className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/journal-entries') ? 'text-white' : 'text-gray-400'}`} />
+                  Journal Entries
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/general-ledger') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/general-ledger')}>
+                  <Landmark className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/general-ledger') ? 'text-white' : 'text-gray-400'}`} />
+                  General Ledger
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/trial-balance') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/trial-balance')}>
+                  <Scale className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/trial-balance') ? 'text-white' : 'text-gray-400'}`} />
+                  Trial Balance
+                </button>
+              </div>
+
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
+                Invoicing
+              </p>
+              <div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/business-invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/business-invoices')}>
+                  <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/business-invoices') ? 'text-white' : 'text-gray-400'}`} />
+                  Sales Invoices
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/purchase-invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/purchase-invoices')}>
+                  <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/purchase-invoices') ? 'text-white' : 'text-gray-400'}`} />
+                  Purchase Invoices
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/credit-notes') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/credit-notes')}>
+                  <FileMinus className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/credit-notes') ? 'text-white' : 'text-gray-400'}`} />
+                  Credit Notes
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/recurring-templates') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/recurring-templates')}>
+                  <Repeat className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/recurring-templates') ? 'text-white' : 'text-gray-400'}`} />
+                  Recurring Templates
+                </button>
+              </div>
+
+              <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
+                Tax & Reports
+              </p>
+              <div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/vat-returns') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/vat-returns')}>
+                  <Calculator className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/vat-returns') ? 'text-white' : 'text-gray-400'}`} />
+                  VAT Returns
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/reports/profit-and-loss') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/reports/profit-and-loss')}>
+                  <TrendingUp className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/reports/profit-and-loss') ? 'text-white' : 'text-gray-400'}`} />
+                  Profit & Loss
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/reports/balance-sheet') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/reports/balance-sheet')}>
+                  <BarChart3 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/reports/balance-sheet') ? 'text-white' : 'text-gray-400'}`} />
+                  Balance Sheet
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/reports/aged-debtors') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/reports/aged-debtors')}>
+                  <AlertTriangle className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/reports/aged-debtors') ? 'text-white' : 'text-gray-400'}`} />
+                  Aged Debtors
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/reports/aged-creditors') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/reports/aged-creditors')}>
+                  <CreditCard className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/reports/aged-creditors') ? 'text-white' : 'text-gray-400'}`} />
+                  Aged Creditors
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/reports/tax') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/reports/tax')}>
+                  <ShieldCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/reports/tax') ? 'text-white' : 'text-gray-400'}`} />
+                  Tax Reports
                 </button>
               </div>
               </>}
