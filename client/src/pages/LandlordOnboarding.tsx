@@ -12,8 +12,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
 import {
     ArrowLeft, ArrowRight, User, Building, CreditCard, FileText,
-    Shield, Check, Upload, AlertCircle
+    Shield, Check, Upload, AlertCircle, AlertTriangle
 } from 'lucide-react';
+import { ComplianceChecklist, ComplianceItem } from '@/components/ComplianceChecklist';
 
 interface LandlordFormData {
     // Personal Details
@@ -148,6 +149,189 @@ export default function LandlordOnboarding() {
 
     const isLastStep = currentStepIndex === steps.length - 1;
 
+    // Build compliance items for the final step
+    const getComplianceItems = (): ComplianceItem[] => {
+        const items: ComplianceItem[] = [];
+
+        // Photo ID - CRITICAL (AML requirement)
+        items.push({
+            id: 'photo_id',
+            label: 'Photo ID Verification (AML/KYC)',
+            description: formData.idDocumentUploaded
+                ? 'Photo ID uploaded for identity verification'
+                : 'No photo ID uploaded - required under Money Laundering Regulations',
+            passed: formData.idDocumentUploaded,
+            severity: 'critical',
+            actionStep: 'documents',
+            actionLabel: 'Upload',
+            penalty: 'Non-compliant with Money Laundering Regulations 2017',
+            legalReference: 'Money Laundering, Terrorist Financing and Transfer of Funds Regulations 2017',
+        });
+
+        // Bank Details - CRITICAL
+        items.push({
+            id: 'bank_details',
+            label: 'Bank Account Details',
+            description: formData.bankName && formData.accountNumber && formData.sortCode
+                ? `Bank: ${formData.bankName} - Account ending ${formData.accountNumber.slice(-4)}`
+                : 'Incomplete bank details - required for rent payments to landlord',
+            passed: !!(formData.bankName && formData.accountNumber && formData.sortCode),
+            severity: 'critical',
+            actionStep: 'banking',
+            actionLabel: 'Complete',
+        });
+
+        // Gas Safety Acknowledgement - CRITICAL
+        items.push({
+            id: 'gas_safety_ack',
+            label: 'Gas Safety Obligation Acknowledged',
+            description: formData.understandsGasSafety
+                ? 'Landlord understands annual CP12 gas safety check requirement'
+                : 'Landlord has not acknowledged gas safety obligations',
+            passed: formData.understandsGasSafety,
+            severity: 'critical',
+            actionStep: 'compliance',
+            actionLabel: 'Acknowledge',
+            penalty: 'Fine up to £6,000 or imprisonment for non-compliance',
+            legalReference: 'Gas Safety (Installation and Use) Regulations 1998',
+        });
+
+        // EICR Acknowledgement - CRITICAL
+        items.push({
+            id: 'eicr_ack',
+            label: 'Electrical Safety Obligation Acknowledged',
+            description: formData.understandsEicr
+                ? 'Landlord understands EICR requirement every 5 years'
+                : 'Landlord has not acknowledged electrical safety obligations',
+            passed: formData.understandsEicr,
+            severity: 'critical',
+            actionStep: 'compliance',
+            actionLabel: 'Acknowledge',
+            penalty: 'Fine up to £30,000',
+            legalReference: 'Electrical Safety Standards Regulations 2020',
+        });
+
+        // EPC Acknowledgement - CRITICAL
+        items.push({
+            id: 'epc_ack',
+            label: 'EPC Obligation Acknowledged',
+            description: formData.understandsEpc
+                ? 'Landlord understands minimum EPC rating E (C from 2025) requirement'
+                : 'Landlord has not acknowledged EPC obligations',
+            passed: formData.understandsEpc,
+            severity: 'critical',
+            actionStep: 'compliance',
+            actionLabel: 'Acknowledge',
+            penalty: 'Fine up to £5,000. F/G rated properties cannot be let.',
+            legalReference: 'Energy Efficiency (Private Rented Property) Regulations 2015',
+        });
+
+        // Deposit Protection Acknowledgement - CRITICAL
+        items.push({
+            id: 'deposit_ack',
+            label: 'Deposit Protection Obligation Acknowledged',
+            description: formData.understandsDepositProtection
+                ? 'Landlord understands 30-day deposit protection requirement'
+                : 'Landlord has not acknowledged deposit protection obligations',
+            passed: formData.understandsDepositProtection,
+            severity: 'critical',
+            actionStep: 'compliance',
+            actionLabel: 'Acknowledge',
+            penalty: 'Tenant can claim 1-3x deposit amount if not protected within 30 days',
+            legalReference: 'Housing Act 2004 - Tenancy Deposit Protection',
+        });
+
+        // Terms & Conditions - CRITICAL
+        items.push({
+            id: 'terms',
+            label: 'Management Agreement Terms',
+            description: formData.agreesToTerms
+                ? 'Landlord has agreed to management terms and conditions'
+                : 'Management agreement terms not yet accepted',
+            passed: formData.agreesToTerms,
+            severity: 'critical',
+            actionStep: 'compliance',
+            actionLabel: 'Accept',
+        });
+
+        // Non-Resident Landlord Tax - WARNING
+        if (!formData.isUkResident) {
+            items.push({
+                id: 'nrl_scheme',
+                label: 'Non-Resident Landlord Tax Status',
+                description: formData.hasNrlExemption && formData.nrlNumber
+                    ? `HMRC NRL exemption number: ${formData.nrlNumber}`
+                    : formData.hasNrlExemption
+                        ? 'NRL exemption claimed but no approval number provided'
+                        : 'Non-UK resident without NRL exemption - basic rate tax must be deducted from rent',
+                passed: formData.hasNrlExemption ? !!formData.nrlNumber : true,
+                severity: 'warning',
+                actionStep: 'tax',
+                actionLabel: 'Update',
+                legalReference: 'Non-Resident Landlords Scheme (HMRC)',
+            });
+        }
+
+        // Company Registration - WARNING (for company landlords)
+        if (formData.landlordType === 'company') {
+            items.push({
+                id: 'company_reg',
+                label: 'Company Registration Number',
+                description: formData.companyRegNumber
+                    ? `Companies House registration: ${formData.companyRegNumber}`
+                    : 'No company registration number provided - required for corporate landlords',
+                passed: !!formData.companyRegNumber,
+                severity: 'warning',
+                actionStep: 'personal',
+                actionLabel: 'Add',
+            });
+        }
+
+        // Proof of Address - WARNING
+        items.push({
+            id: 'proof_of_address',
+            label: 'Proof of Address',
+            description: formData.proofOfAddressUploaded
+                ? 'Proof of address document uploaded'
+                : 'No proof of address - recommended for AML/KYC compliance',
+            passed: formData.proofOfAddressUploaded,
+            severity: 'warning',
+            actionStep: 'documents',
+            actionLabel: 'Upload',
+        });
+
+        // Proof of Ownership - WARNING
+        items.push({
+            id: 'proof_of_ownership',
+            label: 'Proof of Property Ownership',
+            description: formData.proofOfOwnershipUploaded
+                ? 'Proof of ownership document uploaded'
+                : 'No proof of ownership - recommended to verify landlord authority',
+            passed: formData.proofOfOwnershipUploaded,
+            severity: 'warning',
+            actionStep: 'documents',
+            actionLabel: 'Upload',
+        });
+
+        // Contact completeness - INFO
+        items.push({
+            id: 'contact_info',
+            label: 'Complete Contact Details',
+            description: formData.phone && formData.address
+                ? 'Full contact information provided'
+                : 'Incomplete contact details - phone and address recommended',
+            passed: !!(formData.phone && formData.address),
+            severity: 'info',
+            actionStep: 'personal',
+            actionLabel: 'Complete',
+        });
+
+        return items;
+    };
+
+    const complianceItems = getComplianceItems();
+    const hasCriticalFailures = complianceItems.some(i => i.severity === 'critical' && !i.passed);
+
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-background">
             {/* Header */}
@@ -241,6 +425,11 @@ export default function LandlordOnboarding() {
                                                 onChange={(e) => updateField('companyRegNumber', e.target.value)}
                                                 placeholder="12345678"
                                             />
+                                            {formData.landlordType === 'company' && !formData.companyRegNumber && (
+                                                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                                    <AlertTriangle className="h-3 w-3" /> Required for Companies House verification
+                                                </p>
+                                            )}
                                         </div>
                                     </>
                                 )}
@@ -304,10 +493,20 @@ export default function LandlordOnboarding() {
                                 Bank Details
                             </CardTitle>
                             <CardDescription>
-                                For rent payments to the landlord
+                                For rent payments to the landlord. Required for client money regulations.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 rounded-lg p-3 mb-2">
+                                <div className="flex gap-2">
+                                    <AlertCircle className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                                        Bank details are required to process rent payments to the landlord. Under client money
+                                        protection rules, all payments must be routed to a verified bank account.
+                                    </p>
+                                </div>
+                            </div>
+
                             <div>
                                 <Label>Bank Name *</Label>
                                 <Input
@@ -335,6 +534,9 @@ export default function LandlordOnboarding() {
                                         placeholder="12345678"
                                         maxLength={8}
                                     />
+                                    {formData.accountNumber && formData.accountNumber.length !== 8 && (
+                                        <p className="text-xs text-amber-600 mt-1">UK bank account numbers are 8 digits</p>
+                                    )}
                                 </div>
 
                                 <div>
@@ -373,16 +575,21 @@ export default function LandlordOnboarding() {
 
                             {!formData.isUkResident && (
                                 <>
-                                    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-4">
+                                    <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 rounded-lg p-4">
                                         <div className="flex gap-2">
-                                            <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                                            <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
                                             <div>
-                                                <p className="font-medium text-amber-800 dark:text-amber-200">
-                                                    Non-Resident Landlord Scheme
+                                                <p className="font-medium text-red-800 dark:text-red-200">
+                                                    Non-Resident Landlord (NRL) Scheme - Tax Compliance
                                                 </p>
-                                                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                                                    For landlords who normally live outside the UK, tax must be deducted from rent
-                                                    unless they have HMRC approval to receive rent without tax deducted.
+                                                <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                                    For landlords who normally live outside the UK, you as the managing agent <strong>must
+                                                    deduct basic rate tax from the rent</strong> and pay it to HMRC unless the landlord
+                                                    has received HMRC approval to receive rent without tax deducted.
+                                                </p>
+                                                <p className="text-sm text-red-700 dark:text-red-300 mt-2">
+                                                    Failure to deduct tax when required is a criminal offence. You must register with
+                                                    HMRC as an agent for this landlord.
                                                 </p>
                                             </div>
                                         </div>
@@ -401,12 +608,26 @@ export default function LandlordOnboarding() {
 
                                     {formData.hasNrlExemption && (
                                         <div>
-                                            <Label>NRL Approval Number</Label>
+                                            <Label>NRL Approval Number *</Label>
                                             <Input
                                                 value={formData.nrlNumber || ''}
                                                 onChange={(e) => updateField('nrlNumber', e.target.value)}
                                                 placeholder="Enter NRL approval number"
                                             />
+                                            {!formData.nrlNumber && (
+                                                <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                                                    <AlertTriangle className="h-3 w-3" /> You must record the HMRC approval number to verify the exemption
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {!formData.hasNrlExemption && (
+                                        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3">
+                                            <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
+                                                Action Required: You must deduct 20% basic rate tax from all rent payments
+                                                and submit quarterly returns to HMRC using form NRLY.
+                                            </p>
                                         </div>
                                     )}
                                 </>
@@ -423,17 +644,30 @@ export default function LandlordOnboarding() {
                                 KYC Documents
                             </CardTitle>
                             <CardDescription>
-                                Required identity and ownership verification documents
+                                Required identity and ownership verification documents (AML/KYC compliance)
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="border rounded-lg p-4">
+                            <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 rounded-lg p-3">
+                                <div className="flex gap-2">
+                                    <Shield className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                                        Under the Money Laundering Regulations 2017, letting agents must verify the identity of
+                                        landlords before entering into a business relationship. Photo ID is mandatory.
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className={`border rounded-lg p-4 ${!formData.idDocumentUploaded ? 'border-red-200 bg-red-50/50 dark:bg-red-950/10' : 'border-green-200 bg-green-50/50 dark:bg-green-950/10'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-medium">Photo ID *</p>
                                         <p className="text-sm text-muted-foreground">
                                             Passport, driving licence, or national ID card
                                         </p>
+                                        {!formData.idDocumentUploaded && (
+                                            <p className="text-xs text-red-600 mt-1">Mandatory under AML regulations</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
@@ -448,13 +682,16 @@ export default function LandlordOnboarding() {
                                 </div>
                             </div>
 
-                            <div className="border rounded-lg p-4">
+                            <div className={`border rounded-lg p-4 ${!formData.proofOfAddressUploaded ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/10' : 'border-green-200 bg-green-50/50 dark:bg-green-950/10'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-medium">Proof of Address</p>
                                         <p className="text-sm text-muted-foreground">
                                             Utility bill or bank statement (within 3 months)
                                         </p>
+                                        {!formData.proofOfAddressUploaded && (
+                                            <p className="text-xs text-amber-600 mt-1">Recommended for enhanced due diligence</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
@@ -469,13 +706,16 @@ export default function LandlordOnboarding() {
                                 </div>
                             </div>
 
-                            <div className="border rounded-lg p-4">
+                            <div className={`border rounded-lg p-4 ${!formData.proofOfOwnershipUploaded ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/10' : 'border-green-200 bg-green-50/50 dark:bg-green-950/10'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-medium">Proof of Property Ownership</p>
                                         <p className="text-sm text-muted-foreground">
                                             Title deed, mortgage statement, or land registry document
                                         </p>
+                                        {!formData.proofOfOwnershipUploaded && (
+                                            <p className="text-xs text-amber-600 mt-1">Recommended to verify landlord authority</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
@@ -494,95 +734,108 @@ export default function LandlordOnboarding() {
                 )}
 
                 {currentStep === 'compliance' && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Shield className="h-5 w-5" />
-                                Compliance Acknowledgement
-                            </CardTitle>
-                            <CardDescription>
-                                Confirm understanding of legal requirements
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-3">
-                                <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                                    <Checkbox
-                                        id="gasSafety"
-                                        checked={formData.understandsGasSafety}
-                                        onCheckedChange={(checked) => updateField('understandsGasSafety', checked)}
-                                    />
-                                    <div>
-                                        <Label htmlFor="gasSafety" className="font-medium">Gas Safety Certificate</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            I understand that an annual gas safety check (CP12) is required and must be
-                                            provided to tenants within 28 days.
-                                        </p>
-                                    </div>
-                                </div>
+                    <div className="space-y-6">
+                        {/* Compliance Review */}
+                        <ComplianceChecklist
+                            title="Landlord Compliance Review"
+                            subtitle="Review all regulatory obligations before completing onboarding"
+                            items={complianceItems}
+                            onNavigateToStep={(step) => setCurrentStep(step as WizardStep)}
+                            showSummary={true}
+                            blockOnCritical={true}
+                        />
 
-                                <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                                    <Checkbox
-                                        id="eicr"
-                                        checked={formData.understandsEicr}
-                                        onCheckedChange={(checked) => updateField('understandsEicr', checked)}
-                                    />
-                                    <div>
-                                        <Label htmlFor="eicr" className="font-medium">Electrical Safety (EICR)</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            I understand that an Electrical Installation Condition Report is required
-                                            every 5 years and must be provided to tenants.
-                                        </p>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Shield className="h-5 w-5" />
+                                    Compliance Acknowledgement
+                                </CardTitle>
+                                <CardDescription>
+                                    Confirm understanding of legal requirements
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="space-y-3">
+                                    <div className={`flex items-start space-x-3 p-3 border rounded-lg ${formData.understandsGasSafety ? 'bg-green-50/50 border-green-200' : 'bg-red-50/30 border-red-200'}`}>
+                                        <Checkbox
+                                            id="gasSafety"
+                                            checked={formData.understandsGasSafety}
+                                            onCheckedChange={(checked) => updateField('understandsGasSafety', checked)}
+                                        />
+                                        <div>
+                                            <Label htmlFor="gasSafety" className="font-medium">Gas Safety Certificate *</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                I understand that an annual gas safety check (CP12) is required and must be
+                                                provided to tenants within 28 days. Penalty: up to £6,000 fine or imprisonment.
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                                    <Checkbox
-                                        id="epc"
-                                        checked={formData.understandsEpc}
-                                        onCheckedChange={(checked) => updateField('understandsEpc', checked)}
-                                    />
-                                    <div>
-                                        <Label htmlFor="epc" className="font-medium">Energy Performance Certificate</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            I understand the property must have a valid EPC with a minimum rating of E
-                                            (C from 2025) and be provided to tenants.
-                                        </p>
+                                    <div className={`flex items-start space-x-3 p-3 border rounded-lg ${formData.understandsEicr ? 'bg-green-50/50 border-green-200' : 'bg-red-50/30 border-red-200'}`}>
+                                        <Checkbox
+                                            id="eicr"
+                                            checked={formData.understandsEicr}
+                                            onCheckedChange={(checked) => updateField('understandsEicr', checked)}
+                                        />
+                                        <div>
+                                            <Label htmlFor="eicr" className="font-medium">Electrical Safety (EICR) *</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                I understand that an Electrical Installation Condition Report is required
+                                                every 5 years and must be provided to tenants. Penalty: up to £30,000 fine.
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="flex items-start space-x-3 p-3 border rounded-lg">
-                                    <Checkbox
-                                        id="deposit"
-                                        checked={formData.understandsDepositProtection}
-                                        onCheckedChange={(checked) => updateField('understandsDepositProtection', checked)}
-                                    />
-                                    <div>
-                                        <Label htmlFor="deposit" className="font-medium">Deposit Protection</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            I understand that tenant deposits must be protected in a government-approved
-                                            scheme within 30 days and prescribed information provided.
-                                        </p>
+                                    <div className={`flex items-start space-x-3 p-3 border rounded-lg ${formData.understandsEpc ? 'bg-green-50/50 border-green-200' : 'bg-red-50/30 border-red-200'}`}>
+                                        <Checkbox
+                                            id="epc"
+                                            checked={formData.understandsEpc}
+                                            onCheckedChange={(checked) => updateField('understandsEpc', checked)}
+                                        />
+                                        <div>
+                                            <Label htmlFor="epc" className="font-medium">Energy Performance Certificate *</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                I understand the property must have a valid EPC with a minimum rating of E
+                                                (C from 2025) and be provided to tenants. Penalty: up to £5,000 fine.
+                                            </p>
+                                        </div>
                                     </div>
-                                </div>
 
-                                <div className="flex items-start space-x-3 p-3 border rounded-lg bg-primary/5">
-                                    <Checkbox
-                                        id="terms"
-                                        checked={formData.agreesToTerms}
-                                        onCheckedChange={(checked) => updateField('agreesToTerms', checked)}
-                                    />
-                                    <div>
-                                        <Label htmlFor="terms" className="font-medium">Terms & Conditions</Label>
-                                        <p className="text-sm text-muted-foreground">
-                                            I agree to the terms of the management agreement and understand my
-                                            responsibilities as a landlord.
-                                        </p>
+                                    <div className={`flex items-start space-x-3 p-3 border rounded-lg ${formData.understandsDepositProtection ? 'bg-green-50/50 border-green-200' : 'bg-red-50/30 border-red-200'}`}>
+                                        <Checkbox
+                                            id="deposit"
+                                            checked={formData.understandsDepositProtection}
+                                            onCheckedChange={(checked) => updateField('understandsDepositProtection', checked)}
+                                        />
+                                        <div>
+                                            <Label htmlFor="deposit" className="font-medium">Deposit Protection *</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                I understand that tenant deposits must be protected in a government-approved
+                                                scheme within 30 days and prescribed information provided.
+                                                Penalty: tenant can claim 1-3x the deposit amount.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className={`flex items-start space-x-3 p-3 border rounded-lg ${formData.agreesToTerms ? 'bg-primary/5 border-primary/30' : 'bg-red-50/30 border-red-200'}`}>
+                                        <Checkbox
+                                            id="terms"
+                                            checked={formData.agreesToTerms}
+                                            onCheckedChange={(checked) => updateField('agreesToTerms', checked)}
+                                        />
+                                        <div>
+                                            <Label htmlFor="terms" className="font-medium">Terms & Conditions *</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                I agree to the terms of the management agreement and understand my
+                                                responsibilities as a landlord.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+                            </CardContent>
+                        </Card>
+                    </div>
                 )}
 
                 {/* Navigation */}
@@ -597,13 +850,21 @@ export default function LandlordOnboarding() {
                     </Button>
 
                     {isLastStep ? (
-                        <Button
-                            onClick={() => saveMutation.mutate()}
-                            disabled={!canProceed() || saveMutation.isPending}
-                            className="bg-gradient-to-r from-green-600 to-emerald-600"
-                        >
-                            {saveMutation.isPending ? 'Saving...' : 'Complete Onboarding'}
-                        </Button>
+                        <div className="flex items-center gap-3">
+                            {hasCriticalFailures && (
+                                <p className="text-sm text-red-600 flex items-center gap-1">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    All acknowledgements required
+                                </p>
+                            )}
+                            <Button
+                                onClick={() => saveMutation.mutate()}
+                                disabled={!canProceed() || saveMutation.isPending}
+                                className="bg-gradient-to-r from-green-600 to-emerald-600"
+                            >
+                                {saveMutation.isPending ? 'Saving...' : 'Complete Onboarding'}
+                            </Button>
+                        </div>
                     ) : (
                         <Button onClick={goNext} disabled={!canProceed()}>
                             Next

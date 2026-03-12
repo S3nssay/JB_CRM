@@ -11,8 +11,9 @@ import { useToast } from '@/hooks/use-toast';
 import { useLocation } from 'wouter';
 import {
     ArrowLeft, ArrowRight, User, FileCheck, Users, Shield,
-    Check, Upload, Briefcase, Home, AlertCircle, CreditCard
+    Check, Upload, Briefcase, Home, AlertCircle, CreditCard, AlertTriangle
 } from 'lucide-react';
+import { ComplianceChecklist, ComplianceItem } from '@/components/ComplianceChecklist';
 
 interface TenantFormData {
     // Personal Details
@@ -173,6 +174,147 @@ export default function TenantOnboarding() {
     };
 
     const isLastStep = currentStepIndex === steps.length - 1;
+
+    // Build compliance items for the payment-setup (final) step
+    const getComplianceItems = (): ComplianceItem[] => {
+        const items: ComplianceItem[] = [];
+
+        // Right to Rent - CRITICAL
+        items.push({
+            id: 'right_to_rent',
+            label: 'Right to Rent Verification',
+            description: !formData.hasRightToRent
+                ? 'Tenant has not confirmed right to rent in the UK'
+                : !formData.rightToRentChecked
+                    ? 'Right to rent confirmed but document check not completed'
+                    : !formData.rightToRentDocType
+                        ? 'Right to rent check completed but document type not recorded'
+                        : 'Right to rent verified with ' + formData.rightToRentDocType,
+            passed: formData.hasRightToRent && formData.rightToRentChecked,
+            severity: 'critical',
+            actionStep: 'right-to-rent',
+            actionLabel: 'Verify',
+            penalty: 'Civil penalty up to £3,000 per tenant. Potential criminal prosecution.',
+            legalReference: 'Immigration Act 2014 - Right to Rent',
+        });
+
+        // Photo ID - CRITICAL
+        items.push({
+            id: 'photo_id',
+            label: 'Photo ID Verification',
+            description: formData.idDocumentUploaded
+                ? 'Photo ID document uploaded and confirmed'
+                : 'No photo ID uploaded - required for identity verification and AML compliance',
+            passed: formData.idDocumentUploaded,
+            severity: 'critical',
+            actionStep: 'documents',
+            actionLabel: 'Upload',
+            penalty: 'Non-compliant with AML regulations',
+            legalReference: 'Money Laundering Regulations 2017',
+        });
+
+        // Terms Agreement - CRITICAL
+        items.push({
+            id: 'terms_agreement',
+            label: 'Terms & Conditions Agreement',
+            description: formData.agreesToTerms
+                ? 'Tenant has agreed to terms and conditions and consented to reference checks'
+                : 'Terms not agreed - required before tenancy can proceed',
+            passed: formData.agreesToTerms,
+            severity: 'critical',
+            actionStep: 'documents',
+            actionLabel: 'Agree',
+        });
+
+        // Proof of Address - WARNING
+        items.push({
+            id: 'proof_of_address',
+            label: 'Proof of Address',
+            description: formData.proofOfAddressUploaded
+                ? 'Proof of address document uploaded'
+                : 'No proof of address uploaded - recommended for KYC compliance',
+            passed: formData.proofOfAddressUploaded,
+            severity: 'warning',
+            actionStep: 'documents',
+            actionLabel: 'Upload',
+        });
+
+        // Employment Verification - WARNING
+        items.push({
+            id: 'employment_verification',
+            label: 'Employment Details',
+            description: formData.employerName && formData.annualIncome
+                ? `Employed at ${formData.employerName} - income £${Number(formData.annualIncome).toLocaleString()}`
+                : !formData.employerName && !formData.annualIncome
+                    ? 'No employment details provided - income affordability cannot be assessed'
+                    : !formData.annualIncome
+                        ? 'Annual income not provided - affordability check incomplete'
+                        : 'Employer name not provided',
+            passed: !!(formData.employerName && formData.annualIncome),
+            severity: 'warning',
+            actionStep: 'employment',
+            actionLabel: 'Complete',
+        });
+
+        // Previous Landlord Reference - WARNING
+        items.push({
+            id: 'previous_landlord',
+            label: 'Previous Landlord Reference',
+            description: formData.previousLandlordName && formData.previousLandlordContact
+                ? `Reference from ${formData.previousLandlordName} available`
+                : 'No previous landlord reference provided - recommended for tenant screening',
+            passed: !!(formData.previousLandlordName && formData.previousLandlordContact),
+            severity: 'warning',
+            actionStep: 'references',
+            actionLabel: 'Add',
+        });
+
+        // Guarantor completeness - WARNING (only if required)
+        if (formData.requiresGuarantor) {
+            items.push({
+                id: 'guarantor',
+                label: 'Guarantor Details',
+                description: formData.guarantorName && formData.guarantorEmail && formData.guarantorAddress
+                    ? `Guarantor: ${formData.guarantorName} (${formData.guarantorRelationship || 'relationship not specified'})`
+                    : 'Guarantor required but details incomplete - name, email, and address needed',
+                passed: !!(formData.guarantorName && formData.guarantorEmail && formData.guarantorAddress),
+                severity: 'warning',
+                actionStep: 'guarantor',
+                actionLabel: 'Complete',
+            });
+        }
+
+        // Contact details - INFO
+        items.push({
+            id: 'contact_details',
+            label: 'Complete Contact Information',
+            description: formData.mobile
+                ? 'Mobile number provided for emergency contact'
+                : 'No mobile number provided - recommended for urgent communications',
+            passed: !!formData.mobile,
+            severity: 'info',
+            actionStep: 'personal',
+            actionLabel: 'Add',
+        });
+
+        // Date of Birth - INFO
+        items.push({
+            id: 'date_of_birth',
+            label: 'Date of Birth',
+            description: formData.dateOfBirth
+                ? 'Date of birth recorded'
+                : 'Date of birth not provided - useful for identity verification',
+            passed: !!formData.dateOfBirth,
+            severity: 'info',
+            actionStep: 'personal',
+            actionLabel: 'Add',
+        });
+
+        return items;
+    };
+
+    const complianceItems = getComplianceItems();
+    const hasCriticalFailures = complianceItems.some(i => i.severity === 'critical' && !i.passed);
 
     return (
         <div className="min-h-screen bg-gray-50 dark:bg-background">
@@ -337,6 +479,17 @@ export default function TenantOnboarding() {
                                     rows={2}
                                 />
                             </div>
+
+                            {!formData.employerName && !formData.annualIncome && (
+                                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3">
+                                    <div className="flex gap-2">
+                                        <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                                            Employment and income details are needed to assess affordability. Without this, the tenant may fail referencing.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -353,16 +506,20 @@ export default function TenantOnboarding() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-4 mb-4">
+                            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 rounded-lg p-4 mb-4">
                                 <div className="flex gap-2">
-                                    <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                                    <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
                                     <div>
-                                        <p className="font-medium text-amber-800 dark:text-amber-200">
-                                            Legal Requirement
+                                        <p className="font-medium text-red-800 dark:text-red-200">
+                                            Mandatory Legal Requirement
                                         </p>
-                                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                                            Landlords must check that tenants have the right to rent in England before
-                                            letting a property. Failure to do so can result in fines up to £3,000.
+                                        <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                                            Under the Immigration Act 2014, landlords must check that tenants have the right to rent
+                                            in England before letting a property. Failure to do so can result in a civil penalty
+                                            of up to £3,000 per tenant, or criminal prosecution for repeat offences.
+                                        </p>
+                                        <p className="text-sm text-red-700 dark:text-red-300 mt-2 font-medium">
+                                            Both the original document check AND a recorded verification are required.
                                         </p>
                                     </div>
                                 </div>
@@ -380,12 +537,15 @@ export default function TenantOnboarding() {
                             </div>
 
                             <div>
-                                <Label>Document Type Used</Label>
+                                <Label>Document Type Used *</Label>
                                 <Input
                                     value={formData.rightToRentDocType}
                                     onChange={(e) => updateField('rightToRentDocType', e.target.value)}
                                     placeholder="e.g., British Passport, BRP, Share Code"
                                 />
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Record which document was used for the right to rent check
+                                </p>
                             </div>
 
                             <div className="flex items-center space-x-2">
@@ -394,10 +554,22 @@ export default function TenantOnboarding() {
                                     checked={formData.rightToRentChecked}
                                     onCheckedChange={(checked) => updateField('rightToRentChecked', checked)}
                                 />
-                                <Label htmlFor="rightToRentChecked">
+                                <Label htmlFor="rightToRentChecked" className="font-medium">
                                     Right to rent check completed and documented
                                 </Label>
                             </div>
+
+                            {formData.hasRightToRent && !formData.rightToRentChecked && (
+                                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-lg p-3">
+                                    <div className="flex gap-2">
+                                        <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                                            The tenant has confirmed their right to rent, but the check has not been marked as completed.
+                                            You must physically verify the original document and record the check.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 )}
@@ -440,6 +612,12 @@ export default function TenantOnboarding() {
                                         />
                                     </div>
                                 </div>
+                                {!formData.previousLandlordName && (
+                                    <p className="text-xs text-amber-600 flex items-center gap-1">
+                                        <AlertTriangle className="h-3 w-3" />
+                                        Previous landlord reference is strongly recommended for tenant screening
+                                    </p>
+                                )}
                             </div>
 
                             <div className="space-y-4">
@@ -548,13 +726,16 @@ export default function TenantOnboarding() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="border rounded-lg p-4">
+                            <div className={`border rounded-lg p-4 ${!formData.idDocumentUploaded ? 'border-red-200 bg-red-50/50 dark:bg-red-950/10' : 'border-green-200 bg-green-50/50 dark:bg-green-950/10'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-medium">Photo ID *</p>
                                         <p className="text-sm text-muted-foreground">
                                             Passport, driving licence, or national ID
                                         </p>
+                                        {!formData.idDocumentUploaded && (
+                                            <p className="text-xs text-red-600 mt-1">Required for identity verification and AML compliance</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
@@ -569,13 +750,16 @@ export default function TenantOnboarding() {
                                 </div>
                             </div>
 
-                            <div className="border rounded-lg p-4">
+                            <div className={`border rounded-lg p-4 ${!formData.proofOfAddressUploaded ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/10' : 'border-green-200 bg-green-50/50 dark:bg-green-950/10'}`}>
                                 <div className="flex items-center justify-between">
                                     <div>
                                         <p className="font-medium">Proof of Address</p>
                                         <p className="text-sm text-muted-foreground">
                                             Utility bill or bank statement (within 3 months)
                                         </p>
+                                        {!formData.proofOfAddressUploaded && (
+                                            <p className="text-xs text-amber-600 mt-1">Recommended for KYC compliance</p>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Checkbox
@@ -609,74 +793,86 @@ export default function TenantOnboarding() {
                 )}
 
                 {currentStep === 'payment-setup' && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <CreditCard className="h-5 w-5" />
-                                Payment Setup
-                            </CardTitle>
-                            <CardDescription>
-                                Choose how rent payments will be collected (optional - can be set up later)
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors bg-green-50/50">
-                                <div className="flex items-start gap-4">
-                                    <div className="p-2 bg-green-100 rounded-lg mt-1">
-                                        <CreditCard className="h-5 w-5 text-green-600" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <p className="font-semibold">Direct Debit (Recommended)</p>
-                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Recommended</span>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mt-1">
-                                            Set up a Direct Debit mandate via GoCardless. Rent is automatically collected on the due date each month.
-                                            The tenant will be redirected to authorise the mandate with their bank.
-                                        </p>
-                                        <ul className="text-xs text-muted-foreground mt-2 space-y-1">
-                                            <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Automatic collection on due date</li>
-                                            <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Protected by Direct Debit Guarantee</li>
-                                            <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Reduces arrears risk</li>
-                                        </ul>
-                                        <p className="text-xs text-muted-foreground mt-3 italic">
-                                            Note: Direct Debit setup will be completed after tenant record is created. You can set it up from the Direct Debits management page.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
+                    <div className="space-y-6">
+                        {/* Compliance Review */}
+                        <ComplianceChecklist
+                            title="Tenant Compliance Review"
+                            subtitle="Review all compliance items before completing onboarding"
+                            items={complianceItems}
+                            onNavigateToStep={(step) => setCurrentStep(step as WizardStep)}
+                            showSummary={true}
+                            blockOnCritical={true}
+                        />
 
-                            <div className="border rounded-lg p-4">
-                                <div className="flex items-start gap-4">
-                                    <div className="p-2 bg-blue-100 rounded-lg mt-1">
-                                        <ArrowRight className="h-5 w-5 text-blue-600" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className="font-semibold">Manual Bank Transfer</p>
-                                        <p className="text-sm text-muted-foreground mt-1">
-                                            Tenant pays by standing order or manual bank transfer. Payments are reconciled via bank statement import.
-                                        </p>
-                                        <div className="mt-3 p-3 bg-muted/50 rounded text-sm">
-                                            <p className="font-medium mb-1">Company Bank Details:</p>
-                                            <p>Account Name: John Barclay Estates Ltd</p>
-                                            <p>Sort Code: XX-XX-XX</p>
-                                            <p>Account Number: XXXXXXXX</p>
-                                            <p className="text-xs text-muted-foreground mt-1">Reference: Tenant name + property address</p>
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <CreditCard className="h-5 w-5" />
+                                    Payment Setup
+                                </CardTitle>
+                                <CardDescription>
+                                    Choose how rent payments will be collected (optional - can be set up later)
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-6">
+                                <div className="border rounded-lg p-4 cursor-pointer hover:border-primary transition-colors bg-green-50/50">
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-2 bg-green-100 rounded-lg mt-1">
+                                            <CreditCard className="h-5 w-5 text-green-600" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold">Direct Debit (Recommended)</p>
+                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Recommended</span>
+                                            </div>
+                                            <p className="text-sm text-muted-foreground mt-1">
+                                                Set up a Direct Debit mandate via GoCardless. Rent is automatically collected on the due date each month.
+                                                The tenant will be redirected to authorise the mandate with their bank.
+                                            </p>
+                                            <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                                                <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Automatic collection on due date</li>
+                                                <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Protected by Direct Debit Guarantee</li>
+                                                <li className="flex items-center gap-1"><Check className="h-3 w-3 text-green-600" /> Reduces arrears risk</li>
+                                            </ul>
+                                            <p className="text-xs text-muted-foreground mt-3 italic">
+                                                Note: Direct Debit setup will be completed after tenant record is created. You can set it up from the Direct Debits management page.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
 
-                            <div className="p-3 border rounded-lg bg-yellow-50/50 border-yellow-200">
-                                <div className="flex items-center gap-2">
-                                    <AlertCircle className="h-4 w-4 text-yellow-600" />
-                                    <p className="text-sm text-yellow-800">
-                                        This step is optional. Payment setup can be configured later from the tenant's profile or the Direct Debits page.
-                                    </p>
+                                <div className="border rounded-lg p-4">
+                                    <div className="flex items-start gap-4">
+                                        <div className="p-2 bg-blue-100 rounded-lg mt-1">
+                                            <ArrowRight className="h-5 w-5 text-blue-600" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="font-semibold">Manual Bank Transfer</p>
+                                            <p className="text-sm text-muted-foreground mt-1">
+                                                Tenant pays by standing order or manual bank transfer. Payments are reconciled via bank statement import.
+                                            </p>
+                                            <div className="mt-3 p-3 bg-muted/50 rounded text-sm">
+                                                <p className="font-medium mb-1">Company Bank Details:</p>
+                                                <p>Account Name: John Barclay Estates Ltd</p>
+                                                <p>Sort Code: XX-XX-XX</p>
+                                                <p>Account Number: XXXXXXXX</p>
+                                                <p className="text-xs text-muted-foreground mt-1">Reference: Tenant name + property address</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </div>
-                        </CardContent>
-                    </Card>
+
+                                <div className="p-3 border rounded-lg bg-yellow-50/50 border-yellow-200">
+                                    <div className="flex items-center gap-2">
+                                        <AlertCircle className="h-4 w-4 text-yellow-600" />
+                                        <p className="text-sm text-yellow-800">
+                                            This step is optional. Payment setup can be configured later from the tenant's profile or the Direct Debits page.
+                                        </p>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
                 )}
 
                 {/* Navigation */}
@@ -691,13 +887,21 @@ export default function TenantOnboarding() {
                     </Button>
 
                     {isLastStep ? (
-                        <Button
-                            onClick={() => saveMutation.mutate()}
-                            disabled={!canProceed() || saveMutation.isPending}
-                            className="bg-gradient-to-r from-green-600 to-emerald-600"
-                        >
-                            {saveMutation.isPending ? 'Saving...' : 'Complete Onboarding'}
-                        </Button>
+                        <div className="flex items-center gap-3">
+                            {hasCriticalFailures && (
+                                <p className="text-sm text-red-600 flex items-center gap-1">
+                                    <AlertTriangle className="h-4 w-4" />
+                                    Critical items pending
+                                </p>
+                            )}
+                            <Button
+                                onClick={() => saveMutation.mutate()}
+                                disabled={!canProceed() || saveMutation.isPending || hasCriticalFailures}
+                                className="bg-gradient-to-r from-green-600 to-emerald-600"
+                            >
+                                {saveMutation.isPending ? 'Saving...' : 'Complete Onboarding'}
+                            </Button>
+                        </div>
                     ) : (
                         <Button onClick={goNext} disabled={!canProceed()}>
                             Next
