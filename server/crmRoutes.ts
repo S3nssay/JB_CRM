@@ -8679,6 +8679,74 @@ crmRouter.get('/landlords', requireAgent, async (req, res) => {
   }
 });
 
+// Get landlord directory hierarchy - landlords with their properties and tenants
+crmRouter.get('/landlords/directory', requireAgent, async (req, res) => {
+  try {
+    // Get all landlords
+    const landlordsResult = await pool.query(`
+      SELECT id, name, email, phone, mobile, status,
+             landlord_type as "landlordType", is_corporate as "isCorporate",
+             company_name as "companyName"
+      FROM landlord
+      ORDER BY name ASC
+    `);
+
+    // Get all managed properties with landlord_id
+    const propertiesResult = await pool.query(`
+      SELECT id, title, address_line1 as "addressLine1", address_line2 as "addressLine2",
+             city, postcode, status, landlord_id as "landlordId",
+             property_type as "propertyType", bedrooms, bathrooms,
+             rent_period as "rentPeriod", price, is_managed as "isManaged"
+      FROM property
+      WHERE landlord_id IS NOT NULL
+      ORDER BY address_line1 ASC
+    `);
+
+    // Get all tenants with property_id
+    const tenantsResult = await pool.query(`
+      SELECT id, name, email, phone, mobile, status,
+             property_id as "propertyId", landlord_id as "landlordId"
+      FROM tenant
+      WHERE property_id IS NOT NULL
+      ORDER BY name ASC
+    `);
+
+    // Build hierarchy
+    const propertyMap = new Map<number, any[]>();
+    for (const prop of propertiesResult.rows) {
+      if (!propertyMap.has(prop.landlordId)) {
+        propertyMap.set(prop.landlordId, []);
+      }
+      propertyMap.get(prop.landlordId)!.push({
+        ...prop,
+        tenants: []
+      });
+    }
+
+    // Attach tenants to properties
+    for (const tenant of tenantsResult.rows) {
+      for (const [, props] of propertyMap) {
+        const prop = props.find((p: any) => p.id === tenant.propertyId);
+        if (prop) {
+          prop.tenants.push(tenant);
+          break;
+        }
+      }
+    }
+
+    // Build final response
+    const directory = landlordsResult.rows.map((landlord: any) => ({
+      ...landlord,
+      properties: propertyMap.get(landlord.id) || []
+    }));
+
+    res.json(directory);
+  } catch (error) {
+    console.error('Error fetching landlord directory:', error);
+    res.status(500).json({ error: 'Failed to fetch landlord directory' });
+  }
+});
+
 // Get single landlord - RAW SQL
 crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
   try {

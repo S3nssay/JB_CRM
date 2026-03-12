@@ -58,6 +58,7 @@ import LeadManagement from "@/pages/LeadManagement";
 import WebsiteLeads from "@/pages/WebsiteLeads";
 import AIAgentDashboard from "@/pages/AIAgentDashboard";
 import LandlordManagement from "@/pages/LandlordManagement";
+import LandlordDirectory from "@/pages/LandlordDirectory";
 import LandlordProperties from "@/pages/LandlordProperties";
 import TenantManagement from "@/pages/TenantManagement";
 import RentalAgreements from "@/pages/RentalAgreements";
@@ -323,6 +324,7 @@ function Router() {
         <Route path="/crm/property-pipeline"><CRMLayout><PropertyPipeline /></CRMLayout></Route>
         <Route path="/crm/landlord-lead/:id">{(params: any) => <CRMLayout><LandlordLeadDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/ai-agents"><CRMLayout><AIAgentDashboard /></CRMLayout></Route>
+        <Route path="/crm/landlord-directory"><CRMLayout><LandlordDirectory /></CRMLayout></Route>
         <Route path="/crm/landlords"><CRMLayout><LandlordManagement /></CRMLayout></Route>
         <Route path="/crm/landlords/:id">{(params: any) => <CRMLayout><LandlordDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/landlords/:id/properties">{(params: any) => <CRMLayout><LandlordProperties {...params} /></CRMLayout>}</Route>

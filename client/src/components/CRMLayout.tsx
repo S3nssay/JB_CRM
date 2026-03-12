@@ -14,7 +14,8 @@ import {
   CreditCard, ArrowRightLeft, Mail,
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
-  BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus
+  BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
+  FolderTree
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -230,6 +231,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <Gauge className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/pm-dashboard') ? 'text-white' : 'text-gray-400'}`} />
                   PM Command Centre
                 </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/landlord-directory') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/landlord-directory')}>
+                  <FolderTree className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/landlord-directory') ? 'text-white' : 'text-gray-400'}`} />
+                  Landlords
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/rental-agreements') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/rental-agreements')}>
                   <Key className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rental-agreements') ? 'text-white' : 'text-gray-400'}`} />
                   Tenancies
@@ -237,10 +242,6 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/property-management') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/property-management')}>
                   <Home className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/property-management') ? 'text-white' : 'text-gray-400'}`} />
                   Managed Properties
-                </button>
-                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActivePrefix('/crm/landlords') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/landlords')}>
-                  <User className={`h-3.5 w-3.5 flex-shrink-0 ${isActivePrefix('/crm/landlords') ? 'text-white' : 'text-gray-400'}`} />
-                  Landlords
                 </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActivePrefix('/crm/tenant') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/tenants')}>
                   <Users className={`h-3.5 w-3.5 flex-shrink-0 ${isActivePrefix('/crm/tenant') ? 'text-white' : 'text-gray-400'}`} />
