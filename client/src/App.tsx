@@ -100,6 +100,8 @@ import PortfolioFinancials from "@/pages/PortfolioFinancials";
 import RentReviewManager from "@/pages/RentReviewManager";
 import TenancyRenewals from "@/pages/TenancyRenewals";
 import TaskManager from "@/pages/TaskManager";
+import EmailTaskQueue from "@/pages/EmailTaskQueue";
+import DocumentReviewQueue from "@/pages/DocumentReviewQueue";
 import BankReconciliation from "@/pages/BankReconciliation";
 import DirectDebitManagement from "@/pages/DirectDebitManagement";
 import SalesInbox from "@/pages/SalesInbox";
@@ -352,6 +354,8 @@ function Router() {
         <Route path="/crm/rent-reviews"><CRMLayout><RentReviewManager /></CRMLayout></Route>
         <Route path="/crm/tenancy-renewals"><CRMLayout><TenancyRenewals /></CRMLayout></Route>
         <Route path="/crm/task-manager"><CRMLayout><TaskManager /></CRMLayout></Route>
+        <Route path="/crm/email-task-queue"><CRMLayout><EmailTaskQueue /></CRMLayout></Route>
+        <Route path="/crm/document-review"><CRMLayout><DocumentReviewQueue /></CRMLayout></Route>
         <Route path="/crm/bank-reconciliation"><CRMLayout><BankReconciliation /></CRMLayout></Route>
         <Route path="/crm/direct-debits"><CRMLayout><DirectDebitManagement /></CRMLayout></Route>
         <Route path="/crm/inbox/sales"><CRMLayout><SalesInbox /></CRMLayout></Route>

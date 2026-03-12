@@ -4,9 +4,10 @@ node_modules
 # Build outputs
 dist
 
-# Environment files (will be passed via docker-compose)
-.env
-.env.*
+# Environment files (production: pass via docker-compose instead)
+# .env is kept accessible for local dev and Claude Code sessions
+.env.production
+!.env
 !.env.example
 
 # Git

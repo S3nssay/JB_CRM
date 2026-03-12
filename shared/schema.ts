@@ -3983,6 +3983,14 @@ export const tasks = pgTable("task", {
   landlordId: integer("landlord_id"),
   tenantId: integer("tenant_id"),
 
+  // Source tracking (what created this task)
+  sourceEmailId: integer("source_email_id"), // FK to processed_email.id
+  sourceTicketId: integer("source_ticket_id"), // FK to support_ticket.id
+  sourceLeadId: integer("source_lead_id"), // FK to lead.id (if task came from lead activity)
+
+  // SLA tracking
+  slaDeadline: timestamp("sla_deadline"), // Calculated SLA due date
+
   dueDate: timestamp("due_date"),
   completedAt: timestamp("completed_at"),
   notes: text("notes"),
@@ -6389,10 +6397,19 @@ export const processedEmails = pgTable("processed_email", {
   linkedEnquiryId: integer("linked_enquiry_id"), // FK to customerEnquiries
   linkedTicketId: integer("linked_ticket_id"), // FK to support_ticket (created by AI agent)
 
+  // AI-extracted workflow data (enhanced pipeline)
+  aiExtractedTasks: json("ai_extracted_tasks"), // [{title, taskType, priority, description, dueWithinHours}]
+  aiAttachmentClassifications: json("ai_attachment_classifications"), // [{filename, documentType, entityType, confidence, description}]
+  aiPropertyMatch: json("ai_property_match"), // {address, postcode, confidence}
+  aiLeadDetails: json("ai_lead_details"), // {leadType, budget, bedrooms, areas, moveInDate, requirements}
+
   // AI Agent action tracking
-  aiAgentActionType: text("ai_agent_action_type"), // action taken: support_ticket_created, ticket_comment_added, enquiry_created, contractor_response_processed, routed_to_pm, ignored, failed
+  aiAgentActionType: text("ai_agent_action_type"), // action taken: support_ticket_created, ticket_comment_added, enquiry_created, lead_created, contractor_response_processed, routed_to_pm, ignored, failed
   aiAgentActionDetails: json("ai_agent_action_details"), // JSON metadata about the action
   aiAgentProcessedAt: timestamp("ai_agent_processed_at"), // when action was executed
+
+  // Lead linking (enhanced pipeline)
+  linkedLeadId: integer("linked_lead_id"), // FK to lead.id (created by AI agent)
 
   // Processing status
   processingStatus: text("processing_status").notNull().default("pending"), // 'pending', 'processed', 'failed', 'skipped'
@@ -7646,3 +7663,53 @@ export const recurringInvoiceTemplates = pgTable("recurring_invoice_templates", 
 export const insertRecurringInvoiceTemplateSchema = createInsertSchema(recurringInvoiceTemplates).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertRecurringInvoiceTemplate = z.infer<typeof insertRecurringInvoiceTemplateSchema>;
 export type RecurringInvoiceTemplate = typeof recurringInvoiceTemplates.$inferSelect;
+
+// ==========================================
+// EMAIL ATTACHMENT PROCESSING
+// ==========================================
+
+export const emailAttachments = pgTable("email_attachment", {
+  id: serial("id").primaryKey(),
+  processedEmailId: integer("processed_email_id").notNull(), // FK to processed_email.id
+  originalFilename: text("original_filename").notNull(),
+  contentType: text("content_type"),
+  fileSize: integer("file_size"),
+  storageUrl: text("storage_url"), // Where file was saved (S3/local)
+  documentId: integer("document_id"), // FK to document.id (after filing)
+
+  // AI classification
+  aiDocumentType: text("ai_document_type"), // passport, gas_safety, epc, invoice, etc.
+  aiEntityType: text("ai_entity_type"), // landlord, tenant, property, tenancy, unknown
+  aiEntityId: integer("ai_entity_id"), // Suggested entity ID
+  aiConfidence: decimal("ai_confidence"), // Classification confidence 0-1
+
+  // Review workflow
+  reviewStatus: text("review_status").notNull().default("pending"), // 'pending', 'confirmed', 'reassigned', 'rejected'
+  reviewedBy: integer("reviewed_by"), // FK to users.id
+  reviewedAt: timestamp("reviewed_at"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertEmailAttachmentSchema = createInsertSchema(emailAttachments).omit({ id: true, createdAt: true });
+export type EmailAttachment = typeof emailAttachments.$inferSelect;
+export type InsertEmailAttachment = z.infer<typeof insertEmailAttachmentSchema>;
+
+// ==========================================
+// TASK ASSIGNMENT RULES
+// ==========================================
+
+export const assignmentRules = pgTable("assignment_rule", {
+  id: serial("id").primaryKey(),
+  ruleName: text("rule_name").notNull(),
+  ruleType: text("rule_type").notNull(), // 'department', 'property_type', 'area', 'task_type'
+  matchValue: text("match_value").notNull(), // e.g., 'sales', 'SW1', 'maintenance'
+  assignedUserId: integer("assigned_user_id").notNull(), // FK to users.id
+  priority: integer("priority").notNull().default(0), // Higher = checked first
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAssignmentRuleSchema = createInsertSchema(assignmentRules).omit({ id: true, createdAt: true });
+export type AssignmentRule = typeof assignmentRules.$inferSelect;
+export type InsertAssignmentRule = z.infer<typeof insertAssignmentRuleSchema>;
