@@ -5,12 +5,16 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+const gbpWhole = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 });
+const gbpPence = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' });
+
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-    maximumFractionDigits: 0
-  }).format(amount);
+  return gbpWhole.format(amount);
+}
+
+/** Format an amount stored in pence as a GBP currency string (e.g. £1,234.56) */
+export function formatPence(pence: number): string {
+  return gbpPence.format(pence / 100);
 }
 
 export function generatePropertyOffer(propertyType: string, bedrooms: string, condition: string): { estimated: number, offer: number } {

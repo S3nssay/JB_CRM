@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -102,23 +102,24 @@ export default function ComplianceCalendar() {
 
   const { data: certificates = [], isLoading: loadingCerts } = useQuery<Certificate[]>({
     queryKey: ['/api/crm/compliance/calendar'],
-    queryFn: async () => {
-      const res = await fetch('/api/crm/compliance/calendar', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch compliance calendar');
-      return res.json();
-    },
   });
 
   const { data: summary = [], isLoading: loadingSummary } = useQuery<SummaryItem[]>({
     queryKey: ['/api/crm/compliance/summary'],
-    queryFn: async () => {
-      const res = await fetch('/api/crm/compliance/summary', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch compliance summary');
-      return res.json();
-    },
   });
 
-  const filteredCertificates = certificates.filter((cert) => {
+  const tabCounts = useMemo(() => {
+    let expired = 0, critical = 0, warning = 0, valid = 0;
+    for (const cert of certificates) {
+      if (cert.urgency === 'expired') expired++;
+      else if (cert.urgency === 'critical') critical++;
+      else if (cert.urgency === 'warning') warning++;
+      else valid++; // valid, upcoming, no_expiry
+    }
+    return { expired, critical, warning, valid };
+  }, [certificates]);
+
+  const filteredCertificates = useMemo(() => certificates.filter((cert) => {
     if (activeTab === 'all') return true;
     if (activeTab === 'expired') return cert.urgency === 'expired';
     if (activeTab === 'critical') return cert.urgency === 'critical';
@@ -126,7 +127,7 @@ export default function ComplianceCalendar() {
     if (activeTab === 'valid')
       return cert.urgency === 'valid' || cert.urgency === 'upcoming' || cert.urgency === 'no_expiry';
     return true;
-  });
+  }), [certificates, activeTab]);
 
   const isLoading = loadingCerts || loadingSummary;
 
@@ -212,16 +213,16 @@ export default function ComplianceCalendar() {
             All ({certificates.length})
           </TabsTrigger>
           <TabsTrigger value="expired" className="text-red-600">
-            Expired ({certificates.filter((c) => c.urgency === 'expired').length})
+            Expired ({tabCounts.expired})
           </TabsTrigger>
           <TabsTrigger value="critical" className="text-amber-600">
-            Critical (30 days) ({certificates.filter((c) => c.urgency === 'critical').length})
+            Critical (30 days) ({tabCounts.critical})
           </TabsTrigger>
           <TabsTrigger value="warning" className="text-amber-500">
-            Warning (60 days) ({certificates.filter((c) => c.urgency === 'warning').length})
+            Warning (60 days) ({tabCounts.warning})
           </TabsTrigger>
           <TabsTrigger value="valid" className="text-green-600">
-            Valid ({certificates.filter((c) => c.urgency === 'valid' || c.urgency === 'upcoming' || c.urgency === 'no_expiry').length})
+            Valid ({tabCounts.valid})
           </TabsTrigger>
         </TabsList>
 

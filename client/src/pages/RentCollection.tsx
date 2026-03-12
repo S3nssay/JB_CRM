@@ -13,11 +13,10 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import {
-  PoundSterling, TrendingUp, AlertCircle, CheckCircle, Loader2, Mail, Send,
+  PoundSterling, TrendingUp, AlertCircle, CheckCircle, Loader2,
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { apiRequest } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
+import { formatPence } from '@/lib/utils';
 
 // --- Types ---
 
@@ -66,13 +65,6 @@ interface CommissionReport {
 
 // --- Helpers ---
 
-const formatGBP = (pence: number): string => {
-  return new Intl.NumberFormat('en-GB', {
-    style: 'currency',
-    currency: 'GBP',
-  }).format(pence / 100);
-};
-
 const statusBadge = (status: string) => {
   switch (status) {
     case 'paid':
@@ -94,7 +86,6 @@ const MONTHS = [
 // --- Component ---
 
 export default function RentCollection() {
-  const { toast } = useToast();
   const now = new Date();
   const [year, setYear] = useState<number>(now.getFullYear());
   const [month, setMonth] = useState<number>(now.getMonth() + 1);
@@ -102,20 +93,17 @@ export default function RentCollection() {
 
   // Monthly data
   const { data: monthlyData, isLoading: isLoadingMonthly } = useQuery<MonthlyData>({
-    queryKey: ['/api/crm/pm/rent-collection/monthly', year, month],
-    queryFn: () => apiRequest(`/api/crm/pm/rent-collection/monthly?year=${year}&month=${month}`),
+    queryKey: [`/api/crm/pm/rent-collection/monthly?year=${year}&month=${month}`],
   });
 
   // Daily data
   const { data: dailyInvoices, isLoading: isLoadingDaily } = useQuery<RentInvoice[]>({
-    queryKey: ['/api/crm/pm/rent-collection/daily', dailyDate],
-    queryFn: () => apiRequest(`/api/crm/pm/rent-collection/daily?date=${dailyDate}`),
+    queryKey: [`/api/crm/pm/rent-collection/daily?date=${dailyDate}`],
   });
 
   // Commission report
   const { data: commissionData, isLoading: isLoadingCommission } = useQuery<CommissionReport>({
-    queryKey: ['/api/crm/pm/rent-collection/commission-report', year, month],
-    queryFn: () => apiRequest(`/api/crm/pm/rent-collection/commission-report?year=${year}&month=${month}`),
+    queryKey: [`/api/crm/pm/rent-collection/commission-report?year=${year}&month=${month}`],
   });
 
   const summary = monthlyData?.summary;
@@ -153,7 +141,6 @@ export default function RentCollection() {
             <TableHead>Status</TableHead>
             <TableHead>Payment Date</TableHead>
             <TableHead>Method</TableHead>
-            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -162,7 +149,7 @@ export default function RentCollection() {
               <TableCell>{format(new Date(invoice.due_date), 'dd/MM/yyyy')}</TableCell>
               <TableCell className="max-w-[200px] truncate">{invoice.property_address}</TableCell>
               <TableCell>{invoice.tenant_name}</TableCell>
-              <TableCell className="text-right font-medium">{formatGBP(invoice.amount)}</TableCell>
+              <TableCell className="text-right font-medium">{formatPence(invoice.amount)}</TableCell>
               <TableCell>{statusBadge(invoice.status)}</TableCell>
               <TableCell>
                 {invoice.payment_date
@@ -170,34 +157,6 @@ export default function RentCollection() {
                   : '-'}
               </TableCell>
               <TableCell>{invoice.payment_method || '-'}</TableCell>
-              <TableCell>
-                <div className="flex gap-1">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2"
-                    onClick={() => {
-                      toast({ title: 'Email Sent', description: 'Rent invoice emailed to ' + invoice.tenant_name });
-                    }}
-                    title="Email invoice"
-                  >
-                    <Mail className="h-3 w-3" />
-                  </Button>
-                  {invoice.status !== 'paid' && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 border-red-300 text-red-600 hover:bg-red-50"
-                      onClick={() => {
-                        toast({ title: 'Chase Sent', description: 'Payment reminder sent to ' + invoice.tenant_name });
-                      }}
-                      title="Send payment reminder"
-                    >
-                      <Send className="h-3 w-3" />
-                    </Button>
-                  )}
-                </div>
-              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -254,7 +213,7 @@ export default function RentCollection() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {summary ? formatGBP(summary.totalExpected) : '-'}
+              {summary ? formatPence(summary.totalExpected) : '-'}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {summary ? `${summary.totalInvoices} invoices` : ''}
@@ -269,7 +228,7 @@ export default function RentCollection() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-700">
-              {summary ? formatGBP(summary.totalCollected) : '-'}
+              {summary ? formatPence(summary.totalCollected) : '-'}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {summary ? `${summary.paidCount} paid` : ''}
@@ -284,7 +243,7 @@ export default function RentCollection() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-700">
-              {summary ? formatGBP(summary.totalOutstanding) : '-'}
+              {summary ? formatPence(summary.totalOutstanding) : '-'}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {summary ? `${summary.pendingCount} pending, ${summary.overdueCount} overdue` : ''}
@@ -385,10 +344,10 @@ export default function RentCollection() {
                           <TableCell className="text-right">
                             {prop.management_fee_type === 'percentage'
                               ? `${prop.management_fee_value}%`
-                              : formatGBP(prop.management_fee_value)}
+                              : formatPence(prop.management_fee_value)}
                           </TableCell>
-                          <TableCell className="text-right">{formatGBP(prop.rent_collected)}</TableCell>
-                          <TableCell className="text-right font-medium">{formatGBP(prop.commission)}</TableCell>
+                          <TableCell className="text-right">{formatPence(prop.rent_collected)}</TableCell>
+                          <TableCell className="text-right font-medium">{formatPence(prop.commission)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -398,7 +357,7 @@ export default function RentCollection() {
                     <CardContent className="flex items-center justify-between py-4">
                       <span className="text-lg font-semibold">Total Commission</span>
                       <span className="text-2xl font-bold" style={{ color: '#791E75' }}>
-                        {formatGBP(commissionData.totalCommission)}
+                        {formatPence(commissionData.totalCommission)}
                       </span>
                     </CardContent>
                   </Card>

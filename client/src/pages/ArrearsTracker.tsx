@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
+import { formatPence } from '@/lib/utils';
 
 // --- Types ---
 
@@ -39,10 +40,6 @@ interface ArrearsCase {
 }
 
 // --- Helpers ---
-
-function formatCurrency(pence: number): string {
-  return `£${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return '-';
@@ -188,7 +185,7 @@ export default function ArrearsTracker() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-2xl font-bold">
-                {formatCurrency(summary?.totalOutstanding ?? 0)}
+                {formatPence(summary?.totalOutstanding ?? 0)}
               </div>
             )}
           </CardContent>
@@ -273,7 +270,7 @@ export default function ArrearsTracker() {
                     <TableCell>{arrearsCase.tenantId}</TableCell>
                     <TableCell>{arrearsCase.propertyId}</TableCell>
                     <TableCell className="text-right font-mono">
-                      {formatCurrency(arrearsCase.amount)}
+                      {formatPence(arrearsCase.amount)}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className={arrearsCase.daysOverdue > 60 ? 'text-red-600 font-semibold' : ''}>
@@ -335,7 +332,7 @@ export default function ArrearsTracker() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Amount:</span>
-                  <span className="font-medium font-mono">{formatCurrency(confirmWriteOff.amount)}</span>
+                  <span className="font-medium font-mono">{formatPence(confirmWriteOff.amount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Days Overdue:</span>

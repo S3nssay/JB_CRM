@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
-import { cn } from '@/lib/utils';
+import { cn, formatPence } from '@/lib/utils';
 
 // --- Types ---
 
@@ -81,10 +81,6 @@ interface PropertyOption {
 }
 
 // --- Helpers ---
-
-function formatCurrency(pence: number): string {
-  return `£${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-';
@@ -307,7 +303,7 @@ export default function InvoiceManagement() {
       if (data.reconciled > 0) {
         toast({
           title: 'Payments Reconciled',
-          description: `${data.reconciled} invoice(s) matched to payments (${formatCurrency(data.totalReconciled)}). ${data.outstanding} still outstanding.`,
+          description: `${data.reconciled} invoice(s) matched to payments (${formatPence(data.totalReconciled)}). ${data.outstanding} still outstanding.`,
         });
       } else {
         toast({
@@ -439,7 +435,7 @@ export default function InvoiceManagement() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs font-medium text-muted-foreground">Total Outstanding</p>
-            <p className="text-2xl font-bold text-orange-600">{formatCurrency(stats.totalOutstanding)}</p>
+            <p className="text-2xl font-bold text-orange-600">{formatPence(stats.totalOutstanding)}</p>
             <p className="text-xs text-muted-foreground">{stats.outstandingCount} invoices</p>
           </CardContent>
         </Card>
@@ -448,14 +444,14 @@ export default function InvoiceManagement() {
             <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
               <AlertTriangle className="h-3 w-3 text-red-500" /> Overdue
             </p>
-            <p className="text-2xl font-bold text-red-600">{formatCurrency(stats.overdueAmount)}</p>
+            <p className="text-2xl font-bold text-red-600">{formatPence(stats.overdueAmount)}</p>
             <p className="text-xs text-muted-foreground">{stats.overdueCount} invoices</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs font-medium text-muted-foreground">Paid</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(stats.paidAmount)}</p>
+            <p className="text-2xl font-bold text-green-600">{formatPence(stats.paidAmount)}</p>
             <p className="text-xs text-muted-foreground">{stats.paidCount} invoices</p>
           </CardContent>
         </Card>
@@ -527,7 +523,7 @@ export default function InvoiceManagement() {
                           <TableCell className="capitalize">{invoice.invoiceType?.replace(/_/g, ' ')}</TableCell>
                           <TableCell>{invoice.propertyId ? (propertyMap.get(invoice.propertyId) || `#${invoice.propertyId}`) : '-'}</TableCell>
                           <TableCell>{invoice.tenantId ? (tenantMap.get(invoice.tenantId) || `#${invoice.tenantId}`) : '-'}</TableCell>
-                          <TableCell className="text-right font-mono font-semibold">{formatCurrency(invoice.totalAmount)}</TableCell>
+                          <TableCell className="text-right font-mono font-semibold">{formatPence(invoice.totalAmount)}</TableCell>
                           <TableCell className={isOverdue ? 'text-red-600 font-medium' : ''}>{formatDate(invoice.dueDate)}</TableCell>
                           <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                           <TableCell className="text-right">
@@ -924,7 +920,7 @@ export default function InvoiceManagement() {
             <div className="space-y-4 py-4">
               <div className="bg-muted/50 rounded-lg p-3 space-y-1">
                 <p className="text-sm font-medium">Invoice: {paymentDialogInvoice.invoiceNumber}</p>
-                <p className="text-lg font-bold">{formatCurrency(paymentDialogInvoice.totalAmount)}</p>
+                <p className="text-lg font-bold">{formatPence(paymentDialogInvoice.totalAmount)}</p>
                 <p className="text-xs text-muted-foreground">Due: {formatDate(paymentDialogInvoice.dueDate)}</p>
               </div>
               <div className="space-y-2">

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
+import { formatPence } from '@/lib/utils';
 
 // --- Types ---
 
@@ -49,10 +50,6 @@ interface CreateTransactionData {
 }
 
 // --- Helpers ---
-
-function formatCurrency(pence: number): string {
-  return `£${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 // --- Component ---
 
@@ -243,7 +240,7 @@ export default function PortfolioFinancials() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-2xl font-bold text-green-600">
-                {formatCurrency(totalIncome)}
+                {formatPence(totalIncome)}
               </div>
             )}
           </CardContent>
@@ -259,7 +256,7 @@ export default function PortfolioFinancials() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             ) : (
               <div className="text-2xl font-bold text-red-600">
-                {formatCurrency(totalExpenses)}
+                {formatPence(totalExpenses)}
               </div>
             )}
           </CardContent>
@@ -279,7 +276,7 @@ export default function PortfolioFinancials() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             ) : (
               <div className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                {formatCurrency(netProfit)}
+                {formatPence(netProfit)}
               </div>
             )}
           </CardContent>
@@ -320,13 +317,13 @@ export default function PortfolioFinancials() {
                     <TableCell className="font-medium">{property.propertyId}</TableCell>
                     <TableCell>{property.address || '-'}</TableCell>
                     <TableCell className="text-right font-mono text-green-600">
-                      {formatCurrency(property.income)}
+                      {formatPence(property.income)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-red-600">
-                      {formatCurrency(property.expenses)}
+                      {formatPence(property.expenses)}
                     </TableCell>
                     <TableCell className={`text-right font-mono font-semibold ${property.netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {formatCurrency(property.netProfit)}
+                      {formatPence(property.netProfit)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -334,13 +331,13 @@ export default function PortfolioFinancials() {
                 <TableRow className="bg-muted/50 font-semibold">
                   <TableCell colSpan={2}>Total</TableCell>
                   <TableCell className="text-right font-mono text-green-600">
-                    {formatCurrency(totalIncome)}
+                    {formatPence(totalIncome)}
                   </TableCell>
                   <TableCell className="text-right font-mono text-red-600">
-                    {formatCurrency(totalExpenses)}
+                    {formatPence(totalExpenses)}
                   </TableCell>
                   <TableCell className={`text-right font-mono ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(netProfit)}
+                    {formatPence(netProfit)}
                   </TableCell>
                 </TableRow>
               </TableBody>

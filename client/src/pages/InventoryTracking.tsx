@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,7 @@ import {
 import { format } from 'date-fns';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { toast } from '@/hooks/use-toast';
+import { formatPence } from '@/lib/utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -113,9 +114,12 @@ export default function InventoryTracking() {
     queryKey: ['/api/crm/pm-dashboard/tenancies?status=active'],
   });
 
-  const properties = tenancies
-    ? Array.from(new Map(tenancies.map((t) => [t.propertyId, t])).values())
-    : [];
+  const properties = useMemo(() =>
+    tenancies
+      ? Array.from(new Map(tenancies.map((t) => [t.propertyId, t])).values())
+      : [],
+    [tenancies]
+  );
 
   const { data: inventories, isLoading: inventoriesLoading } = useQuery<Inventory[]>({
     queryKey: [`/api/crm/inventory/${selectedPropertyId}`],
@@ -213,13 +217,16 @@ export default function InventoryTracking() {
     }));
   };
 
-  const groupedItems: Record<string, InventoryItem[]> = {};
-  if (selectedInventory?.items) {
-    for (const item of selectedInventory.items) {
-      if (!groupedItems[item.room]) groupedItems[item.room] = [];
-      groupedItems[item.room].push(item);
+  const groupedItems = useMemo(() => {
+    const groups: Record<string, InventoryItem[]> = {};
+    if (selectedInventory?.items) {
+      for (const item of selectedInventory.items) {
+        if (!groups[item.room]) groups[item.room] = [];
+        groups[item.room].push(item);
+      }
     }
-  }
+    return groups;
+  }, [selectedInventory?.items]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -543,7 +550,7 @@ export default function InventoryTracking() {
                           <TableCell>{d.room}</TableCell>
                           <TableCell className="text-muted-foreground">{d.checkOutNotes || '-'}</TableCell>
                           <TableCell className="text-right font-medium">
-                            {'\u00A3'}{(d.damageAmount / 100).toFixed(2)}
+                            {formatPence(d.damageAmount)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -553,7 +560,7 @@ export default function InventoryTracking() {
                     <div className="text-right">
                       <p className="text-sm text-muted-foreground">Total Damage</p>
                       <p className="text-2xl font-bold" style={{ color: '#791E75' }}>
-                        {'\u00A3'}{((damageSummary.totalDamage || 0) / 100).toFixed(2)}
+                        {formatPence(damageSummary.totalDamage || 0)}
                       </p>
                     </div>
                   </div>
