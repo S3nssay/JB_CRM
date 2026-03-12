@@ -1256,9 +1256,9 @@ crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('fil
             tenantId = tenantContact[0].id;
           }
 
-          // Create tenancy contract if dates provided
+          // Create tenancy record if dates provided
           if (row.tenancy_start_date) {
-            await db.insert(tenancyContracts).values({
+            await db.insert(tenancies).values({
               propertyId: newProperty.id,
               tenantId: tenantId,
               landlordId: landlordId,
@@ -13163,11 +13163,12 @@ crmRouter.delete('/pm/properties/:id', requireAgent, async (req, res) => {
 // --- TENANCIES (using main tenancies table) ---
 // Routes at /pm/tenancies are kept for backwards compatibility
 
-// Get all tenancies
+// Get all tenancies (includes legacy tenancy_contract records)
 crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
   try {
     const { propertyId, landlordId, tenantId, status } = req.query;
 
+    // Query main tenancies table
     let query = db.select().from(tenancies);
     const conditions = [];
 
@@ -13190,8 +13191,31 @@ crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
 
     const allTenancies = await query.orderBy(desc(tenancies.createdAt));
 
+    // Also query legacy tenancyContracts table for records not yet migrated
+    let legacyQuery = db.select().from(tenancyContracts);
+    const legacyConditions = [];
+
+    if (propertyId) {
+      legacyConditions.push(eq(tenancyContracts.propertyId, parseInt(propertyId as string)));
+    }
+    if (landlordId) {
+      legacyConditions.push(eq(tenancyContracts.landlordId, parseInt(landlordId as string)));
+    }
+    if (tenantId) {
+      legacyConditions.push(eq(tenancyContracts.tenantId, parseInt(tenantId as string)));
+    }
+    if (status) {
+      legacyConditions.push(eq(tenancyContracts.status, status as string));
+    }
+
+    if (legacyConditions.length > 0) {
+      legacyQuery = legacyQuery.where(and(...legacyConditions)) as typeof legacyQuery;
+    }
+
+    const legacyTenancies = await legacyQuery.orderBy(desc(tenancyContracts.createdAt));
+
     // Enrich with property and tenant info
-    const enrichedTenancies = await Promise.all(allTenancies.map(async (t) => {
+    const enrichTenancy = async (t: any, isLegacy = false) => {
       const [property] = await db.select({
         addressLine1: properties.addressLine1,
         address: properties.address,
@@ -13206,13 +13230,22 @@ crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
 
       return {
         ...t,
+        isLegacy,
         propertyAddress: property?.addressLine1 || property?.address || 'Unknown Property',
         postcode: property?.postcode || '',
         tenantName
       };
-    }));
+    };
 
-    res.json(enrichedTenancies);
+    const enrichedMain = await Promise.all(allTenancies.map(t => enrichTenancy(t, false)));
+    const enrichedLegacy = await Promise.all(legacyTenancies.map(t => enrichTenancy(t, true)));
+
+    // Combine and sort by createdAt descending
+    const combined = [...enrichedMain, ...enrichedLegacy].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+
+    res.json(combined);
   } catch (error) {
     console.error('Error fetching tenancies:', error);
     res.status(500).json({ error: 'Failed to fetch tenancies' });
@@ -13223,7 +13256,55 @@ crmRouter.get('/pm/tenancies', requireAgent, async (req, res) => {
 crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
   try {
     const tenancyId = parseInt(req.params.id);
-    const [tenancy] = await db.select().from(tenancies).where(eq(tenancies.id, tenancyId));
+    let [tenancy] = await db.select().from(tenancies).where(eq(tenancies.id, tenancyId));
+
+    // Fallback: check deprecated tenancyContracts table for legacy records
+    let isLegacy = false;
+    if (!tenancy) {
+      const [legacyTenancy] = await db.select().from(tenancyContracts).where(eq(tenancyContracts.id, tenancyId));
+      if (legacyTenancy) {
+        isLegacy = true;
+        // Map legacy tenancy_contract fields to tenancy shape
+        tenancy = {
+          ...legacyTenancy,
+          rentDueDay: null,
+          depositScheme: legacyTenancy.depositProtectionScheme || null,
+          depositHolderType: legacyTenancy.depositHeldBy || null,
+          depositCertificateNumber: null,
+          depositProtectedDate: null,
+          guarantorName: null,
+          guarantorEmail: null,
+          guarantorPhone: null,
+          guarantorAddress: null,
+          notes: null,
+          breakClauseDate: null,
+          breakClauseNoticePeriod: null,
+          breakClauseNotes: null,
+          tenancyType: 'ast',
+          specialTerms: null,
+          depositReturnAmount: null,
+          depositDeductionsAmount: null,
+          depositDeductionsReason: null,
+          depositReturnStatus: 'pending',
+          depositReturnDate: null,
+          depositDisputeStatus: null,
+          depositDisputeDate: null,
+          depositDisputeNotes: null,
+          checkoutDate: null,
+          checkoutClerk: null,
+          noticeServedDate: null,
+          noticeType: null,
+          forwardingAddress: null,
+          finalMeterElectric: null,
+          finalMeterGas: null,
+          finalMeterWater: null,
+          dilapidationsAmount: null,
+          dilapidationsNotes: null,
+          cleaningRequired: false,
+          cleaningCost: null,
+        } as any;
+      }
+    }
 
     if (!tenancy) {
       return res.status(404).json({ error: 'Tenancy not found' });
@@ -13241,8 +13322,8 @@ crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
       [tenantData] = await db.select().from(tenant).where(eq(tenant.id, tenancy.tenantId));
     }
 
-    // Get checklist items
-    const checklistItems = await db.select().from(tenancyChecklist)
+    // Get checklist items (only for non-legacy tenancies)
+    const checklistItems = isLegacy ? [] : await db.select().from(tenancyChecklist)
       .where(eq(tenancyChecklist.tenancyId, tenancyId));
 
     // Get all related documents (tenancy + property + tenant + landlord)
@@ -13255,6 +13336,7 @@ crmRouter.get('/pm/tenancies/:id', requireAgent, async (req, res) => {
 
     res.json({
       ...tenancy,
+      isLegacy,
       property,
       landlord,
       tenant: tenantData,
