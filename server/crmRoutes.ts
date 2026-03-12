@@ -14941,11 +14941,8 @@ crmRouter.get('/my-desk/stats', requireAgent, async (req: any, res) => {
       .from(conversations)
       .where(and(eq(conversations.assignedToId, userId), eq(conversations.status, 'open')));
 
-    // My properties
-    const propertiesResult = await db
-      .select({ count: count(properties.id) })
-      .from(properties)
-      .where(or(eq(properties.agentId, userId), eq(properties.propertyManagerId, userId)));
+    // My properties - use same method as portfolio endpoint for consistency
+    const userProperties = await storage.getPropertiesByStaffUser(userId);
 
     // Pending tasks
     const pendingTasksResult = await db
@@ -14973,7 +14970,7 @@ crmRouter.get('/my-desk/stats', requireAgent, async (req: any, res) => {
       upcomingViewings: Number(upcomingViewingsResult[0]?.count || 0),
       unreadEmails: Number(unreadResult[0]?.count || 0),
       openWhatsappConversations: Number(whatsappResult[0]?.count || 0),
-      myProperties: Number(propertiesResult[0]?.count || 0),
+      myProperties: userProperties.length,
       pendingTasks: Number(pendingTasksResult[0]?.count || 0),
       newEnquiries: Number(newEnquiriesResult[0]?.count || 0),
       activeLeads: Number(activeLeadsResult[0]?.count || 0),
