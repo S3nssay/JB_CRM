@@ -566,7 +566,7 @@ export default function MyDesk() {
             { label: 'Tasks', value: stats?.pendingTasks, icon: ListTodo, color: 'text-purple-600 bg-purple-100', tab: 'tasks' },
             { label: 'Enquiries', value: stats?.newEnquiries, icon: Inbox, color: 'text-amber-600 bg-amber-100', tab: 'enquiries' },
             { label: 'Leads', value: stats?.activeLeads, icon: Target, color: 'text-green-600 bg-green-100', tab: 'leads' },
-            { label: 'Properties', value: stats?.myProperties, icon: Home, color: 'text-blue-600 bg-blue-100', tab: 'portfolio' },
+            { label: 'Properties', value: portfolio.length, icon: Home, color: 'text-blue-600 bg-blue-100', tab: 'portfolio' },
             { label: "Today", value: stats?.todayEvents, icon: Calendar, color: 'text-indigo-600 bg-indigo-100', tab: 'schedule' },
             { label: 'Viewings', value: stats?.upcomingViewings, icon: Eye, color: 'text-cyan-600 bg-cyan-100', tab: 'schedule' },
             { label: 'Emails', value: stats?.unreadEmails, icon: Mail, color: 'text-red-600 bg-red-100', tab: 'comms' },
