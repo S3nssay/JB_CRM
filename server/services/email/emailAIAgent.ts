@@ -24,6 +24,10 @@ import {
 import { eq, and, ilike, desc, sql } from 'drizzle-orm';
 import { emailSender } from './emailSender';
 import type { AiAnalysisResult } from './emailProcessor';
+import { emailAttachmentService } from './emailAttachmentService';
+import { taskAssignmentService, TaskContext } from '../taskAssignmentService';
+import { propertyMatchingService } from '../propertyMatchingService';
+import { leadPipelineService } from '../leadPipelineService';
 
 export interface EmailContext {
   fromAddress: string;
@@ -35,6 +39,8 @@ export interface EmailContext {
   userId: number;
   graphMessageId: string;
   department?: string | null; // 'sales' | 'lettings' | 'maintenance'
+  isImap?: boolean;
+  imapAttachments?: { name: string; contentType: string; size: number; content?: Buffer }[];
 }
 
 interface ContactMatch {
@@ -73,8 +79,6 @@ class EmailAIAgent {
           await this.handleTicketUpdate(processedEmailId, aiResults, context, contact);
           break;
         case 'create_enquiry':
-          await this.handlePropertyEnquiry(processedEmailId, aiResults, context, contact);
-          break;
         case 'create_viewing':
           await this.handlePropertyEnquiry(processedEmailId, aiResults, context, contact);
           break;
@@ -87,12 +91,87 @@ class EmailAIAgent {
         default:
           await this.handleRouteToPM(processedEmailId, aiResults, context, contact);
       }
+
+      // ── Cross-cutting: Process attachments for all action types ──
+      await this.processAttachmentsIfPresent(processedEmailId, aiResults, context, contact);
+
+      // ── Cross-cutting: Create tasks from AI-extracted task list ──
+      await this.createTasksIfPresent(processedEmailId, aiResults, context, contact);
+
     } catch (error) {
       console.error(`[EmailAIAgent] Action failed for email ${processedEmailId}:`, error);
       await this.recordAction(processedEmailId, 'failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
         attemptedAction: actionType,
       });
+    }
+  }
+
+  // ─── Cross-cutting: Attachment processing ─────────────────────────
+
+  private async processAttachmentsIfPresent(
+    processedEmailId: number,
+    aiResults: AiAnalysisResult,
+    context: EmailContext,
+    contact: ContactMatch
+  ): Promise<void> {
+    try {
+      const classifications = aiResults.attachmentClassifications;
+      if (!classifications || classifications.length === 0) return;
+
+      const results = await emailAttachmentService.processAttachments(
+        processedEmailId,
+        classifications,
+        contact,
+        {
+          connectionId: context.connectionId,
+          graphMessageId: context.graphMessageId,
+          isImap: context.isImap || false,
+          imapAttachments: context.imapAttachments,
+        }
+      );
+
+      if (results.length > 0) {
+        console.log(`[EmailAIAgent] Processed ${results.length} attachments for email ${processedEmailId}`);
+      }
+    } catch (error) {
+      console.error(`[EmailAIAgent] Attachment processing failed for email ${processedEmailId}:`, error);
+    }
+  }
+
+  // ─── Cross-cutting: Task creation from AI analysis ────────────────
+
+  private async createTasksIfPresent(
+    processedEmailId: number,
+    aiResults: AiAnalysisResult,
+    context: EmailContext,
+    contact: ContactMatch
+  ): Promise<void> {
+    try {
+      const aiTasks = aiResults.tasks;
+      if (!aiTasks || aiTasks.length === 0) return;
+
+      const taskContext: TaskContext = {
+        department: context.department || null,
+        propertyId: contact.propertyId || null,
+        leadId: contact.type === 'lead' ? contact.id : null,
+        landlordId: contact.type === 'landlord' ? contact.id : null,
+        tenantId: contact.type === 'tenant' ? contact.id : null,
+        ticketId: null,
+        sourceEmailId: processedEmailId,
+      };
+
+      const createdTasks = await taskAssignmentService.createTasksFromEmail(
+        aiTasks,
+        taskContext,
+        context.userId
+      );
+
+      if (createdTasks.length > 0) {
+        console.log(`[EmailAIAgent] Created ${createdTasks.length} tasks from email ${processedEmailId}`);
+      }
+    } catch (error) {
+      console.error(`[EmailAIAgent] Task creation failed for email ${processedEmailId}:`, error);
     }
   }
 
@@ -210,7 +289,55 @@ class EmailAIAgent {
       priority: ticket.priority || 'medium',
     });
 
+    // Emergency: send SMS notification for urgent maintenance via Twilio if available
+    if (isEmergency) {
+      await this.sendEmergencyNotification(context, ticket.ticketNumber!, contact.name, aiResults.summary || context.subject);
+    }
+
     console.log(`[EmailAIAgent] Created support ticket ${ticketNumber} for tenant ${contact.name}`);
+  }
+
+  /**
+   * Send SMS/WhatsApp notification for urgent maintenance issues
+   */
+  private async sendEmergencyNotification(
+    context: EmailContext,
+    ticketNumber: string,
+    tenantName: string,
+    summary: string
+  ): Promise<void> {
+    try {
+      const pmPhone = process.env.EMERGENCY_PM_PHONE;
+      if (!pmPhone) {
+        console.log('[EmailAIAgent] No EMERGENCY_PM_PHONE configured, skipping SMS notification');
+        return;
+      }
+
+      // Use Twilio if configured
+      const twilioSid = process.env.TWILIO_ACCOUNT_SID;
+      const twilioToken = process.env.TWILIO_AUTH_TOKEN;
+      const twilioFrom = process.env.TWILIO_PHONE_NUMBER;
+
+      if (!twilioSid || !twilioToken || !twilioFrom) {
+        console.log('[EmailAIAgent] Twilio not configured, skipping SMS notification');
+        return;
+      }
+
+      const twilio = require('twilio');
+      const client = twilio(twilioSid, twilioToken);
+
+      const message = `URGENT MAINTENANCE - Ticket #${ticketNumber}\nTenant: ${tenantName}\n${summary}\n\nRequires immediate attention.`;
+
+      await client.messages.create({
+        body: message,
+        from: twilioFrom,
+        to: pmPhone,
+      });
+
+      console.log(`[EmailAIAgent] Emergency SMS sent for ticket ${ticketNumber}`);
+    } catch (error) {
+      console.error('[EmailAIAgent] Failed to send emergency SMS:', error);
+    }
   }
 
   // ─── Ticket update (follow-up email) ──────────────────────────────
@@ -293,7 +420,7 @@ class EmailAIAgent {
     console.log(`[EmailAIAgent] Added comment to ticket ${ticket.ticketNumber} from email ${processedEmailId}`);
   }
 
-  // ─── Property enquiry ─────────────────────────────────────────────
+  // ─── Property enquiry → Lead pipeline ────────────────────────────
 
   private async handlePropertyEnquiry(
     processedEmailId: number,
@@ -301,6 +428,34 @@ class EmailAIAgent {
     context: EmailContext,
     contact: ContactMatch
   ): Promise<void> {
+    // 1. Match email to a property record
+    const propertyMatch = await propertyMatchingService.matchFromEmail(aiResults, context.department);
+    const matchedPropertyId = propertyMatch?.propertyId || null;
+
+    if (propertyMatch) {
+      console.log(`[EmailAIAgent] Matched to property ${propertyMatch.propertyId} (${propertyMatch.matchType}, confidence=${propertyMatch.confidence})`);
+    }
+
+    // 2. Create or update lead in the pipeline (replaces dead-end customerEnquiry)
+    const leadResult = await leadPipelineService.createOrUpdateLeadFromEmail(
+      {
+        fromAddress: context.fromAddress,
+        fromName: context.fromName || contact.name,
+        subject: context.subject,
+        bodyText: context.bodyText || context.subject,
+        department: context.department || null,
+        processedEmailId,
+      },
+      aiResults,
+      matchedPropertyId
+    );
+
+    // 3. Link email to lead
+    await db.update(processedEmails)
+      .set({ linkedLeadId: leadResult.leadId })
+      .where(eq(processedEmails.id, processedEmailId));
+
+    // 4. Also create a legacy customerEnquiry for backward compatibility
     const enquiryType = aiResults.category === 'viewing_request' ? 'viewing' :
                         aiResults.category === 'valuation_request' ? 'valuation' : 'general';
 
@@ -317,17 +472,20 @@ class EmailAIAgent {
       leadTemperature: aiResults.priority === 'high' ? 'hot' : 'warm',
     }).returning();
 
-    // Link email to enquiry
     await db.update(processedEmails)
       .set({ linkedEnquiryId: enquiry.id })
       .where(eq(processedEmails.id, processedEmailId));
 
-    await this.recordAction(processedEmailId, 'enquiry_created', {
+    await this.recordAction(processedEmailId, 'lead_created', {
+      leadId: leadResult.leadId,
+      isNewLead: leadResult.isNew,
       enquiryId: enquiry.id,
       enquiryType,
+      matchedPropertyId,
+      matchConfidence: propertyMatch?.confidence || null,
     });
 
-    // Send acknowledgement
+    // 5. Send acknowledgement
     await this.sendAcknowledgement(context, {
       type: 'enquiry',
       ticketNumber: `ENQ-${enquiry.id}`,
@@ -336,7 +494,7 @@ class EmailAIAgent {
       priority: 'normal',
     });
 
-    console.log(`[EmailAIAgent] Created enquiry ${enquiry.id} from email ${processedEmailId}`);
+    console.log(`[EmailAIAgent] Created lead ${leadResult.leadId} (new=${leadResult.isNew}) + enquiry ${enquiry.id} from email ${processedEmailId}, property match: ${matchedPropertyId || 'none'}`);
   }
 
   // ─── Contractor response ──────────────────────────────────────────
@@ -422,6 +580,27 @@ class EmailAIAgent {
       contractorName: contact.name,
     });
 
+    // Create follow-up task for PM to review contractor response
+    const taskTitle = newStatus === 'quoted'
+      ? `Review quote from ${contact.name} - £${parsedAmount ? (parsedAmount / 100).toFixed(2) : 'TBC'}`
+      : `Contractor ${contact.name} ${newStatus} - review required`;
+
+    await taskAssignmentService.createTask(
+      taskTitle,
+      'contractor_review',
+      newStatus === 'declined' ? 'high' : 'normal',
+      `Contractor ${contact.name} has ${newStatus} the job. Email: ${context.subject}`,
+      {
+        department: 'maintenance',
+        propertyId: null, // Could look up from ticket
+        leadId: null,
+        landlordId: null,
+        tenantId: null,
+        ticketId: pendingQuote.ticketId,
+        sourceEmailId: processedEmailId,
+      }
+    );
+
     console.log(`[EmailAIAgent] Processed contractor response: ${newStatus} for quote ${pendingQuote.id}`);
   }
 
@@ -437,6 +616,23 @@ class EmailAIAgent {
       type: 'forwarded',
       reason: `${aiResults.category} from ${contact.type}`,
     });
+
+    // Create a task to ensure this email is reviewed — nothing falls through the cracks
+    await taskAssignmentService.createTask(
+      `Review email: ${(aiResults.summary || context.subject).substring(0, 80)}`,
+      'email_review',
+      aiResults.priority === 'urgent' ? 'high' : 'normal',
+      `Email from ${contact.name} (${context.fromAddress}) routed for review.\nCategory: ${aiResults.category}\nSummary: ${aiResults.summary || context.subject}`,
+      {
+        department: context.department || null,
+        propertyId: contact.propertyId || null,
+        leadId: contact.type === 'lead' ? contact.id : null,
+        landlordId: contact.type === 'landlord' ? contact.id : null,
+        tenantId: contact.type === 'tenant' ? contact.id : null,
+        ticketId: null,
+        sourceEmailId: processedEmailId,
+      }
+    );
 
     await this.recordAction(processedEmailId, 'routed_to_pm', {
       reason: aiResults.category,

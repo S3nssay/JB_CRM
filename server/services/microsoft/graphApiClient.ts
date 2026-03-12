@@ -279,6 +279,22 @@ export class GraphApiClient {
   }
 
   /**
+   * Downloads attachment content as a Buffer
+   */
+  async getAttachmentContent(messageId: string, attachmentId: string): Promise<{ buffer: Buffer; name: string; contentType: string; size: number }> {
+    const attachment = await this.getAttachment(messageId, attachmentId);
+    if (!attachment.contentBytes) {
+      throw new Error(`Attachment ${attachmentId} has no content bytes`);
+    }
+    return {
+      buffer: Buffer.from(attachment.contentBytes, 'base64'),
+      name: attachment.name,
+      contentType: attachment.contentType,
+      size: attachment.size,
+    };
+  }
+
+  /**
    * Sends an email
    */
   async sendEmail(options: SendEmailOptions): Promise<void> {

@@ -60,6 +60,41 @@ export interface AiAnalysisResult {
   actionType: string; // create_support_ticket | add_ticket_comment | create_enquiry | create_viewing | process_contractor_response | route_to_pm | ignore
   senderType: string; // tenant | landlord | contractor | prospect | unknown
   existingTicketReference: string | null; // ticket number if mentioned e.g. JB240101ABCD
+
+  // Enhanced workflow fields
+  tasks: {
+    title: string;
+    taskType: 'viewing' | 'call' | 'follow_up' | 'enquiry_response' | 'document' | 'maintenance' | 'general';
+    priority: 'urgent' | 'high' | 'normal' | 'low';
+    description: string;
+    dueWithinHours: number;
+  }[];
+
+  attachmentClassifications: {
+    filename: string;
+    documentType: 'passport' | 'driving_licence' | 'proof_of_address' | 'bank_statement' |
+                  'gas_safety' | 'epc' | 'eicr' | 'tenancy_agreement' | 'inventory' |
+                  'invoice' | 'insurance' | 'licence' | 'certificate' | 'photo' |
+                  'reference' | 'other';
+    entityType: 'landlord' | 'tenant' | 'property' | 'tenancy' | 'unknown';
+    confidence: number;
+    description: string;
+  }[];
+
+  propertyMatch: {
+    address: string;
+    postcode: string;
+    confidence: number;
+  } | null;
+
+  leadDetails: {
+    leadType: 'rental' | 'purchase' | 'both' | 'landlord' | 'seller';
+    budget: string | null;
+    bedrooms: number | null;
+    areas: string[];
+    moveInDate: string | null;
+    requirements: string | null;
+  } | null;
 }
 
 /**
@@ -397,11 +432,15 @@ export class EmailProcessor {
       let aiResults: AiAnalysisResult | undefined;
       if (openai && (parsedMessage.bodyText || parsedMessage.bodyHtml)) {
         try {
+          const smtpAttachmentNames = parsedMessage.attachments
+            .map(a => a.name)
+            .filter(Boolean) as string[];
           aiResults = await this.performAiAnalysisRaw(
             parsedMessage.from.address,
             parsedMessage.subject,
             parsedMessage.bodyText || parsedMessage.bodyHtml,
-            department
+            department,
+            smtpAttachmentNames.length > 0 ? smtpAttachmentNames : undefined
           );
           await this.updateWithAiResults(processedEmail.id, aiResults);
         } catch (aiError) {
@@ -467,25 +506,35 @@ export class EmailProcessor {
   /**
    * Performs AI analysis on the email content (from GraphMessage)
    */
-  private async performAiAnalysis(message: GraphMessage): Promise<AiAnalysisResult> {
+  private async performAiAnalysis(message: GraphMessage, department?: string | null): Promise<AiAnalysisResult> {
     const emailContent = message.body?.content || message.bodyPreview || '';
     const subject = message.subject || '';
     const from = message.from?.emailAddress?.address || '';
-    return this.performAiAnalysisRaw(from, subject, emailContent);
+    const attachmentNames = message.attachments?.map(a => a.name).filter(Boolean) as string[] | undefined;
+    return this.performAiAnalysisRaw(from, subject, emailContent, department, attachmentNames);
   }
 
   /**
    * Performs AI analysis on raw email content (provider-agnostic)
    */
-  private async performAiAnalysisRaw(from: string, subject: string, body: string, department?: string | null): Promise<AiAnalysisResult> {
+  private async performAiAnalysisRaw(
+    from: string,
+    subject: string,
+    body: string,
+    department?: string | null,
+    attachmentNames?: string[]
+  ): Promise<AiAnalysisResult> {
     if (!openai) {
       throw new Error('OpenAI not configured');
     }
 
     const emailContent = body;
+    const attachmentList = attachmentNames && attachmentNames.length > 0
+      ? `\nAttachments: ${attachmentNames.join(', ')}`
+      : '';
 
     const systemPrompt = `You are an AI agent for John Barclay Estate Agents' CRM in London, UK.
-Analyze incoming emails and decide what action to take.
+Analyze incoming emails, decide what action to take, identify ALL tasks, classify attachments, and extract lead/property data.
 
 The business handles:
 - Property sales and rentals
@@ -496,7 +545,7 @@ The business handles:
 
 You MUST respond with a JSON object. Every field is required:
 {
-  "category": "string - one of: property_enquiry, viewing_request, valuation_request, maintenance, support_request, tenant_communication, landlord_communication, contractor_response, offer, contract, general_enquiry, spam, auto_reply, other",
+  "category": "string - one of: property_enquiry, viewing_request, valuation_request, maintenance, support_request, tenant_communication, landlord_communication, contractor_response, offer, contract, general_enquiry, document_submission, spam, auto_reply, other",
   "sentiment": "string - one of: positive, neutral, negative",
   "priority": "string - one of: urgent, high, normal, low. Use urgent for emergencies (flooding, gas leak, no heating, lock-out). Use high for time-sensitive issues.",
   "summary": "string - 1-2 sentence summary of the email",
@@ -513,10 +562,73 @@ You MUST respond with a JSON object. Every field is required:
     {"action": "string", "confidence": 0.0, "details": "string"}
   ],
   "classification": "string - business classification for routing",
-  "actionType": "string - the action the system should take. One of: create_support_ticket (tenant reporting a problem/repair/complaint), add_ticket_comment (follow-up to an existing support ticket), create_enquiry (prospect asking about a property for sale/rent), create_viewing (someone requesting a property viewing), process_contractor_response (contractor replying about a job/quote), route_to_pm (landlord email or anything needing human review), ignore (spam, auto-replies, newsletters, marketing)",
-  "senderType": "string - who sent this email. One of: tenant (current tenant reporting issue or communicating), landlord (property owner), contractor (tradesperson replying about work), prospect (potential buyer/renter), unknown",
-  "existingTicketReference": "string or null - if the email mentions a ticket number like JB240101ABCD, extract it here. Otherwise null."
+  "actionType": "string - the PRIMARY action the system should take. One of: create_support_ticket, add_ticket_comment, create_enquiry, create_viewing, process_contractor_response, route_to_pm, ignore",
+  "senderType": "string - who sent this email. One of: tenant, landlord, contractor, prospect, unknown",
+  "existingTicketReference": "string or null - if the email mentions a ticket number like JB240101ABCD, extract it here. Otherwise null.",
+
+  "tasks": [
+    {
+      "title": "string - concise task title e.g. 'Respond to rental enquiry from John Smith'",
+      "taskType": "string - one of: viewing, call, follow_up, enquiry_response, document, maintenance, general",
+      "priority": "string - one of: urgent, high, normal, low",
+      "description": "string - brief description of what needs to be done",
+      "dueWithinHours": "number - 1 for urgent, 4 for high, 24 for normal, 72 for low"
+    }
+  ],
+
+  "attachmentClassifications": [
+    {
+      "filename": "string - exact filename from the attachment list",
+      "documentType": "string - one of: passport, driving_licence, proof_of_address, bank_statement, gas_safety, epc, eicr, tenancy_agreement, inventory, invoice, insurance, licence, certificate, photo, reference, other",
+      "entityType": "string - who does this document belong to: landlord, tenant, property, tenancy, unknown",
+      "confidence": "number 0-1 - how confident you are in this classification",
+      "description": "string - brief description of what this document appears to be"
+    }
+  ],
+
+  "propertyMatch": {
+    "address": "string - the property address mentioned in the email (if any)",
+    "postcode": "string - UK postcode extracted or inferred",
+    "confidence": "number 0-1"
+  },
+
+  "leadDetails": {
+    "leadType": "string - one of: rental, purchase, both, landlord, seller",
+    "budget": "string or null - e.g. '£2,000/month' or '£500,000'",
+    "bedrooms": "number or null",
+    "areas": ["string - area names or postcodes they're interested in"],
+    "moveInDate": "string or null - when they want to move",
+    "requirements": "string or null - specific requirements (pets, parking, garden, etc.)"
+  }
 }
+
+IMPORTANT RULES:
+
+For tasks array:
+- ALWAYS include at least one task unless actionType is 'ignore'
+- Identify ALL tasks implied by the email, not just the primary action
+- If someone sends documents, add a 'Review [document type] from [name]' task
+- If someone asks a question, add a 'Respond to [name]' task
+- If something needs follow-up, add a 'Follow up with [name]' task
+
+For attachmentClassifications:
+- Only include entries if the email has attachments (check the Attachments line)
+- Classify based on filename and email context
+- KYC documents (passport, driving_licence, proof_of_address, bank_statement) from landlords → entityType: 'landlord'
+- KYC documents from tenants → entityType: 'tenant'
+- Property certificates (gas_safety, epc, eicr, insurance) → entityType: 'property'
+- Photos of damage/repairs → entityType: 'property', documentType: 'photo'
+- Invoices from contractors → entityType: 'property', documentType: 'invoice'
+- If empty attachments, return empty array []
+
+For propertyMatch:
+- Return null if no specific property is mentioned
+- Extract the most specific address/postcode you can find
+- UK postcodes look like: SW1A 1AA, W1J 7NT, NW8 9SA
+
+For leadDetails:
+- Return null unless this is a property enquiry (rental or purchase interest)
+- Extract as much qualification data as possible from the email
 
 Rules for actionType:
 - If the email reports a problem (leak, broken, noise, pest, heating, electrical, plumbing etc) → create_support_ticket
@@ -531,7 +643,7 @@ Rules for actionType:
     const userPrompt = `Analyze this email:
 
 From: ${from}
-Subject: ${subject}
+Subject: ${subject}${attachmentList}
 
 Body:
 ${emailContent.substring(0, 4000)}`;
@@ -544,7 +656,7 @@ ${emailContent.substring(0, 4000)}`;
       ],
       response_format: { type: 'json_object' },
       temperature: 0.3,
-      max_tokens: 1000,
+      max_tokens: 2000,
     });
 
     const content = response.choices[0]?.message?.content;
@@ -552,7 +664,15 @@ ${emailContent.substring(0, 4000)}`;
       throw new Error('No response from AI');
     }
 
-    return JSON.parse(content) as AiAnalysisResult;
+    const parsed = JSON.parse(content) as AiAnalysisResult;
+
+    // Ensure new fields have defaults if AI omitted them
+    parsed.tasks = parsed.tasks || [];
+    parsed.attachmentClassifications = parsed.attachmentClassifications || [];
+    parsed.propertyMatch = parsed.propertyMatch || null;
+    parsed.leadDetails = parsed.leadDetails || null;
+
+    return parsed;
   }
 
   /**
@@ -619,12 +739,17 @@ Default senderType assumption: tenant (unless email matches a known contractor)`
         aiExtractedEntities: results.extractedEntities,
         aiSuggestedActions: results.suggestedActions,
         aiClassification: results.classification,
+        // Enhanced workflow fields
+        aiExtractedTasks: results.tasks || [],
+        aiAttachmentClassifications: results.attachmentClassifications || [],
+        aiPropertyMatch: results.propertyMatch || null,
+        aiLeadDetails: results.leadDetails || null,
         processingStatus: 'processed',
         updatedAt: new Date(),
       })
       .where(eq(processedEmails.id, emailId));
 
-    console.log(`Updated email ${emailId} with AI analysis`);
+    console.log(`Updated email ${emailId} with AI analysis (${results.tasks?.length || 0} tasks, ${results.attachmentClassifications?.length || 0} attachment classifications)`);
   }
 }
 
