@@ -74,7 +74,8 @@ import {
   propertyInquiries,
   payments,
   renewalReminders,
-  propertyWorkflows
+  propertyWorkflows,
+  emailAttachments,
 } from '@shared/schema';
 
 import { eq, desc, and, sql, or, gte, lte, inArray, count, isNull } from 'drizzle-orm';
@@ -14581,6 +14582,155 @@ crmRouter.delete('/tasks/:id', requireAgent, async (req: any, res) => {
   } catch (error) {
     console.error('Error deleting task:', error);
     res.status(500).json({ error: 'Failed to delete task' });
+  }
+});
+
+// ==========================================
+// EMAIL ATTACHMENT REVIEW ENDPOINTS
+// ==========================================
+
+// GET /email-attachments - List email attachments with optional review status filter
+crmRouter.get('/email-attachments', requireAgent, async (req: any, res) => {
+  try {
+    const { reviewStatus, documentType, entityType } = req.query;
+
+    const conditions = [];
+    if (reviewStatus && reviewStatus !== 'all') {
+      conditions.push(eq(emailAttachments.reviewStatus, reviewStatus as string));
+    }
+    if (documentType && documentType !== 'all') {
+      conditions.push(eq(emailAttachments.aiDocumentType, documentType as string));
+    }
+    if (entityType && entityType !== 'all') {
+      conditions.push(eq(emailAttachments.aiEntityType, entityType as string));
+    }
+
+    const query = db.select({
+      id: emailAttachments.id,
+      processedEmailId: emailAttachments.processedEmailId,
+      originalFilename: emailAttachments.originalFilename,
+      contentType: emailAttachments.contentType,
+      fileSize: emailAttachments.fileSize,
+      storageUrl: emailAttachments.storageUrl,
+      documentId: emailAttachments.documentId,
+      aiDocumentType: emailAttachments.aiDocumentType,
+      aiEntityType: emailAttachments.aiEntityType,
+      aiEntityId: emailAttachments.aiEntityId,
+      aiConfidence: emailAttachments.aiConfidence,
+      reviewStatus: emailAttachments.reviewStatus,
+      reviewedBy: emailAttachments.reviewedBy,
+      reviewedAt: emailAttachments.reviewedAt,
+      createdAt: emailAttachments.createdAt,
+      emailSubject: processedEmails.subject,
+    })
+      .from(emailAttachments)
+      .leftJoin(processedEmails, eq(emailAttachments.processedEmailId, processedEmails.id))
+      .orderBy(desc(emailAttachments.createdAt));
+
+    const result = conditions.length > 0
+      ? await query.where(and(...conditions))
+      : await query;
+
+    // Convert confidence to number for frontend
+    const enriched = result.map(r => ({
+      ...r,
+      aiConfidence: r.aiConfidence ? parseFloat(r.aiConfidence) : 0,
+    }));
+
+    res.json(enriched);
+  } catch (error) {
+    console.error('Error fetching email attachments:', error);
+    res.status(500).json({ error: 'Failed to fetch email attachments' });
+  }
+});
+
+// PATCH /email-attachments/:id/review - Review an attachment (confirm, reject, reclassify)
+crmRouter.patch('/email-attachments/:id/review', requireAgent, async (req: any, res) => {
+  try {
+    const attachmentId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const { status, documentType, entityType, entityId } = req.body;
+
+    if (!status || !['confirmed', 'rejected'].includes(status)) {
+      return res.status(400).json({ error: 'Status must be confirmed or rejected' });
+    }
+
+    const updates: any = {
+      reviewStatus: status,
+      reviewedBy: userId,
+      reviewedAt: new Date(),
+    };
+
+    // If reclassifying, update AI fields
+    if (documentType) updates.aiDocumentType = documentType;
+    if (entityType) updates.aiEntityType = entityType;
+    if (entityId !== undefined) updates.aiEntityId = entityId || null;
+
+    const [updated] = await db.update(emailAttachments)
+      .set(updates)
+      .where(eq(emailAttachments.id, attachmentId))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Attachment not found' });
+    }
+
+    // If confirmed and has a linked document, update the document status too
+    if (status === 'confirmed' && updated.documentId) {
+      const docUpdates: any = { status: 'active' };
+      if (documentType) docUpdates.documentType = documentType;
+      if (entityType) docUpdates.entityType = entityType;
+      if (entityId) docUpdates.entityId = entityId;
+
+      await db.update(document)
+        .set(docUpdates)
+        .where(eq(document.id, updated.documentId));
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error reviewing attachment:', error);
+    res.status(500).json({ error: 'Failed to review attachment' });
+  }
+});
+
+// GET /email-attachments/stats - Summary statistics
+crmRouter.get('/email-attachments/stats', requireAgent, async (req: any, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [pendingCount] = await db.select({ count: count() })
+      .from(emailAttachments)
+      .where(eq(emailAttachments.reviewStatus, 'pending'));
+
+    const [confirmedTodayCount] = await db.select({ count: count() })
+      .from(emailAttachments)
+      .where(and(
+        eq(emailAttachments.reviewStatus, 'confirmed'),
+        gte(emailAttachments.reviewedAt!, today)
+      ));
+
+    const [rejectedCount] = await db.select({ count: count() })
+      .from(emailAttachments)
+      .where(eq(emailAttachments.reviewStatus, 'rejected'));
+
+    const [autoConfirmedCount] = await db.select({ count: count() })
+      .from(emailAttachments)
+      .where(and(
+        eq(emailAttachments.reviewStatus, 'confirmed'),
+        isNull(emailAttachments.reviewedBy)
+      ));
+
+    res.json({
+      pending: pendingCount?.count || 0,
+      confirmedToday: confirmedTodayCount?.count || 0,
+      rejected: rejectedCount?.count || 0,
+      autoConfirmed: autoConfirmedCount?.count || 0,
+    });
+  } catch (error) {
+    console.error('Error fetching attachment stats:', error);
+    res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
 

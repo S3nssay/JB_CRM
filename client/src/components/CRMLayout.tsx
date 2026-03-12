@@ -12,7 +12,7 @@ import {
   Receipt, AlertTriangle, FileSpreadsheet, TrendingUp,
   RotateCcw, CalendarClock, Send, CheckSquare,
   CreditCard, ArrowRightLeft, Mail,
-  Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck
+  Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, FileText
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -167,6 +167,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/task-manager') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/task-manager')}>
                   <CheckSquare className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/task-manager') ? 'text-white' : 'text-gray-400'}`} />
                   Task Manager
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/email-task-queue') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/email-task-queue')}>
+                  <ClipboardList className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/email-task-queue') ? 'text-white' : 'text-gray-400'}`} />
+                  Email Task Queue
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/document-review') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/document-review')}>
+                  <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/document-review') ? 'text-white' : 'text-gray-400'}`} />
+                  Document Review
                 </button>
 
                 {/* Email Inboxes sub-group */}
