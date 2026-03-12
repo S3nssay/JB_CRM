@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient as globalQueryClient } from '@/lib/queryClient';
+import { formatPence } from '@/lib/utils';
 import {
   Plus, Loader2, PoundSterling, Send, CheckCircle, Calendar, FileText,
   AlertCircle, RefreshCw,
@@ -36,10 +37,6 @@ interface RentReview {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-
-function formatCurrency(pence: number): string {
-  return `\u00A3${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 const statusBadgeConfig: Record<string, { label: string; variant: string; className: string }> = {
   scheduled:     { label: 'Scheduled',     variant: 'outline', className: 'bg-blue-100 text-blue-800 border-blue-300' },
@@ -225,8 +222,8 @@ export default function RentReviewManager() {
                   <TableRow key={review.id}>
                     <TableCell className="font-medium">{review.propertyId}</TableCell>
                     <TableCell>{review.tenancyId}</TableCell>
-                    <TableCell>{formatCurrency(review.currentRent)}</TableCell>
-                    <TableCell>{formatCurrency(review.proposedRent)}</TableCell>
+                    <TableCell>{formatPence(review.currentRent)}</TableCell>
+                    <TableCell>{formatPence(review.proposedRent)}</TableCell>
                     <TableCell>{new Date(review.reviewDate).toLocaleDateString('en-GB')}</TableCell>
                     <TableCell>
                       <StatusBadge status={review.status} />

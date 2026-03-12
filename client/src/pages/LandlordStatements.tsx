@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
+import { formatPence } from '@/lib/utils';
 
 // --- Types ---
 
@@ -64,10 +65,6 @@ interface StatementDetail {
 }
 
 // --- Helpers ---
-
-function formatCurrency(pence: number): string {
-  return `£${(pence / 100).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '-';
@@ -321,23 +318,23 @@ export default function LandlordStatements() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Rent Collected</CardTitle></CardHeader>
-            <CardContent><div className="text-xl font-bold text-green-600">{formatCurrency(statementDetail.totalRentCollected)}</div></CardContent>
+            <CardContent><div className="text-xl font-bold text-green-600">{formatPence(statementDetail.totalRentCollected)}</div></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Management Fees</CardTitle></CardHeader>
-            <CardContent><div className="text-xl font-bold text-orange-600">{formatCurrency(statementDetail.managementFees)}</div></CardContent>
+            <CardContent><div className="text-xl font-bold text-orange-600">{formatPence(statementDetail.managementFees)}</div></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">VAT on Fees</CardTitle></CardHeader>
-            <CardContent><div className="text-xl font-bold text-orange-500">{formatCurrency(statementDetail.vatOnFees)}</div></CardContent>
+            <CardContent><div className="text-xl font-bold text-orange-500">{formatPence(statementDetail.vatOnFees)}</div></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Maintenance</CardTitle></CardHeader>
-            <CardContent><div className="text-xl font-bold text-red-600">{formatCurrency(statementDetail.maintenanceDeductions)}</div></CardContent>
+            <CardContent><div className="text-xl font-bold text-red-600">{formatPence(statementDetail.maintenanceDeductions)}</div></CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Net Payable</CardTitle></CardHeader>
-            <CardContent><div className="text-xl font-bold text-purple-700">{formatCurrency(statementDetail.netPayable)}</div></CardContent>
+            <CardContent><div className="text-xl font-bold text-purple-700">{formatPence(statementDetail.netPayable)}</div></CardContent>
           </Card>
         </div>
 
@@ -369,7 +366,7 @@ export default function LandlordStatements() {
                       <TableCell>{item.description}</TableCell>
                       <TableCell className="capitalize">{item.lineType?.replace(/_/g, ' ')}</TableCell>
                       <TableCell className={`text-right font-mono ${item.amount < 0 ? 'text-red-600' : 'text-green-600'}`}>
-                        {item.amount < 0 ? '-' : ''}{formatCurrency(Math.abs(item.amount))}
+                        {item.amount < 0 ? '-' : ''}{formatPence(Math.abs(item.amount))}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -443,10 +440,10 @@ export default function LandlordStatements() {
                         {formatDate(stmt.statementPeriodStart)} — {formatDate(stmt.statementPeriodEnd)}
                         <ChevronRight className="h-4 w-4 text-muted-foreground inline ml-1" />
                       </TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(stmt.totalRentCollected)}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(stmt.managementFees)}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(stmt.maintenanceDeductions)}</TableCell>
-                      <TableCell className="text-right font-mono font-semibold">{formatCurrency(stmt.netPayable)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatPence(stmt.totalRentCollected)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatPence(stmt.managementFees)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatPence(stmt.maintenanceDeductions)}</TableCell>
+                      <TableCell className="text-right font-mono font-semibold">{formatPence(stmt.netPayable)}</TableCell>
                       <TableCell>{getStatusBadge(stmt.status)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
@@ -532,7 +529,7 @@ export default function LandlordStatements() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <p className="text-xs font-medium text-muted-foreground">Total Payable</p>
-            <p className="text-2xl font-bold text-purple-700">{formatCurrency(stats.totalPayable)}</p>
+            <p className="text-2xl font-bold text-purple-700">{formatPence(stats.totalPayable)}</p>
           </CardContent>
         </Card>
       </div>
@@ -593,7 +590,7 @@ export default function LandlordStatements() {
                     </TableCell>
                     <TableCell className="text-right font-mono font-semibold">
                       {landlord.lastStatement
-                        ? formatCurrency(landlord.lastStatement.netPayable)
+                        ? formatPence(landlord.lastStatement.netPayable)
                         : '-'
                       }
                     </TableCell>

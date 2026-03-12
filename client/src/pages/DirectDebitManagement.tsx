@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
-import { cn } from '@/lib/utils';
+import { cn, formatPence } from '@/lib/utils';
 
 interface GocardlessMandate {
   id: number;
@@ -58,7 +58,6 @@ interface TenantOption {
   email: string | null;
 }
 
-const formatCurrency = (pence: number) => `£${(pence / 100).toFixed(2)}`;
 const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 export default function DirectDebitManagement() {
@@ -401,7 +400,7 @@ export default function DirectDebitManagement() {
                     <TableRow key={p.id}>
                       <TableCell>{formatDate(p.chargeDate || p.createdAt)}</TableCell>
                       <TableCell>{p.description || '-'}</TableCell>
-                      <TableCell className="text-right font-mono">{formatCurrency(p.amount)}</TableCell>
+                      <TableCell className="text-right font-mono">{formatPence(p.amount)}</TableCell>
                       <TableCell>{getStatusBadge(p.status)}</TableCell>
                     </TableRow>
                   ))}

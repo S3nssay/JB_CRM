@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
-import { cn } from '@/lib/utils';
+import { cn, formatPence } from '@/lib/utils';
 
 interface BankTransaction {
   id: number;
@@ -53,7 +53,6 @@ interface Invoice {
   status: string;
 }
 
-const formatCurrency = (pence: number) => `£${(Math.abs(pence) / 100).toFixed(2)}`;
 const formatDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 export default function BankReconciliation() {
@@ -237,7 +236,7 @@ export default function BankReconciliation() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground">Unmatched Credits</div>
-            <div className="text-2xl font-bold text-orange-600">{formatCurrency(summary.unmatched?.totalCredits || 0)}</div>
+            <div className="text-2xl font-bold text-orange-600">{formatPence(summary.unmatched?.totalCredits || 0)}</div>
           </CardContent>
         </Card>
       </div>
@@ -287,7 +286,7 @@ export default function BankReconciliation() {
                           </Badge>
                         </TableCell>
                         <TableCell className={`text-right font-mono ${txn.transactionType === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                          {txn.transactionType === 'credit' ? '+' : '-'}{formatCurrency(txn.amount)}
+                          {txn.transactionType === 'credit' ? '+' : '-'}{formatPence(Math.abs(txn.amount))}
                         </TableCell>
                         <TableCell>{getMatchBadge(txn.matchStatus)}</TableCell>
                         <TableCell className="text-right">
@@ -365,7 +364,7 @@ export default function BankReconciliation() {
             <div className="space-y-4 py-4">
               <div className="bg-muted/50 rounded-lg p-3 space-y-1">
                 <p className="text-sm font-medium">{selectedTransaction.description}</p>
-                <p className="text-lg font-bold text-green-600">+{formatCurrency(selectedTransaction.amount)}</p>
+                <p className="text-lg font-bold text-green-600">+{formatPence(Math.abs(selectedTransaction.amount))}</p>
                 <p className="text-xs text-muted-foreground">{formatDate(selectedTransaction.transactionDate)} - {selectedTransaction.bankName}</p>
               </div>
               <div className="space-y-2">
@@ -387,7 +386,7 @@ export default function BankReconciliation() {
                             <CommandItem key={inv.id} value={inv.invoiceNumber} onSelect={() => { setSelectedInvoiceId(inv.id); setInvoiceOpen(false); }}>
                               <Check className={cn("mr-2 h-4 w-4", selectedInvoiceId === inv.id ? "opacity-100" : "opacity-0")} />
                               <span className="font-mono">{inv.invoiceNumber}</span>
-                              <span className="ml-2 text-muted-foreground">{formatCurrency(inv.totalAmount)}</span>
+                              <span className="ml-2 text-muted-foreground">{formatPence(inv.totalAmount)}</span>
                               <span className="ml-auto text-xs text-muted-foreground">Due {formatDate(inv.dueDate)}</span>
                             </CommandItem>
                           ))}

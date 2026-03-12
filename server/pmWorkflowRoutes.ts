@@ -223,8 +223,9 @@ pmWorkflowRouter.put("/deposits/:tenancyId/protect", requireAgent, async (req, r
 // ============================================================
 
 pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/start", requireAgent, async (req, res) => {
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     const { tenancyId } = req.params;
 
     await client.query("BEGIN");
@@ -264,11 +265,11 @@ pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/start", requireAgent, async (r
       checklist: checklist.rows
     });
   } catch (error: any) {
-    await client.query("ROLLBACK");
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error starting end of tenancy:", error);
     res.status(500).json({ error: "Internal server error" });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 
@@ -305,8 +306,9 @@ pmWorkflowRouter.get("/end-of-tenancy/:tenancyId", requireAgent, async (req, res
 });
 
 pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/complete", requireAgent, async (req, res) => {
-  const client = await pool.connect();
+  let client;
   try {
+    client = await pool.connect();
     const { tenancyId } = req.params;
 
     await client.query("BEGIN");
@@ -335,11 +337,11 @@ pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/complete", requireAgent, async
 
     res.json({ tenancy, message: "Tenancy terminated successfully" });
   } catch (error: any) {
-    await client.query("ROLLBACK");
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error completing end of tenancy:", error);
     res.status(500).json({ error: "Internal server error" });
   } finally {
-    client.release();
+    client?.release();
   }
 });
 // ============================================================
@@ -393,10 +395,14 @@ pmWorkflowRouter.get("/inventory/:propertyId", requireAgent, async (req, res) =>
 });
 
 pmWorkflowRouter.post("/inventory", requireAgent, async (req, res) => {
+  let client;
   try {
+    client = await pool.connect();
     const { propertyId, tenancyId, inventoryType, notes, items } = req.body;
 
-    const inventoryResult = await pool.query(
+    await client.query("BEGIN");
+
+    const inventoryResult = await client.query(
       "INSERT INTO property_inventory (property_id, tenancy_id, inventory_type, notes, status, created_at, updated_at) VALUES ($1, $2, $3, $4, 'draft', NOW(), NOW()) RETURNING *",
       [propertyId, tenancyId, inventoryType, notes]
     );
@@ -412,21 +418,26 @@ pmWorkflowRouter.post("/inventory", requireAgent, async (req, res) => {
         values.push(inventory.id, item.room, item.itemName, item.description, item.condition, item.checkinCondition, item.quantity || 1, item.notes);
         paramIdx += 8;
       }
-      await pool.query(
+      await client.query(
         `INSERT INTO inventory_item (inventory_id, room, item_name, description, condition, checkin_condition, quantity, notes, created_at, updated_at) VALUES ${placeholders.join(", ")}`,
         values
       );
     }
 
-    const fullInventory = await pool.query(
+    const fullInventory = await client.query(
       "SELECT pi.*, (SELECT json_agg(ii.* ORDER BY ii.id) FROM inventory_item ii WHERE ii.inventory_id = pi.id) as items FROM property_inventory pi WHERE pi.id = $1",
       [inventory.id]
     );
 
+    await client.query("COMMIT");
+
     res.json(fullInventory.rows[0]);
   } catch (error: any) {
+    if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error creating inventory:", error);
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client?.release();
   }
 });
 
