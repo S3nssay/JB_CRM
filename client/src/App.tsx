@@ -121,6 +121,7 @@ import EndOfTenancy from "@/pages/EndOfTenancy";
 import InventoryTracking from "@/pages/InventoryTracking";
 import CompanySettings from "@/pages/CompanySettings";
 import TenancyOnboarding from "@/pages/TenancyOnboarding";
+import PropertyKnowledgeBase from "@/pages/PropertyKnowledgeBase";
 
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
@@ -138,6 +139,10 @@ import BalanceSheet from "@/pages/BalanceSheet";
 import AgedDebtors from "@/pages/AgedDebtors";
 import AgedCreditors from "@/pages/AgedCreditors";
 import TaxReports from "@/pages/TaxReports";
+import AccountingDashboard from "@/pages/AccountingDashboard";
+import TaxRates from "@/pages/TaxRates";
+import FinancialPeriods from "@/pages/FinancialPeriods";
+import PaymentAllocations from "@/pages/PaymentAllocations";
 
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
@@ -265,6 +270,10 @@ function Router() {
         <Route path="/crm/sl-dashboard"><CRMLayout><SalesLettingsDashboard /></CRMLayout></Route>
 
         {/* Accounting Routes */}
+        <Route path="/crm/accounting/dashboard"><CRMLayout><AccountingDashboard /></CRMLayout></Route>
+        <Route path="/crm/accounting/tax-rates"><CRMLayout><TaxRates /></CRMLayout></Route>
+        <Route path="/crm/accounting/financial-periods"><CRMLayout><FinancialPeriods /></CRMLayout></Route>
+        <Route path="/crm/accounting/payment-allocations"><CRMLayout><PaymentAllocations /></CRMLayout></Route>
         <Route path="/crm/accounting/settings"><CRMLayout><BusinessSettings /></CRMLayout></Route>
         <Route path="/crm/accounting/chart-of-accounts"><CRMLayout><ChartOfAccounts /></CRMLayout></Route>
         <Route path="/crm/accounting/journal-entries"><CRMLayout><JournalEntries /></CRMLayout></Route>
@@ -281,10 +290,11 @@ function Router() {
         <Route path="/crm/accounting/reports/aged-creditors"><CRMLayout><AgedCreditors /></CRMLayout></Route>
         <Route path="/crm/accounting/reports/tax"><CRMLayout><TaxReports /></CRMLayout></Route>
 
-        <Route path="/crm"><CRMLayout><CRMDashboard /></CRMLayout></Route>
+        <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
         <Route path="/crm/dashboard"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/properties/create"><CRMLayout><PropertyCreate /></CRMLayout></Route>
         <Route path="/crm/properties/import"><CRMLayout><PropertyImport /></CRMLayout></Route>
+        <Route path="/crm/properties/:id/knowledge-base">{(params: any) => <CRMLayout><PropertyKnowledgeBase {...params} /></CRMLayout>}</Route>
         <Route path="/crm/properties/:id/edit">{(params: any) => <CRMLayout><PropertyEdit {...params} /></CRMLayout>}</Route>
         <Route path="/crm/properties/:id">{(params: any) => <CRMLayout><PropertyEdit {...params} /></CRMLayout>}</Route>
         <Route path="/crm/properties"><CRMLayout><CRMDashboard /></CRMLayout></Route>

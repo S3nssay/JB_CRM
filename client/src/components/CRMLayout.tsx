@@ -15,7 +15,7 @@ import {
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
-  FolderTree
+  FolderTree, Percent, Banknote
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -137,18 +137,18 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
             {/* Top nav items */}
             <div className="space-y-0.5">
               <button
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive('/crm') || isActive('/crm/dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'}`}
-                onClick={() => setLocation('/crm')}
-              >
-                <BarChart3 className="h-4 w-4 flex-shrink-0" />
-                Overview
-              </button>
-              <button
-                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive('/crm/my-desk') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'}`}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive('/crm') || isActive('/crm/my-desk') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'}`}
                 onClick={() => setLocation('/crm/my-desk')}
               >
                 <UserCircle className="h-4 w-4 flex-shrink-0" />
                 My Desk
+              </button>
+              <button
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all ${isActive('/crm/dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-700 hover:bg-gray-100'}`}
+                onClick={() => setLocation('/crm/dashboard')}
+              >
+                <BarChart3 className="h-4 w-4 flex-shrink-0" />
+                Overview
               </button>
               {(user?.role === 'admin' || (user?.securityClearance && user.securityClearance >= 8)) && (
                 <button
@@ -269,6 +269,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 >
                   <Wrench className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/support-tickets') ? 'text-white' : 'text-gray-400'}`} />
                   Support Tickets
+                </button>
+                <button
+                  className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActivePrefix('/crm/properties') && location.includes('knowledge-base') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+                  onClick={() => setLocation('/crm/property-management')}
+                  title="Access Knowledge Base from a property's detail page"
+                >
+                  <BookOpen className={`h-3.5 w-3.5 flex-shrink-0 ${isActivePrefix('/crm/properties') && location.includes('knowledge-base') ? 'text-white' : 'text-gray-400'}`} />
+                  Knowledge Base
                 </button>
 
                 {/* Finance sub-group */}
@@ -457,6 +465,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 {accountingExpanded ? <ChevronDown className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" /> : <ChevronRightIcon className="h-3.5 w-3.5 text-gray-400 group-hover:text-[#791E75]" />}
               </button>
               {accountingExpanded && <><div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/dashboard')}>
+                  <Gauge className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/dashboard') ? 'text-white' : 'text-gray-400'}`} />
+                  Dashboard
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/settings') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/settings')}>
                   <Settings2 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/settings') ? 'text-white' : 'text-gray-400'}`} />
                   Business Settings
@@ -476,6 +488,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/trial-balance') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/trial-balance')}>
                   <Scale className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/trial-balance') ? 'text-white' : 'text-gray-400'}`} />
                   Trial Balance
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/tax-rates') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/tax-rates')}>
+                  <Percent className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/tax-rates') ? 'text-white' : 'text-gray-400'}`} />
+                  Tax Rates
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/financial-periods') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/financial-periods')}>
+                  <Calendar className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/financial-periods') ? 'text-white' : 'text-gray-400'}`} />
+                  Financial Periods
                 </button>
               </div>
 
@@ -498,6 +518,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/recurring-templates') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/recurring-templates')}>
                   <Repeat className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/recurring-templates') ? 'text-white' : 'text-gray-400'}`} />
                   Recurring Templates
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/accounting/payment-allocations') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/accounting/payment-allocations')}>
+                  <Banknote className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/accounting/payment-allocations') ? 'text-white' : 'text-gray-400'}`} />
+                  Payment Allocations
                 </button>
               </div>
 
