@@ -51,6 +51,7 @@ Progress: [████░░░░░░] 40%
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
+| Phase 01 P02 | 8min | 2 tasks | 10 files |
 | Phase 01 P03 | 6min | 2 tasks | 9 files |
 
 ## Accumulated Context
@@ -67,6 +68,8 @@ Recent decisions affecting current work:
 - [Research]: Use OpenAI Agents SDK for text channels; pgvector on existing Supabase for knowledge base — no new infrastructure needed
 - [Phase 01]: Used decimal instead of numeric for confidence field (project convention)
 - [Phase 01]: Used direct SQL for schema push instead of db:push (interactive)
+- [Phase 01-02]: Used raw SQL for cross-table CRM contact search (more efficient than 3 separate Drizzle queries)
+- [Phase 01-02]: WhatsApp identifiers stored as phone type in contact_identity (same phone resolves across channels)
 - [Phase 01-03]: Used z.any() for date output fields in tool schemas (Drizzle returns Date objects)
 - [Phase 01-03]: Mapped plan priority values to schema urgency values in createMaintenanceTicket
 - [Phase 01-03]: Used actual schema leadType values instead of plan's proposed values
