@@ -157,6 +157,9 @@ export const properties = pgTable("property", {
   country: text("country"),
   propertyName: text("property_name"), // Optional property name/building name
 
+  // Management status (for managed properties)
+  managementStatus: text("management_status").default("occupied"), // 'occupied', 'dormant', 'void' - dormant = vacant with no active tenancy
+
   // Management details
   managementType: text("management_type"), // 'full', 'let_only', 'tenant_find'
   managementFeeType: text("management_fee_type"), // 'percentage' or 'fixed'
@@ -1366,6 +1369,34 @@ export const propertyCertifications = pgTable("property_certification", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
+
+// Property systems inventory (heating, plumbing, electrical, etc.)
+export const propertySystemsInventory = pgTable("property_systems_inventory", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  systemType: text("system_type").notNull(), // 'heating', 'hot_water', 'electrical', 'plumbing', 'ventilation', 'fire_safety', 'security', 'other'
+  make: text("make"), // e.g. 'Vaillant', 'Worcester Bosch'
+  model: text("model"), // e.g. 'EcoTEC Plus 832'
+  serialNumber: text("serial_number"),
+  installedDate: timestamp("installed_date"),
+  installedBy: text("installed_by"),
+  contractorId: integer("contractor_id"), // FK to contractors
+  warrantyExpiryDate: timestamp("warranty_expiry_date"),
+  lastServiceDate: timestamp("last_service_date"),
+  nextServiceDue: timestamp("next_service_due"),
+  serviceIntervalMonths: integer("service_interval_months"),
+  location: text("location"), // e.g. 'Kitchen cupboard', 'Loft'
+  notes: text("notes"),
+  specifications: json("specifications"),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  lastVerifiedBy: integer("last_verified_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertySystemsInventorySchema = createInsertSchema(propertySystemsInventory).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertySystemsInventory = typeof propertySystemsInventory.$inferSelect;
+export type InsertPropertySystemsInventory = z.infer<typeof insertPropertySystemsInventorySchema>;
 
 // Certification reminder schedule
 export const certificationReminders = pgTable("certification_reminder", {
@@ -3468,6 +3499,24 @@ export const PROPERTY_FEATURES = [
 // ==========================================
 
 // Unified conversations (threads across all channels)
+// Contact identity resolution (maps phone/email to CRM contacts)
+export const contactIdentities = pgTable("contact_identity", {
+  id: serial("id").primaryKey(),
+  contactId: integer("contact_id").notNull(),
+  contactType: text("contact_type").notNull(), // 'lead', 'tenant', 'landlord', 'user'
+  identifierType: text("identifier_type").notNull(), // 'phone', 'email', 'whatsapp'
+  identifierValue: text("identifier_value").notNull(), // E.164 phone or email
+  isPrimary: boolean("is_primary").default(false),
+  verified: boolean("verified").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  identifierUnique: uniqueIndex("contact_identity_identifier_unique").on(table.identifierType, table.identifierValue),
+}));
+
+export const insertContactIdentitySchema = createInsertSchema(contactIdentities).omit({ id: true, createdAt: true });
+export type ContactIdentity = typeof contactIdentities.$inferSelect;
+export type InsertContactIdentity = z.infer<typeof insertContactIdentitySchema>;
+
 export const conversations = pgTable("conversation", {
   id: serial("id").primaryKey(),
 
@@ -3495,6 +3544,13 @@ export const conversations = pgTable("conversation", {
 
   // Tags for organization
   tags: text("tags").array(),
+
+  // AI agent fields
+  source: text("source").default("human"), // 'human' or 'ai_agent'
+  agentType: text("agent_type"), // which agent is handling
+  contactType: text("contact_type"), // 'lead', 'tenant', 'landlord', 'unknown'
+  lastChannel: text("last_channel"), // last channel used
+  resolvedContactId: integer("resolved_contact_id"), // cross-ref to contact_identity
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -3538,6 +3594,11 @@ export const messages = pgTable("message", {
 
   // Metadata
   metadata: json("metadata"), // Additional data like portal name, template used, etc
+
+  // AI agent fields
+  agentType: text("agent_type"), // which agent handled
+  toolCalls: json("tool_calls"), // tools invoked during processing
+  isAiGenerated: boolean("is_ai_generated").default(false),
 
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
@@ -7694,6 +7755,31 @@ export const emailAttachments = pgTable("email_attachment", {
 export const insertEmailAttachmentSchema = createInsertSchema(emailAttachments).omit({ id: true, createdAt: true });
 export type EmailAttachment = typeof emailAttachments.$inferSelect;
 export type InsertEmailAttachment = z.infer<typeof insertEmailAttachmentSchema>;
+
+// ==========================================
+// AGENT AUDIT LOG
+// ==========================================
+
+export const agentAuditLog = pgTable("agent_audit_log", {
+  id: serial("id").primaryKey(),
+  conversationId: integer("conversation_id"), // nullable FK to conversations
+  messageId: integer("message_id"), // nullable
+  agentType: text("agent_type").notNull(), // 'supervisor', 'sales', 'rental', 'maintenance', 'office_admin', etc.
+  action: text("action").notNull(), // 'classify', 'route', 'tool_call', 'respond', 'escalate', 'identify_ai'
+  toolName: text("tool_name"), // nullable, only for tool_call actions
+  toolInput: json("tool_input"), // nullable
+  toolOutput: json("tool_output"), // nullable
+  reasoning: text("reasoning"),
+  confidence: decimal("confidence", { precision: 3, scale: 2 }),
+  durationMs: integer("duration_ms"),
+  channel: text("channel"), // 'sms', 'whatsapp', 'phone', 'email', 'web_chat'
+  error: text("error"), // nullable
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAgentAuditLogSchema = createInsertSchema(agentAuditLog).omit({ id: true, createdAt: true });
+export type AgentAuditLog = typeof agentAuditLog.$inferSelect;
+export type InsertAgentAuditLog = z.infer<typeof insertAgentAuditLogSchema>;
 
 // ==========================================
 // TASK ASSIGNMENT RULES
