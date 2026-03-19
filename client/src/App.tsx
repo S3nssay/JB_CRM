@@ -290,7 +290,6 @@ function Router() {
         <Route path="/crm/accounting/reports/aged-creditors"><CRMLayout><AgedCreditors /></CRMLayout></Route>
         <Route path="/crm/accounting/reports/tax"><CRMLayout><TaxReports /></CRMLayout></Route>
 
-        <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
         <Route path="/crm/dashboard"><CRMLayout><CRMDashboard /></CRMLayout></Route>
         <Route path="/crm/properties/create"><CRMLayout><PropertyCreate /></CRMLayout></Route>
         <Route path="/crm/properties/import"><CRMLayout><PropertyImport /></CRMLayout></Route>
@@ -419,6 +418,9 @@ function Router() {
             </ClearanceProtectedRoute>
           </CRMLayout>
         </Route>
+
+        {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
+        <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
 
         {/* User Account Routes */}
         <Route path="/login" component={Login} />
