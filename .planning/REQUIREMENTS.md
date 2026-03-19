@@ -20,7 +20,7 @@
 - [ ] **AGENT-03**: All agents can take actions in the CRM (create leads, book viewings, create work orders)
 - [x] **AGENT-04**: Conversation state persists in database across interactions and channels
 - [x] **AGENT-05**: All AI agent actions logged to database audit trail (timestamp, channel, action, reasoning)
-- [ ] **AGENT-06**: AI agents identify themselves as AI to callers (UK compliance)
+- [x] **AGENT-06**: AI agents identify themselves as AI to callers (UK compliance)
 - [ ] **AGENT-07**: Clear escalation path to transfer to human staff when AI cannot handle a query
 
 ### Voice AI
@@ -110,7 +110,7 @@
 | AGENT-03 | Phase 2 | Pending |
 | AGENT-04 | Phase 1 | Complete |
 | AGENT-05 | Phase 1 | Complete |
-| AGENT-06 | Phase 1 | Pending |
+| AGENT-06 | Phase 1 | Complete |
 | AGENT-07 | Phase 2 | Pending |
 | VOICE-01 | Phase 3 | Pending |
 | VOICE-02 | Phase 3 | Pending |
