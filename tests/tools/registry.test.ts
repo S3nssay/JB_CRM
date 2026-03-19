@@ -1,7 +1,25 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { z } from 'zod';
-import { ToolRegistry } from '../../server/agents/tools/registry';
 import type { ToolDefinition, ToolContext } from '../../server/agents/tools/types';
+
+// Mock auditLogger before importing registry
+vi.mock('../../server/agents/middleware/auditLogger', () => ({
+  auditLogger: {
+    logToolCall: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+// Mock db to prevent real DB connections from tool definitions
+vi.mock('../../server/db', () => ({
+  db: {
+    select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue([]) }) }),
+    insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: 1 }]) }) }),
+  },
+  pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
+}));
+
+import { ToolRegistry } from '../../server/agents/tools/registry';
+import { auditLogger } from '../../server/agents/middleware/auditLogger';
 
 // Mock tool for testing
 function createMockTool(overrides: Partial<ToolDefinition> = {}): ToolDefinition {
@@ -32,6 +50,7 @@ describe('Tool Registry', () => {
 
   beforeEach(() => {
     registry = new ToolRegistry();
+    vi.clearAllMocks();
   });
 
   it('registers a tool by name', () => {
@@ -101,11 +120,51 @@ describe('Tool Registry', () => {
     expect(fn.name).toBe('mock_tool');
     expect(fn.description).toBe('A mock tool for testing');
     expect(fn.parameters.type).toBe('object');
-    expect(fn.parameters.properties.name).toEqual({ type: 'string' });
-    expect(fn.parameters.properties.count).toEqual({ type: 'number' });
-    expect(fn.parameters.properties.active).toEqual({ type: 'boolean' });
-    expect(fn.parameters.required).toContain('name');
-    expect(fn.parameters.required).toContain('active');
-    expect(fn.parameters.required).not.toContain('count');
+    expect((fn.parameters as any).properties.name).toEqual({ type: 'string' });
+    expect((fn.parameters as any).properties.count).toEqual({ type: 'number' });
+    expect((fn.parameters as any).properties.active).toEqual({ type: 'boolean' });
+    expect((fn.parameters as any).required).toContain('name');
+    expect((fn.parameters as any).required).toContain('active');
+    expect((fn.parameters as any).required).not.toContain('count');
+  });
+
+  it('calls auditLogger.logToolCall after successful invoke (AGENT-05)', async () => {
+    const tool = createMockTool();
+    registry.register(tool);
+    const ctx = createContext({ conversationId: 42, channel: 'whatsapp' });
+
+    await registry.invoke('mock_tool', { query: 'test' }, ctx);
+
+    expect(auditLogger.logToolCall).toHaveBeenCalledTimes(1);
+    expect(auditLogger.logToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentType: 'sales',
+        toolName: 'mock_tool',
+        toolInput: { query: 'test' },
+        toolOutput: { result: 'found: test' },
+        conversationId: 42,
+        channel: 'whatsapp',
+      })
+    );
+  });
+
+  it('calls auditLogger.logToolCall with error on failed invoke (AGENT-05)', async () => {
+    const tool = createMockTool({
+      execute: async () => { throw new Error('Tool exploded'); },
+    });
+    registry.register(tool);
+
+    await expect(
+      registry.invoke('mock_tool', { query: 'test' }, createContext())
+    ).rejects.toThrow('Tool exploded');
+
+    expect(auditLogger.logToolCall).toHaveBeenCalledTimes(1);
+    expect(auditLogger.logToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolName: 'mock_tool',
+        toolOutput: null,
+        error: 'Tool exploded',
+      })
+    );
   });
 });

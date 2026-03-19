@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { AgentType } from '../types';
 import type { ToolDefinition, ToolContext, ToolInvocationResult } from './types';
+import { auditLogger } from '../middleware/auditLogger';
 
 /**
  * Converts a Zod object schema to JSON Schema for OpenAI function calling.
@@ -78,13 +79,45 @@ export class ToolRegistry {
 
     // Execute
     const start = performance.now();
-    const output = await tool.execute(parsedInput, context);
-    const durationMs = Math.round(performance.now() - start);
+    let output: unknown;
+    let durationMs: number;
 
-    // Validate output
-    tool.outputSchema.parse(output);
+    try {
+      output = await tool.execute(parsedInput, context);
+      durationMs = Math.round(performance.now() - start);
 
-    return { output, durationMs, toolName: name };
+      // Validate output
+      tool.outputSchema.parse(output);
+
+      // Fire-and-forget audit log
+      auditLogger.logToolCall({
+        agentType: context.agentType,
+        toolName: name,
+        toolInput: rawInput,
+        toolOutput: output,
+        durationMs,
+        conversationId: context.conversationId ?? undefined,
+        channel: context.channel,
+      }).catch(() => {}); // auditLogger already logs errors internally
+
+      return { output, durationMs, toolName: name };
+    } catch (err: any) {
+      durationMs = Math.round(performance.now() - start);
+
+      // Log failed tool calls too
+      auditLogger.logToolCall({
+        agentType: context.agentType,
+        toolName: name,
+        toolInput: rawInput,
+        toolOutput: null,
+        durationMs,
+        conversationId: context.conversationId ?? undefined,
+        channel: context.channel,
+        error: err.message,
+      }).catch(() => {});
+
+      throw err;
+    }
   }
 
   getOpenAITools(agentType: AgentType): Array<{
