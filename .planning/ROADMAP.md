@@ -30,14 +30,14 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. When any inbound WhatsApp or SMS arrives, it is stored in a conversation thread linked to a resolved contact identity — visible in the database — regardless of which channel the contact used before
   4. Every agent action (tool invocation, decision, escalation) is written to an audit log table with timestamp, channel, action, and reasoning
   5. Any voice or text interaction where an agent speaks first contains an AI self-identification statement
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 01-01: Property knowledge base schema (certifications, systems inventory, maintenance history tables with last_verified_at and expires_at)
-- [ ] 01-02: Conversation store and contact identity resolution (conversations, conversation_messages, contact_identities tables + Channel Gateway for SMS/WhatsApp normalisation)
-- [ ] 01-03: Tool registry framework (typed CRM action functions, permission tiers, first 5 tools: search_properties, book_viewing, create_lead, create_maintenance_ticket, query_knowledge_base)
-- [ ] 01-04: Audit logger and AI self-identification middleware
-- [ ] 01-05: Property knowledge base CRM UI (staff view and edit per-property KB data)
+- [ ] 01-01-PLAN.md — Schema foundation: new tables (systems inventory, audit log, contact identities), extend conversations/messages, install Vitest, create all test stubs
+- [ ] 01-02-PLAN.md — Conversation store and contact identity resolution: Channel Gateway with SMS/WhatsApp adapters, contact resolver, conversation threading
+- [ ] 01-03-PLAN.md — Tool Registry framework: typed CRM action functions with permission tiers, 5 tools (search_properties, book_viewing, create_lead, create_maintenance_ticket, query_knowledge_base)
+- [ ] 01-04-PLAN.md — Audit logger and AI self-identification middleware
+- [ ] 01-05-PLAN.md — Property Knowledge Base CRM UI: staff view and edit per-property KB data
 
 ### Phase 2: Text-Channel Agents
 **Goal**: The Supervisor, Sales, Lettings, and Admin specialist agents handle real inbound messages on WhatsApp, SMS, and email — routing correctly, answering property questions from live data, booking viewings, capturing leads, and managing onboarding/offboarding document checklists.
@@ -109,7 +109,7 @@ Plans:
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
