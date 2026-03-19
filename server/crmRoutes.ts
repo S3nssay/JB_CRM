@@ -24,6 +24,9 @@ import {
   insertComplianceRequirementSchema,
   insertComplianceStatusSchema,
   maintenanceTickets,
+  propertyCertifications,
+  propertySystemsInventory,
+  insertPropertySystemsInventorySchema,
   unifiedContacts,
   salesProgression,
   // Main tables for property management
@@ -985,6 +988,7 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
       bedrooms: properties.bedrooms,
       bathrooms: properties.bathrooms,
       isManaged: properties.isManaged,
+      managementStatus: properties.managementStatus,
       isListed: properties.isListed,
       isRental: properties.isRental,
       landlordId: properties.landlordId,
@@ -1070,6 +1074,7 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
         bedrooms: p.bedrooms,
         bathrooms: p.bathrooms,
         isManaged: p.isManaged,
+        managementStatus: p.managementStatus,
         isListed: p.isListed,
         isRental: p.isRental,
         status: p.status,
@@ -1222,6 +1227,7 @@ crmRouter.post('/managed-properties/import', requireAgent, uploadCsv.single('fil
           rentPeriod: row.rent_frequency || 'monthly',
           isManaged: true,
           isListed: false,
+          managementStatus: row.tenant_name ? 'occupied' : 'dormant',
           landlordId: landlordId
         }).returning();
 
@@ -1423,6 +1429,7 @@ crmRouter.patch('/properties/:id/assign-landlord', requireAgent, async (req, res
       .set({
         landlordId: newLandlordId,
         isManaged: true,
+        managementStatus: 'dormant',
         updatedAt: new Date()
       })
       .where(eq(properties.id, propertyId))
@@ -8701,7 +8708,8 @@ crmRouter.get('/landlords/directory', requireAgent, async (req, res) => {
       SELECT id, title, address_line1 as "addressLine1", address_line2 as "addressLine2",
              city, postcode, status, landlord_id as "landlordId",
              property_type as "propertyType", bedrooms, bathrooms,
-             rent_period as "rentPeriod", price, is_managed as "isManaged"
+             rent_period as "rentPeriod", price, is_managed as "isManaged",
+             management_status as "managementStatus"
       FROM property
       WHERE landlord_id IS NOT NULL
       ORDER BY address_line1 ASC
@@ -13282,6 +13290,13 @@ crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
 
     await db.insert(tenancyChecklist).values(checklistItems);
 
+    // Auto-update management_status: property becomes 'occupied' when tenancy is created
+    if (tenancy.propertyId && tenancy.status === 'active') {
+      await db.update(properties)
+        .set({ managementStatus: 'occupied', updatedAt: new Date() })
+        .where(eq(properties.id, tenancy.propertyId));
+    }
+
     res.status(201).json(tenancy);
   } catch (error) {
     console.error('Error creating tenancy:', error);
@@ -13299,6 +13314,32 @@ crmRouter.patch('/pm/tenancies/:id', requireAgent, async (req, res) => {
     if (!tenancy) {
       return res.status(404).json({ error: 'Tenancy not found' });
     }
+
+    // Auto-update management_status based on tenancy status changes
+    if (tenancy.propertyId) {
+      const nonActiveStatuses = ['terminated', 'ended', 'expired', 'cancelled'];
+      if (nonActiveStatuses.includes(tenancy.status || '')) {
+        // Check if property has any other active tenancies
+        const [otherActive] = await db.select({ count: count(tenancies.id) })
+          .from(tenancies)
+          .where(and(
+            eq(tenancies.propertyId, tenancy.propertyId),
+            eq(tenancies.status, 'active'),
+            sql`${tenancies.id} != ${tenancy.id}`
+          ));
+        if ((otherActive?.count ?? 0) === 0) {
+          await db.update(properties)
+            .set({ managementStatus: 'dormant', updatedAt: new Date() })
+            .where(eq(properties.id, tenancy.propertyId));
+        }
+      } else if (tenancy.status === 'active') {
+        // Tenancy activated - property becomes occupied
+        await db.update(properties)
+          .set({ managementStatus: 'occupied', updatedAt: new Date() })
+          .where(eq(properties.id, tenancy.propertyId));
+      }
+    }
+
     res.json(tenancy);
   } catch (error) {
     console.error('Error updating tenancy:', error);
@@ -13525,6 +13566,7 @@ crmRouter.post('/pm/properties/import', requireAgent, uploadCsv.single('file'), 
           propertyType: 'flat',
           managementType: 'full',
           managementStartDate: new Date(),
+          managementStatus: tenantId ? 'occupied' : 'dormant',
           status: 'active'
         }).returning();
         imported.properties++;
@@ -16507,6 +16549,15 @@ crmRouter.get('/pm-dashboard/summary', requireAgent, async (req, res) => {
         AND end_date BETWEEN NOW() AND NOW() + INTERVAL '90 days'
     `);
 
+    // Managed property counts by management status
+    const managedStatusData = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(*) FILTER (WHERE management_status = 'dormant') as dormant,
+        COUNT(*) FILTER (WHERE management_status = 'occupied') as occupied
+      FROM property WHERE is_managed = true
+    `);
+
     const totalRent = parseFloat(rentData.rows[0].total_rent) || 0;
 
     res.json({
@@ -16522,6 +16573,9 @@ crmRouter.get('/pm-dashboard/summary', requireAgent, async (req, res) => {
       arrearsCases: 0,
       arrearsTotal: 0,
       endingSoon: parseInt(endingSoon.rows[0].count) || 0,
+      totalManagedProperties: parseInt(managedStatusData.rows[0].total) || 0,
+      dormantProperties: parseInt(managedStatusData.rows[0].dormant) || 0,
+      occupiedProperties: parseInt(managedStatusData.rows[0].occupied) || 0,
     });
   } catch (error) {
     console.error('Error fetching PM dashboard summary:', error);
@@ -16711,5 +16765,123 @@ crmRouter.get('/tenancy-expiry/calendar', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error fetching tenancy expiry calendar:', error);
     res.status(500).json({ error: 'Failed to fetch tenancy expiry calendar' });
+  }
+});
+
+// ============================================================
+// Property Knowledge Base Endpoints
+// ============================================================
+
+// GET /properties/:id/knowledge-base -- Aggregated KB view
+crmRouter.get('/properties/:id/knowledge-base', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
+
+    const [certifications, systems, recentMaintenance] = await Promise.all([
+      db.select().from(propertyCertifications)
+        .where(eq(propertyCertifications.propertyId, propertyId))
+        .orderBy(propertyCertifications.expiryDate),
+      db.select().from(propertySystemsInventory)
+        .where(eq(propertySystemsInventory.propertyId, propertyId))
+        .orderBy(propertySystemsInventory.systemType),
+      db.select().from(maintenanceTickets)
+        .where(eq(maintenanceTickets.propertyId, propertyId))
+        .orderBy(desc(maintenanceTickets.createdAt))
+        .limit(20),
+    ]);
+
+    res.json({ certifications, systems, recentMaintenance });
+  } catch (error) {
+    console.error('Error fetching property knowledge base:', error);
+    res.status(500).json({ error: 'Failed to fetch property knowledge base' });
+  }
+});
+
+// GET /properties/:id/systems-inventory -- List systems inventory
+crmRouter.get('/properties/:id/systems-inventory', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
+
+    const systems = await db.select().from(propertySystemsInventory)
+      .where(eq(propertySystemsInventory.propertyId, propertyId))
+      .orderBy(propertySystemsInventory.systemType);
+
+    res.json(systems);
+  } catch (error) {
+    console.error('Error fetching systems inventory:', error);
+    res.status(500).json({ error: 'Failed to fetch systems inventory' });
+  }
+});
+
+// POST /properties/:id/systems-inventory -- Create systems inventory entry
+crmRouter.post('/properties/:id/systems-inventory', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
+
+    const data = insertPropertySystemsInventorySchema.parse({
+      ...req.body,
+      propertyId,
+    });
+
+    const [created] = await db.insert(propertySystemsInventory).values(data).returning();
+    res.status(201).json(created);
+  } catch (error: any) {
+    if (error?.name === 'ZodError') {
+      return res.status(400).json({ error: 'Validation failed', details: error.errors });
+    }
+    console.error('Error creating systems inventory entry:', error);
+    res.status(500).json({ error: 'Failed to create systems inventory entry' });
+  }
+});
+
+// PUT /properties/:id/systems-inventory/:systemId -- Update systems inventory entry
+crmRouter.put('/properties/:id/systems-inventory/:systemId', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const systemId = parseInt(req.params.systemId);
+    if (isNaN(propertyId) || isNaN(systemId)) {
+      return res.status(400).json({ error: 'Invalid property or system ID' });
+    }
+
+    const updateData: Record<string, any> = {};
+    const allowedFields = [
+      'systemType', 'make', 'model', 'serialNumber', 'installedDate',
+      'installedBy', 'contractorId', 'warrantyExpiryDate', 'lastServiceDate',
+      'nextServiceDue', 'serviceIntervalMonths', 'location', 'notes', 'specifications',
+    ];
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updateData[field] = req.body[field];
+      }
+    }
+
+    updateData.updatedAt = new Date();
+
+    const [updated] = await db.update(propertySystemsInventory)
+      .set(updateData)
+      .where(and(
+        eq(propertySystemsInventory.id, systemId),
+        eq(propertySystemsInventory.propertyId, propertyId),
+      ))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Systems inventory entry not found' });
+    }
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating systems inventory entry:', error);
+    res.status(500).json({ error: 'Failed to update systems inventory entry' });
   }
 });
