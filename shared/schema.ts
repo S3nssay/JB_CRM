@@ -3317,8 +3317,6 @@ export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
 export type TicketComment = typeof ticketComments.$inferSelect;
 export type InsertTicketComment = z.infer<typeof insertTicketCommentSchema>;
 
-export type Contractor = typeof contractors.$inferSelect;
-
 export type EstateAgencyRole = typeof estateAgencyRoles.$inferSelect;
 export type InsertEstateAgencyRole = z.infer<typeof insertEstateAgencyRoleSchema>;
 
