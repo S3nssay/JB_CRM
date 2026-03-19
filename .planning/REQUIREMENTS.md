@@ -100,51 +100,51 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| KB-01 | — | Pending |
-| KB-02 | — | Pending |
-| KB-03 | — | Pending |
-| KB-04 | — | Pending |
-| KB-05 | — | Pending |
-| AGENT-01 | — | Pending |
-| AGENT-02 | — | Pending |
-| AGENT-03 | — | Pending |
-| AGENT-04 | — | Pending |
-| AGENT-05 | — | Pending |
-| AGENT-06 | — | Pending |
-| AGENT-07 | — | Pending |
-| VOICE-01 | — | Pending |
-| VOICE-02 | — | Pending |
-| VOICE-03 | — | Pending |
-| VOICE-04 | — | Pending |
-| SALES-01 | — | Pending |
-| SALES-02 | — | Pending |
-| SALES-03 | — | Pending |
-| SALES-04 | — | Pending |
-| LETT-01 | — | Pending |
-| LETT-02 | — | Pending |
-| LETT-03 | — | Pending |
-| LETT-04 | — | Pending |
-| PM-01 | — | Pending |
-| PM-02 | — | Pending |
-| PM-03 | — | Pending |
-| PM-04 | — | Pending |
-| PM-05 | — | Pending |
-| PM-06 | — | Pending |
-| PM-07 | — | Pending |
-| PM-08 | — | Pending |
-| ADMIN-01 | — | Pending |
-| ADMIN-02 | — | Pending |
-| ADMIN-03 | — | Pending |
-| CHAN-01 | — | Pending |
-| CHAN-02 | — | Pending |
-| CHAN-03 | — | Pending |
-| CHAN-04 | — | Pending |
+| KB-01 | Phase 1 | Pending |
+| KB-02 | Phase 1 | Pending |
+| KB-03 | Phase 1 | Pending |
+| KB-04 | Phase 1 | Pending |
+| KB-05 | Phase 1 | Pending |
+| AGENT-01 | Phase 2 | Pending |
+| AGENT-02 | Phase 1 | Pending |
+| AGENT-03 | Phase 2 | Pending |
+| AGENT-04 | Phase 1 | Pending |
+| AGENT-05 | Phase 1 | Pending |
+| AGENT-06 | Phase 1 | Pending |
+| AGENT-07 | Phase 2 | Pending |
+| VOICE-01 | Phase 3 | Pending |
+| VOICE-02 | Phase 3 | Pending |
+| VOICE-03 | Phase 3 | Pending |
+| VOICE-04 | Phase 3 | Pending |
+| SALES-01 | Phase 2 | Pending |
+| SALES-02 | Phase 2 | Pending |
+| SALES-03 | Phase 2 | Pending |
+| SALES-04 | Phase 2 | Pending |
+| LETT-01 | Phase 2 | Pending |
+| LETT-02 | Phase 2 | Pending |
+| LETT-03 | Phase 2 | Pending |
+| LETT-04 | Phase 2 | Pending |
+| PM-01 | Phase 4 | Pending |
+| PM-02 | Phase 4 | Pending |
+| PM-03 | Phase 4 | Pending |
+| PM-04 | Phase 4 | Pending |
+| PM-05 | Phase 4 | Pending |
+| PM-06 | Phase 5 | Pending |
+| PM-07 | Phase 5 | Pending |
+| PM-08 | Phase 5 | Pending |
+| ADMIN-01 | Phase 2 | Pending |
+| ADMIN-02 | Phase 2 | Pending |
+| ADMIN-03 | Phase 2 | Pending |
+| CHAN-01 | Phase 1 | Pending |
+| CHAN-02 | Phase 1 | Pending |
+| CHAN-03 | Phase 2 | Pending |
+| CHAN-04 | Phase 2 | Pending |
 
 **Coverage:**
 - v1 requirements: 39 total
-- Mapped to phases: 0
-- Unmapped: 39
+- Mapped to phases: 39
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 after initial definition*
+*Last updated: 2026-03-19 — traceability complete after roadmap creation*
