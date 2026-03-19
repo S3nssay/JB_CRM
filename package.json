@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@felores/kie-ai-mcp-server": "^3.0.1",
     "@hookform/resolvers": "^3.9.1",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",
@@ -135,7 +136,8 @@
     "tailwindcss": "^3.4.14",
     "tsx": "^4.21.0",
     "typescript": "5.6.3",
-    "vite": "^5.4.14"
+    "vite": "^5.4.14",
+    "vitest": "^4.1.0"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
