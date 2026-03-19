@@ -11,7 +11,7 @@
 - [x] **KB-02**: Property has systems inventory (heating type, boiler make/model, electrical board, plumbing)
 - [x] **KB-03**: Property has maintenance/work history log linked to contractors and dates
 - [x] **KB-04**: Knowledge base is queryable by AI agents with sub-100ms retrieval for use during live calls
-- [ ] **KB-05**: CRM UI allows staff to view and edit property knowledge base data
+- [x] **KB-05**: CRM UI allows staff to view and edit property knowledge base data
 
 ### AI Agent Infrastructure
 
@@ -104,7 +104,7 @@
 | KB-02 | Phase 1 | Complete |
 | KB-03 | Phase 1 | Complete |
 | KB-04 | Phase 1 | Complete |
-| KB-05 | Phase 1 | Pending |
+| KB-05 | Phase 1 | Complete |
 | AGENT-01 | Phase 2 | Pending |
 | AGENT-02 | Phase 1 | Complete |
 | AGENT-03 | Phase 2 | Pending |
