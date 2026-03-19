@@ -121,5 +121,18 @@ export class ToolRegistry {
   }
 }
 
-// Singleton registry instance - tools are registered after definitions are imported
+// Singleton registry instance
 export const toolRegistry = new ToolRegistry();
+
+// Register all tool definitions
+import { searchPropertiesTool } from './definitions/searchProperties';
+import { queryKnowledgeBaseTool } from './definitions/queryKnowledgeBase';
+import { createLeadTool } from './definitions/createLead';
+import { createMaintenanceTicketTool } from './definitions/createMaintenanceTicket';
+import { bookViewingTool } from './definitions/bookViewing';
+
+toolRegistry.register(searchPropertiesTool);
+toolRegistry.register(queryKnowledgeBaseTool);
+toolRegistry.register(createLeadTool);
+toolRegistry.register(createMaintenanceTicketTool);
+toolRegistry.register(bookViewingTool);
