@@ -7,9 +7,9 @@
 
 ### Property Knowledge Base
 
-- [ ] **KB-01**: Property has structured certification records (gas safety, EICR, EPC) with expiry dates and status
-- [ ] **KB-02**: Property has systems inventory (heating type, boiler make/model, electrical board, plumbing)
-- [ ] **KB-03**: Property has maintenance/work history log linked to contractors and dates
+- [x] **KB-01**: Property has structured certification records (gas safety, EICR, EPC) with expiry dates and status
+- [x] **KB-02**: Property has systems inventory (heating type, boiler make/model, electrical board, plumbing)
+- [x] **KB-03**: Property has maintenance/work history log linked to contractors and dates
 - [ ] **KB-04**: Knowledge base is queryable by AI agents with sub-100ms retrieval for use during live calls
 - [ ] **KB-05**: CRM UI allows staff to view and edit property knowledge base data
 
@@ -18,8 +18,8 @@
 - [ ] **AGENT-01**: Supervisor agent detects caller intent and routes to correct specialist (sales/lettings/PM/admin/general)
 - [ ] **AGENT-02**: All agents have access to live CRM data via a Tool Registry (read properties, leads, tenancies, contractors)
 - [ ] **AGENT-03**: All agents can take actions in the CRM (create leads, book viewings, create work orders)
-- [ ] **AGENT-04**: Conversation state persists in database across interactions and channels
-- [ ] **AGENT-05**: All AI agent actions logged to database audit trail (timestamp, channel, action, reasoning)
+- [x] **AGENT-04**: Conversation state persists in database across interactions and channels
+- [x] **AGENT-05**: All AI agent actions logged to database audit trail (timestamp, channel, action, reasoning)
 - [ ] **AGENT-06**: AI agents identify themselves as AI to callers (UK compliance)
 - [ ] **AGENT-07**: Clear escalation path to transfer to human staff when AI cannot handle a query
 
@@ -63,8 +63,8 @@
 
 ### Multi-Channel
 
-- [ ] **CHAN-01**: Unified conversation threading across phone, WhatsApp, SMS, and email
-- [ ] **CHAN-02**: Contact identity resolution (same person across phone number, email, WhatsApp)
+- [x] **CHAN-01**: Unified conversation threading across phone, WhatsApp, SMS, and email
+- [x] **CHAN-02**: Contact identity resolution (same person across phone number, email, WhatsApp)
 - [ ] **CHAN-03**: Agent memory — context from previous interactions injected into current conversation
 - [ ] **CHAN-04**: WhatsApp/SMS confirmations sent automatically after call actions (viewing booked, fault reported)
 
@@ -100,16 +100,16 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| KB-01 | Phase 1 | Pending |
-| KB-02 | Phase 1 | Pending |
-| KB-03 | Phase 1 | Pending |
+| KB-01 | Phase 1 | Complete |
+| KB-02 | Phase 1 | Complete |
+| KB-03 | Phase 1 | Complete |
 | KB-04 | Phase 1 | Pending |
 | KB-05 | Phase 1 | Pending |
 | AGENT-01 | Phase 2 | Pending |
 | AGENT-02 | Phase 1 | Pending |
 | AGENT-03 | Phase 2 | Pending |
-| AGENT-04 | Phase 1 | Pending |
-| AGENT-05 | Phase 1 | Pending |
+| AGENT-04 | Phase 1 | Complete |
+| AGENT-05 | Phase 1 | Complete |
 | AGENT-06 | Phase 1 | Pending |
 | AGENT-07 | Phase 2 | Pending |
 | VOICE-01 | Phase 3 | Pending |
@@ -135,8 +135,8 @@
 | ADMIN-01 | Phase 2 | Pending |
 | ADMIN-02 | Phase 2 | Pending |
 | ADMIN-03 | Phase 2 | Pending |
-| CHAN-01 | Phase 1 | Pending |
-| CHAN-02 | Phase 1 | Pending |
+| CHAN-01 | Phase 1 | Complete |
+| CHAN-02 | Phase 1 | Complete |
 | CHAN-03 | Phase 2 | Pending |
 | CHAN-04 | Phase 2 | Pending |
 
