@@ -16,18 +16,7 @@ import type { AgentContext } from './context';
 import { escalateToHumanTool } from './tools';
 import { salesAgent } from './salesAgent';
 import { lettingsAgent } from './lettingsAgent';
-
-// ---- Specialist stubs (replaced by Plans 02-04) ----
-
-export const adminAgentStub = new Agent<AgentContext>({
-  name: 'Sam from Admin',
-  model: 'gpt-4o',
-  instructions: `You are Sam from the Admin team at John Barclay Estate Agents.
-You are a placeholder specialist. Acknowledge the customer's request regarding documents or onboarding and let them know the admin team will assist shortly.
-Be professional, helpful, and use British English conventions.
-Do not use emoji.`,
-  tools: [],
-});
+import { adminAgent } from './adminAgent';
 
 // ---- Supervisor agent ----
 
@@ -84,7 +73,7 @@ export const supervisorAgent = new Agent<AgentContext>({
       toolNameOverride: 'transfer_to_lettings',
       toolDescription: 'Transfer to Lettings for rental enquiries, rental viewings, tenant applications, rent negotiations',
     }),
-    handoff(adminAgentStub, {
+    handoff(adminAgent, {
       toolNameOverride: 'transfer_to_admin',
       toolDescription: 'Transfer to Admin for onboarding documents, offboarding checklists, tenancy paperwork, document submissions',
     }),

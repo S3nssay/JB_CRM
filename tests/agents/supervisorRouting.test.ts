@@ -181,6 +181,22 @@ describe('Supervisor Agent', () => {
     expect(supervisorAgent.instructions).toContain('John Barclay');
     expect(supervisorAgent.instructions.toLowerCase()).toContain('professional');
   });
+
+  it('should hand off to real Admin agent named "Sam from Admin"', async () => {
+    const { supervisorAgent } = await import('../../server/agents/sdk/supervisorAgent');
+    const adminHandoff = supervisorAgent.handoffs.find(
+      (h: any) => h.agent && h.agent.name === 'Sam from Admin',
+    );
+    expect(adminHandoff).toBeDefined();
+    expect(adminHandoff.toolNameOverride).toBe('transfer_to_admin');
+    expect(adminHandoff.toolDescription).toContain('document');
+  });
+
+  it('should have no stub agents remaining', async () => {
+    const mod = await import('../../server/agents/sdk/supervisorAgent');
+    // adminAgentStub should no longer be exported
+    expect((mod as any).adminAgentStub).toBeUndefined();
+  });
 });
 
 describe('runAgent', () => {
