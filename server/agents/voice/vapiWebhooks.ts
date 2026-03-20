@@ -12,6 +12,7 @@ import { toolRegistry } from '../tools/registry';
 import type { ToolContext } from '../tools/types';
 import type { AgentType } from '../types';
 import type { VapiToolCallMessage, VapiToolCallResult } from './types';
+import { loadCallerContext } from './contextLoader';
 
 // ---- Active call context cache ----
 // Stores resolved caller context keyed by Vapi call ID.
@@ -173,8 +174,30 @@ async function handleToolCalls(
 // ---- Assistant-request handler ----
 
 async function handleAssistantRequest(message: any, res: Response): Promise<void> {
-  // Placeholder for Plan 03-03 context loading
-  // For now, return empty response to use default assistant config
+  const callId = message.call?.id;
+  const customerNumber = message.call?.customer?.number;
+
+  // Load and store context for known callers
+  if (callId && customerNumber) {
+    try {
+      const callerContext = await loadCallerContext(customerNumber);
+      if (callerContext) {
+        activeCallContexts.set(callId, {
+          contactId: callerContext.contactId,
+          contactType: callerContext.contactType,
+          contactName: callerContext.contactName,
+          conversationId: callerContext.conversationId,
+          recentSummary: callerContext.recentSummary,
+        });
+        console.log(`[VapiWebhook] Loaded context for call ${callId}: ${callerContext.contactName} (${callerContext.contactType})`);
+      }
+    } catch (err: any) {
+      // Context loading failure is non-critical -- proceed without context
+      console.warn(`[VapiWebhook] Failed to load caller context: ${err.message}`);
+    }
+  }
+
+  // Return empty response to use default assistant config
   res.status(200).json({});
 }
 
