@@ -8,13 +8,15 @@
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "postinstall": "node scripts/fix-zod-resolution.cjs"
   },
   "dependencies": {
     "@felores/kie-ai-mcp-server": "^3.0.1",
     "@hookform/resolvers": "^3.9.1",
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",
+    "@openai/agents": "^0.7.2",
     "@radix-ui/react-accordion": "^1.2.1",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
@@ -77,6 +79,7 @@
     "lucide-react": "^0.453.0",
     "mailparser": "^3.9.3",
     "memorystore": "^1.6.7",
+    "motion": "^12.38.0",
     "multer": "^2.0.2",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.10.0",
@@ -85,6 +88,7 @@
     "passport-local": "^1.0.0",
     "pdf2json": "^4.0.0",
     "pg": "^8.16.3",
+    "pg-boss": "^12.14.0",
     "playwright": "^1.55.0",
     "postgres": "^3.4.5",
     "postprocessing": "^6.38.2",
@@ -109,7 +113,8 @@
     "ws": "^8.18.0",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8",
-    "zod-validation-error": "^3.4.0"
+    "zod-validation-error": "^3.4.0",
+    "zod4": "npm:zod@^4.3.6"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.0.11",

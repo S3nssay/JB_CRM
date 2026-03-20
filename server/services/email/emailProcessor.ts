@@ -211,6 +211,40 @@ export class EmailProcessor {
           console.error('[EmailAIAgent] Action execution failed:', agentError);
           // Don't fail the whole processing if the agent fails
         }
+
+        // Route enquiry-type emails through the agent pipeline (Phase 2)
+        if (aiResults.actionType === 'create_enquiry' || aiResults.actionType === 'create_viewing') {
+          try {
+            const { channelGateway } = await import('../../agents/channels/gateway');
+            const { runAgent } = await import('../../agents/sdk/runner');
+            const { supervisorAgent } = await import('../../agents/sdk/supervisorAgent');
+
+            const fromAddress = message.from?.emailAddress?.address || '';
+            const fromName = message.from?.emailAddress?.name || '';
+            const emailBody = message.body?.contentType === 'text'
+              ? message.body.content
+              : (message.bodyPreview || '');
+
+            const inbound = await channelGateway.processInbound('email', {
+              from: fromAddress,
+              fromName,
+              subject: message.subject || '',
+              body: emailBody,
+              messageId: graphMessageId,
+            });
+
+            await runAgent(supervisorAgent, emailBody, {
+              conversationId: inbound.conversationId,
+              contactId: inbound.contact.contactId,
+              channel: 'email',
+              isFirstMessage: inbound.isNewConversation,
+              agentType: 'supervisor',
+            });
+          } catch (agentPipelineError) {
+            console.error('[EmailProcessor] Agent pipeline routing failed:', agentPipelineError);
+            // Non-fatal: existing email processing continues
+          }
+        }
       }
 
       // Update sync timestamp on connection
@@ -465,6 +499,35 @@ export class EmailProcessor {
           });
         } catch (agentError) {
           console.error('[EmailAIAgent] Action execution failed for SMTP email:', agentError);
+        }
+
+        // Route enquiry-type emails through the agent pipeline (Phase 2)
+        if (aiResults.actionType === 'create_enquiry' || aiResults.actionType === 'create_viewing') {
+          try {
+            const { channelGateway } = await import('../../agents/channels/gateway');
+            const { runAgent } = await import('../../agents/sdk/runner');
+            const { supervisorAgent } = await import('../../agents/sdk/supervisorAgent');
+
+            const emailBody = parsedMessage.bodyText || parsedMessage.bodyHtml || '';
+
+            const inbound = await channelGateway.processInbound('email', {
+              from: parsedMessage.from.address,
+              fromName: parsedMessage.from.name,
+              subject: parsedMessage.subject,
+              body: emailBody,
+              messageId: syntheticId,
+            });
+
+            await runAgent(supervisorAgent, emailBody, {
+              conversationId: inbound.conversationId,
+              contactId: inbound.contact.contactId,
+              channel: 'email',
+              isFirstMessage: inbound.isNewConversation,
+              agentType: 'supervisor',
+            });
+          } catch (agentPipelineError) {
+            console.error('[EmailProcessor] Agent pipeline routing failed for SMTP email:', agentPipelineError);
+          }
         }
       }
 

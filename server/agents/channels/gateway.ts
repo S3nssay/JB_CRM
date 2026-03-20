@@ -12,6 +12,7 @@ import { contactResolver } from './contactResolver';
 import { conversationStore } from './conversationStore';
 import { SmsAdapter } from './adapters/smsAdapter';
 import { WhatsAppAdapter } from './adapters/whatsappAdapter';
+import { EmailAdapter } from './adapters/emailAdapter';
 
 export class ChannelGateway {
   private adapters: Map<CommunicationChannel, ChannelAdapter>;
@@ -20,6 +21,7 @@ export class ChannelGateway {
     this.adapters = new Map();
     this.adapters.set('sms', new SmsAdapter());
     this.adapters.set('whatsapp', new WhatsAppAdapter());
+    this.adapters.set('email', new EmailAdapter());
   }
 
   /**
