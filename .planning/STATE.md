@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 02-01 (SDK Foundation, Supervisor, Webhooks)
-last_updated: "2026-03-20T01:47:00.000Z"
-last_activity: 2026-03-20 — Completed 02-01 (SDK Foundation, Supervisor Agent, Webhook Wiring)
+stopped_at: Completed 02-02 (Sales Specialist Agent)
+last_updated: "2026-03-20T01:54:10.000Z"
+last_activity: 2026-03-20 — Completed 02-02 (Sales Specialist Agent)
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 10
-  completed_plans: 7
-  percent: 70
+  completed_plans: 8
+  percent: 80
 ---
 
 # Project State
@@ -26,16 +26,16 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 ## Current Position
 
 Phase: 2 of 5 (Text-Channel Agents)
-Plan: 1 of 4 in current phase
-Status: Plan 01 Complete
-Last activity: 2026-03-20 — Completed 02-01 (SDK Foundation, Supervisor Agent, Webhook Wiring)
+Plan: 2 of 4 in current phase
+Status: Plan 02 Complete
+Last activity: 2026-03-20 — Completed 02-02 (Sales Specialist Agent)
 
-Progress: [███████░░░] 70%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
+- Total plans completed: 8
 - Average duration: ~8 min
 - Total execution time: ~55 min
 
@@ -44,11 +44,11 @@ Progress: [███████░░░] 70%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 6 | 33min | 5.5min |
-| 02 | 1 (of 4) | 22min | 22min |
+| 02 | 2 (of 4) | 26min | 13min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 5min, 2min, 22min
-- Trend: Phase 2 plans are larger (more complex agent work)
+- Last 5 plans: 5min, 5min, 2min, 22min, 4min
+- Trend: Phase 2 specialist agents faster than foundation (established patterns)
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -58,6 +58,7 @@ Progress: [███████░░░] 70%
 | Phase 01 P05 | 5min | 3 tasks | 4 files |
 | Phase 01 P06 | 2min | 1 tasks | 1 files |
 | Phase 02 P01 | 22min | 2 tasks | 16 files |
+| Phase 02 P02 | 4min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,9 @@ Recent decisions affecting current work:
 - [Phase 02-01]: Per-conversation Map-based locking prevents race conditions
 - [Phase 02-01]: STOP keyword detection at webhook level (UK PECR compliance)
 - [Phase 02-01]: Round-robin escalation uses module-level Map counters per department
+- [Phase 02-02]: Full negotiation autonomy for Sales agent -- no floor/ceiling restrictions
+- [Phase 02-02]: Lazy pg-boss init in scheduleFollowUpTool to avoid DB connection at module load
+- [Phase 02-02]: Specialist agent pattern: persona instructions + domain tools + follow-up scheduling tool
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T01:47:00.000Z
-Stopped at: Completed 02-01 (SDK Foundation, Supervisor Agent, Webhook Wiring)
-Resume file: .planning/phases/02-text-channel-agents/02-01-SUMMARY.md
+Last session: 2026-03-20T01:54:10.000Z
+Stopped at: Completed 02-02 (Sales Specialist Agent)
+Resume file: .planning/phases/02-text-channel-agents/02-02-SUMMARY.md

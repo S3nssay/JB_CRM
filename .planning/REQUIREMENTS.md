@@ -32,10 +32,10 @@
 
 ### Sales Specialist
 
-- [ ] **SALES-01**: Answers property sale enquiries using live CRM data (price, availability, features, location)
-- [ ] **SALES-02**: Books viewings by checking agent availability and creating viewing appointments
-- [ ] **SALES-03**: Captures buyer leads (name, phone, email, requirements, budget) when viewings unavailable
-- [ ] **SALES-04**: Follows up with interested buyers across channels (WhatsApp/SMS/email)
+- [x] **SALES-01**: Answers property sale enquiries using live CRM data (price, availability, features, location)
+- [x] **SALES-02**: Books viewings by checking agent availability and creating viewing appointments
+- [x] **SALES-03**: Captures buyer leads (name, phone, email, requirements, budget) when viewings unavailable
+- [x] **SALES-04**: Follows up with interested buyers across channels (WhatsApp/SMS/email)
 
 ### Lettings Specialist
 
@@ -116,10 +116,10 @@
 | VOICE-02 | Phase 3 | Pending |
 | VOICE-03 | Phase 3 | Pending |
 | VOICE-04 | Phase 3 | Pending |
-| SALES-01 | Phase 2 | Pending |
-| SALES-02 | Phase 2 | Pending |
-| SALES-03 | Phase 2 | Pending |
-| SALES-04 | Phase 2 | Pending |
+| SALES-01 | Phase 2 | Complete |
+| SALES-02 | Phase 2 | Complete |
+| SALES-03 | Phase 2 | Complete |
+| SALES-04 | Phase 2 | Complete |
 | LETT-01 | Phase 2 | Pending |
 | LETT-02 | Phase 2 | Pending |
 | LETT-03 | Phase 2 | Pending |
