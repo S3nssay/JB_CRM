@@ -65,8 +65,8 @@
 
 - [x] **CHAN-01**: Unified conversation threading across phone, WhatsApp, SMS, and email
 - [x] **CHAN-02**: Contact identity resolution (same person across phone number, email, WhatsApp)
-- [ ] **CHAN-03**: Agent memory — context from previous interactions injected into current conversation
-- [ ] **CHAN-04**: WhatsApp/SMS confirmations sent automatically after call actions (viewing booked, fault reported)
+- [x] **CHAN-03**: Agent memory — context from previous interactions injected into current conversation
+- [x] **CHAN-04**: WhatsApp/SMS confirmations sent automatically after call actions (viewing booked, fault reported)
 
 ## v2 Requirements
 
@@ -137,8 +137,8 @@
 | ADMIN-03 | Phase 2 | Complete |
 | CHAN-01 | Phase 1 | Complete |
 | CHAN-02 | Phase 1 | Complete |
-| CHAN-03 | Phase 2 | Pending |
-| CHAN-04 | Phase 2 | Pending |
+| CHAN-03 | Phase 2 | Complete |
+| CHAN-04 | Phase 2 | Complete |
 
 **Coverage:**
 - v1 requirements: 39 total

@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 02-04 (Admin Specialist Agent)
-last_updated: "2026-03-20T02:12:27.000Z"
-last_activity: 2026-03-20 — Completed 02-04 (Admin Specialist Agent)
+stopped_at: Completed 02-05 (Cross-Channel Memory & Scheduled Messages)
+last_updated: "2026-03-20T02:21:05.000Z"
+last_activity: 2026-03-20 — Completed 02-05 (Cross-Channel Memory & Scheduled Messages)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 10
-  completed_plans: 10
+  total_plans: 11
+  completed_plans: 11
   percent: 100
 ---
 
@@ -26,29 +26,29 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 ## Current Position
 
 Phase: 2 of 5 (Text-Channel Agents)
-Plan: 4 of 4 in current phase
+Plan: 5 of 5 in current phase
 Status: Phase 02 Complete
-Last activity: 2026-03-20 — Completed 02-04 (Admin Specialist Agent)
+Last activity: 2026-03-20 — Completed 02-05 (Cross-Channel Memory & Scheduled Messages)
 
 Progress: [██████████] 100%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 10
+- Total plans completed: 11
 - Average duration: ~7 min
-- Total execution time: ~67 min
+- Total execution time: ~72 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 6 | 33min | 5.5min |
-| 02 | 4 | 38min | 9.5min |
+| 02 | 5 | 43min | 8.6min |
 
 **Recent Trend:**
-- Last 5 plans: 2min, 22min, 4min, 3min, 9min
-- Trend: Phase 2 complete -- all specialist agents built with consistent patterns
+- Last 5 plans: 22min, 4min, 3min, 9min, 5min
+- Trend: Phase 2 fully complete -- all specialist agents, memory injection, and scheduled messages
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -61,6 +61,7 @@ Progress: [██████████] 100%
 | Phase 02 P02 | 4min | 2 tasks | 4 files |
 | Phase 02 P03 | 3min | 2 tasks | 4 files |
 | Phase 02 P04 | 9min | 3 tasks | 10 files |
+| Phase 02 P05 | 5min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,8 @@ Recent decisions affecting current work:
 - [Phase 02-04]: Fire-and-forget event hooks for tenancy lifecycle: route responds first, checklist generation async
 - [Phase 02-04]: Dual-write: left existing hardcoded checklist insertion alongside new checklistService for safety
 - [Phase 02-04]: Chase escalation count tracked via audit log query filtering by toolInput metadata
+- [Phase 02-05]: Opt-out stored on contact_identity table (opted_out + opted_out_at columns) rather than separate table
+- [Phase 02-05]: STOP keyword in webhooks now sets opt-out flag in addition to blocking agent processing
 
 ### Pending Todos
 
@@ -111,6 +114,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T02:12:27.000Z
-Stopped at: Completed 02-04 (Admin Specialist Agent) -- Phase 02 complete
-Resume file: .planning/phases/02-text-channel-agents/02-04-SUMMARY.md
+Last session: 2026-03-20T02:21:05.000Z
+Stopped at: Completed 02-05 (Cross-Channel Memory & Scheduled Messages) -- Phase 02 fully complete
+Resume file: .planning/phases/02-text-channel-agents/02-05-SUMMARY.md
