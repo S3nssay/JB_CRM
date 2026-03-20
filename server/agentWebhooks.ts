@@ -13,6 +13,10 @@ import { channelGateway } from './agents/channels/gateway';
 import { runAgent } from './agents/sdk/runner';
 import { supervisorAgent } from './agents/sdk/supervisorAgent';
 import { messageSender } from './agents/services/messageSender';
+import { handlePostActions } from './agents/services/scheduledMessages';
+import { db } from './db';
+import { contactIdentities } from '@shared/schema';
+import { eq, or } from 'drizzle-orm';
 import type { CommunicationChannel } from './agents/types';
 
 const router = Router();
@@ -25,6 +29,25 @@ const STOP_KEYWORDS = new Set(['stop', 'unsubscribe', 'opt out', 'optout', 'canc
 
 function isStopKeyword(body: string): boolean {
   return STOP_KEYWORDS.has(body.trim().toLowerCase());
+}
+
+/**
+ * Set opt-out flag on contact_identity when STOP keyword received.
+ */
+async function setOptOut(fromAddress: string): Promise<void> {
+  try {
+    await db
+      .update(contactIdentities)
+      .set({ optedOut: true, optedOutAt: new Date() })
+      .where(
+        or(
+          eq(contactIdentities.identifierValue, fromAddress),
+          eq(contactIdentities.identifierValue, fromAddress.replace('whatsapp:', '')),
+        ),
+      );
+  } catch (err) {
+    console.error('[AgentWebhooks] Failed to set opt-out:', err);
+  }
 }
 
 /**
@@ -85,9 +108,10 @@ router.post('/webhooks/whatsapp', (req: Request, res: Response) => {
   const body = req.body?.Body || '';
   const from = req.body?.From || '';
 
-  // STOP keyword detection (UK PECR compliance)
+  // STOP keyword detection (UK PECR compliance) + set opt-out flag
   if (isStopKeyword(body)) {
-    console.log(`[AgentWebhooks] STOP keyword received from ${from}, skipping agent processing`);
+    console.log(`[AgentWebhooks] STOP keyword received from ${from}, setting opt-out and skipping agent processing`);
+    setOptOut(from).catch(() => {});
     return;
   }
 
@@ -118,7 +142,8 @@ router.post('/webhooks/sms', (req: Request, res: Response) => {
   const from = req.body?.From || '';
 
   if (isStopKeyword(body)) {
-    console.log(`[AgentWebhooks] STOP keyword received via SMS from ${from}`);
+    console.log(`[AgentWebhooks] STOP keyword received via SMS from ${from}, setting opt-out`);
+    setOptOut(from).catch(() => {});
     return;
   }
 

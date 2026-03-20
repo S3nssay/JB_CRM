@@ -3506,6 +3506,8 @@ export const contactIdentities = pgTable("contact_identity", {
   identifierValue: text("identifier_value").notNull(), // E.164 phone or email
   isPrimary: boolean("is_primary").default(false),
   verified: boolean("verified").default(false),
+  optedOut: boolean("opted_out").default(false),
+  optedOutAt: timestamp("opted_out_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   identifierUnique: uniqueIndex("contact_identity_identifier_unique").on(table.identifierType, table.identifierValue),
