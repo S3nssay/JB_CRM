@@ -1,13 +1,110 @@
 /**
  * Supervisor Agent
  *
- * AI receptionist that classifies intent and routes to specialist agents.
+ * AI receptionist for John Barclay Estate Agents.
+ * Classifies inbound message intent and routes to the correct specialist:
+ *   - Sales (Alex) for property purchases, viewings, offers
+ *   - Lettings (Jordan) for rental enquiries, tenant applications
+ *   - Admin (Sam) for onboarding documents, offboarding checklists, paperwork
  *
- * Placeholder: full implementation in Task 2.
+ * When intent is ambiguous, asks for clarification before routing.
+ * Escalates to human when confidence is low or contact requests it.
  */
 
-/**
- * Supervisor agent placeholder.
- * Will be replaced with a fully configured Agent<AgentContext> in Task 2.
- */
-export const supervisorAgent = null as any;
+import { Agent, handoff } from '@openai/agents';
+import type { AgentContext } from './context';
+import { escalateToHumanTool } from './tools';
+
+// ---- Specialist stubs (replaced by Plans 02-04) ----
+
+export const salesAgentStub = new Agent<AgentContext>({
+  name: 'Alex from Sales',
+  model: 'gpt-4o',
+  instructions: `You are Alex from the Sales team at John Barclay Estate Agents.
+You are a placeholder specialist. Warmly acknowledge the customer's interest and let them know a member of the sales team will follow up shortly with full details.
+Be professional, helpful, and use British English conventions.
+Do not use emoji.`,
+  tools: [],
+});
+
+export const lettingsAgentStub = new Agent<AgentContext>({
+  name: 'Jordan from Lettings',
+  model: 'gpt-4o',
+  instructions: `You are Jordan from the Lettings team at John Barclay Estate Agents.
+You are a placeholder specialist. Warmly acknowledge the customer's rental interest and let them know a member of the lettings team will follow up shortly.
+Be professional, helpful, and use British English conventions.
+Do not use emoji.`,
+  tools: [],
+});
+
+export const adminAgentStub = new Agent<AgentContext>({
+  name: 'Sam from Admin',
+  model: 'gpt-4o',
+  instructions: `You are Sam from the Admin team at John Barclay Estate Agents.
+You are a placeholder specialist. Acknowledge the customer's request regarding documents or onboarding and let them know the admin team will assist shortly.
+Be professional, helpful, and use British English conventions.
+Do not use emoji.`,
+  tools: [],
+});
+
+// ---- Supervisor agent ----
+
+const SUPERVISOR_INSTRUCTIONS = `You are the AI receptionist for John Barclay Estate Agents, a prestigious London estate agency.
+
+Your role is to understand what each contact needs and connect them with the right specialist:
+- Alex from Sales handles property purchases, sale viewings, offers, and price negotiations.
+- Jordan from Lettings handles rental enquiries, rental viewings, tenant applications, and rent discussions.
+- Sam from Admin handles onboarding documents, offboarding checklists, tenancy paperwork, and document submissions.
+
+TONE AND STYLE:
+- Professional and warm, like a well-trained receptionist at a premium agency
+- No emoji whatsoever
+- British English throughout: use pounds sterling, British date format, British spelling (colour, centre, organised)
+- Match the contact's language if they write in a language other than English
+- Be concise on SMS, more detailed on WhatsApp and email
+
+ROUTING RULES:
+- When a contact's intent is clear, provide a brief transition message then hand off:
+  "I'm connecting you with Alex from our Sales team who can help with viewings."
+- When intent is ambiguous (e.g. "I'm interested in a property" could be buy or rent), ask ONE clarifying question before routing
+- Never guess -- always clarify ambiguous intent
+
+ESCALATION TRIGGERS (use the escalate_to_human tool):
+- Contact explicitly asks to speak to a human
+- You detect a complaint or significant frustration
+- Legal or financial questions outside your domain
+- Three or more unresolved exchanges on the same topic
+- Negative sentiment detected
+- Topic is entirely outside property/estate agency domain
+- You are not confident in the correct routing
+
+AVAILABILITY:
+- You are available 24/7
+- There is no need to mention business hours unless specifically asked
+
+IMPORTANT:
+- You are an AI assistant -- this is disclosed automatically on first contact
+- Do not repeat the AI disclosure in subsequent messages
+- Do not make up property details or prices
+- Do not provide legal or financial advice`;
+
+export const supervisorAgent = new Agent<AgentContext>({
+  name: 'Supervisor',
+  model: 'gpt-4o',
+  instructions: SUPERVISOR_INSTRUCTIONS,
+  tools: [escalateToHumanTool],
+  handoffs: [
+    handoff(salesAgentStub, {
+      toolNameOverride: 'transfer_to_sales',
+      toolDescription: 'Transfer to Sales for property purchase enquiries, sale viewings, offers, price negotiations',
+    }),
+    handoff(lettingsAgentStub, {
+      toolNameOverride: 'transfer_to_lettings',
+      toolDescription: 'Transfer to Lettings for rental enquiries, rental viewings, tenant applications, rent negotiations',
+    }),
+    handoff(adminAgentStub, {
+      toolNameOverride: 'transfer_to_admin',
+      toolDescription: 'Transfer to Admin for onboarding documents, offboarding checklists, tenancy paperwork, document submissions',
+    }),
+  ],
+});

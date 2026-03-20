@@ -180,6 +180,7 @@ import { slRouter } from './salesLettingsRoutes';
 import { accountingRouter } from './accountingRoutes';
 import { messageRouterAgent } from './services/messageRouterAgent';
 import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
+import agentWebhooks from './agentWebhooks';
 import path from 'path';
 import express from 'express';
 
@@ -249,6 +250,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.sendStatus(500);
     }
   });
+
+  // Register Agent Webhook routes (WhatsApp, SMS, Email inbound)
+  app.use('/api', agentWebhooks);
 
   // Register Email Integration router (Microsoft 365)
   app.use('/api/email-integration', emailIntegrationRoutes);
