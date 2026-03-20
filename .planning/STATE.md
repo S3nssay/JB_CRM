@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 2 context gathered
-last_updated: "2026-03-20T00:27:55.138Z"
-last_activity: 2026-03-19 — Completed 01-05 (Property Knowledge Base)
+status: in_progress
+stopped_at: Completed 02-01 (SDK Foundation, Supervisor, Webhooks)
+last_updated: "2026-03-20T01:47:00.000Z"
+last_activity: 2026-03-20 — Completed 02-01 (SDK Foundation, Supervisor Agent, Webhook Wiring)
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_plans: 10
+  completed_plans: 7
+  percent: 70
 ---
 
 # Project State
@@ -21,33 +21,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 1 — Foundation
+**Current focus:** Phase 2 — Text-Channel Agents
 
 ## Current Position
 
-Phase: 1 of 5 (Foundation) -- COMPLETE
-Plan: 5 of 5 in current phase
-Status: Phase Complete
-Last activity: 2026-03-19 — Completed 01-05 (Property Knowledge Base)
+Phase: 2 of 5 (Text-Channel Agents)
+Plan: 1 of 4 in current phase
+Status: Plan 01 Complete
+Last activity: 2026-03-20 — Completed 02-01 (SDK Foundation, Supervisor Agent, Webhook Wiring)
 
-Progress: [██████████] 100%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 7
+- Average duration: ~8 min
+- Total execution time: ~55 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01 | 6 | 33min | 5.5min |
+| 02 | 1 (of 4) | 22min | 22min |
 
 **Recent Trend:**
-- Last 5 plans: —
-- Trend: —
+- Last 5 plans: 5min, 5min, 2min, 22min
+- Trend: Phase 2 plans are larger (more complex agent work)
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -56,6 +57,7 @@ Progress: [██████████] 100%
 | Phase 01 P04 | 5min | 3 tasks | 6 files |
 | Phase 01 P05 | 5min | 3 tasks | 4 files |
 | Phase 01 P06 | 2min | 1 tasks | 1 files |
+| Phase 02 P01 | 22min | 2 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -80,6 +82,12 @@ Recent decisions affecting current work:
 - [Phase 01-04]: Sensitive field redaction uses regex pattern matching on key names
 - [Phase 01]: Read-only certifications/maintenance in KB page; CRUD only for systems inventory
 - [Phase 01]: Moved /crm catch-all to after ALL CRM routes (not just knowledge-base) to fix all unreachable routes
+- [Phase 02-01]: Used zod4 npm alias for SDK tool parameters (agents SDK requires zod v4, project uses zod v3)
+- [Phase 02-01]: Added postinstall script for zod resolution fix in dependency chain
+- [Phase 02-01]: Webhooks return 200 immediately, process asynchronously (Twilio timeout protection)
+- [Phase 02-01]: Per-conversation Map-based locking prevents race conditions
+- [Phase 02-01]: STOP keyword detection at webhook level (UK PECR compliance)
+- [Phase 02-01]: Round-robin escalation uses module-level Map counters per department
 
 ### Pending Todos
 
@@ -92,6 +100,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T00:27:55.105Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-text-channel-agents/02-CONTEXT.md
+Last session: 2026-03-20T01:47:00.000Z
+Stopped at: Completed 02-01 (SDK Foundation, Supervisor Agent, Webhook Wiring)
+Resume file: .planning/phases/02-text-channel-agents/02-01-SUMMARY.md

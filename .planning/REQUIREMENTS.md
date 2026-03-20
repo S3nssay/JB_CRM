@@ -15,13 +15,13 @@
 
 ### AI Agent Infrastructure
 
-- [ ] **AGENT-01**: Supervisor agent detects caller intent and routes to correct specialist (sales/lettings/PM/admin/general)
+- [x] **AGENT-01**: Supervisor agent detects caller intent and routes to correct specialist (sales/lettings/PM/admin/general)
 - [x] **AGENT-02**: All agents have access to live CRM data via a Tool Registry (read properties, leads, tenancies, contractors)
-- [ ] **AGENT-03**: All agents can take actions in the CRM (create leads, book viewings, create work orders)
+- [x] **AGENT-03**: All agents can take actions in the CRM (create leads, book viewings, create work orders)
 - [x] **AGENT-04**: Conversation state persists in database across interactions and channels
 - [x] **AGENT-05**: All AI agent actions logged to database audit trail (timestamp, channel, action, reasoning)
 - [x] **AGENT-06**: AI agents identify themselves as AI to callers (UK compliance)
-- [ ] **AGENT-07**: Clear escalation path to transfer to human staff when AI cannot handle a query
+- [x] **AGENT-07**: Clear escalation path to transfer to human staff when AI cannot handle a query
 
 ### Voice AI
 
@@ -105,13 +105,13 @@
 | KB-03 | Phase 1 | Complete |
 | KB-04 | Phase 1 | Complete |
 | KB-05 | Phase 1 | Complete |
-| AGENT-01 | Phase 2 | Pending |
+| AGENT-01 | Phase 2 | Complete |
 | AGENT-02 | Phase 1 | Complete |
-| AGENT-03 | Phase 2 | Pending |
+| AGENT-03 | Phase 2 | Complete |
 | AGENT-04 | Phase 1 | Complete |
 | AGENT-05 | Phase 1 | Complete |
 | AGENT-06 | Phase 1 | Complete |
-| AGENT-07 | Phase 2 | Pending |
+| AGENT-07 | Phase 2 | Complete |
 | VOICE-01 | Phase 3 | Pending |
 | VOICE-02 | Phase 3 | Pending |
 | VOICE-03 | Phase 3 | Pending |
