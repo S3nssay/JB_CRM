@@ -121,12 +121,14 @@ vi.mock('../../server/agents/services/escalationService', () => ({
   },
 }));
 
-vi.mock('pg-boss', () => ({
-  default: vi.fn().mockImplementation(() => ({
-    send: vi.fn(),
-    work: vi.fn(),
-  })),
-}));
+vi.mock('pg-boss', () => {
+  const MockPgBoss = vi.fn().mockImplementation(function (this: any) {
+    this.send = vi.fn();
+    this.work = vi.fn();
+    this.start = vi.fn();
+  });
+  return { default: MockPgBoss };
+});
 
 describe('Supervisor Agent', () => {
   beforeEach(() => {
@@ -141,10 +143,20 @@ describe('Supervisor Agent', () => {
     expect(supervisorAgent.model).toBe('gpt-4o');
   });
 
-  it('should have handoffs to Sales, Lettings, and Admin stubs', async () => {
+  it('should have handoffs to Sales, Lettings, and Admin', async () => {
     const { supervisorAgent } = await import('../../server/agents/sdk/supervisorAgent');
     expect(supervisorAgent.handoffs).toBeDefined();
     expect(supervisorAgent.handoffs.length).toBe(3);
+  });
+
+  it('should hand off to real Sales agent named "Alex from Sales"', async () => {
+    const { supervisorAgent } = await import('../../server/agents/sdk/supervisorAgent');
+    const salesHandoff = supervisorAgent.handoffs.find(
+      (h: any) => h.agent && h.agent.name === 'Alex from Sales',
+    );
+    expect(salesHandoff).toBeDefined();
+    expect(salesHandoff.toolNameOverride).toBe('transfer_to_sales');
+    expect(salesHandoff.toolDescription).toContain('purchase');
   });
 
   it('should include escalateToHumanTool in tools', async () => {

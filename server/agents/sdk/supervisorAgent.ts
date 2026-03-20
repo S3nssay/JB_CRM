@@ -14,18 +14,9 @@
 import { Agent, handoff } from '@openai/agents';
 import type { AgentContext } from './context';
 import { escalateToHumanTool } from './tools';
+import { salesAgent } from './salesAgent';
 
 // ---- Specialist stubs (replaced by Plans 02-04) ----
-
-export const salesAgentStub = new Agent<AgentContext>({
-  name: 'Alex from Sales',
-  model: 'gpt-4o',
-  instructions: `You are Alex from the Sales team at John Barclay Estate Agents.
-You are a placeholder specialist. Warmly acknowledge the customer's interest and let them know a member of the sales team will follow up shortly with full details.
-Be professional, helpful, and use British English conventions.
-Do not use emoji.`,
-  tools: [],
-});
 
 export const lettingsAgentStub = new Agent<AgentContext>({
   name: 'Jordan from Lettings',
@@ -94,7 +85,7 @@ export const supervisorAgent = new Agent<AgentContext>({
   instructions: SUPERVISOR_INSTRUCTIONS,
   tools: [escalateToHumanTool],
   handoffs: [
-    handoff(salesAgentStub, {
+    handoff(salesAgent, {
       toolNameOverride: 'transfer_to_sales',
       toolDescription: 'Transfer to Sales for property purchase enquiries, sale viewings, offers, price negotiations',
     }),
