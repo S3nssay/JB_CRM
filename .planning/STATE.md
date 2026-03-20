@@ -105,6 +105,10 @@ Recent decisions affecting current work:
 - [Phase 02-04]: Chase escalation count tracked via audit log query filtering by toolInput metadata
 - [Phase 02-05]: Opt-out stored on contact_identity table (opted_out + opted_out_at columns) rather than separate table
 - [Phase 02-05]: STOP keyword in webhooks now sets opt-out flag in addition to blocking agent processing
+- [Phase 03-01]: gpt-4o-mini for receptionist (fast routing), gpt-4o for specialists (reasoning for property matching)
+- [Phase 03-01]: ElevenLabs rachel voice for all assistants (consistent British female voice across squad)
+- [Phase 03-01]: Receptionist has no CRM tools -- only routes via squad handoff destinations
+- [Phase 03-01]: All CRM tools have filler speech messages (request-start) for natural call experience
 - [Phase 03-02]: Always return HTTP 200 from Vapi webhooks -- errors encoded as strings in result field (Vapi protocol requirement)
 - [Phase 03-02]: Call context stored in module-level Map keyed by Vapi call ID rather than overriding assistant config
 - [Phase 03-02]: Created voice/types.ts as blocking dependency from Plan 03-01 (not yet executed)
@@ -120,6 +124,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T18:10:07Z
-Stopped at: Completed 03-02 (Voice Tool-Call Webhooks)
-Resume file: .planning/phases/03-voice-integration/03-02-SUMMARY.md
+Last session: 2026-03-20T18:12:45Z
+Stopped at: Completed 03-01 (Vapi Provider Adapter)
+Resume file: .planning/phases/03-voice-integration/03-01-SUMMARY.md
