@@ -149,6 +149,16 @@ describe('Supervisor Agent', () => {
     expect(supervisorAgent.handoffs.length).toBe(3);
   });
 
+  it('should hand off to real Lettings agent named "Jordan from Lettings"', async () => {
+    const { supervisorAgent } = await import('../../server/agents/sdk/supervisorAgent');
+    const lettingsHandoff = supervisorAgent.handoffs.find(
+      (h: any) => h.agent && h.agent.name === 'Jordan from Lettings',
+    );
+    expect(lettingsHandoff).toBeDefined();
+    expect(lettingsHandoff.toolNameOverride).toBe('transfer_to_lettings');
+    expect(lettingsHandoff.toolDescription).toContain('rental');
+  });
+
   it('should hand off to real Sales agent named "Alex from Sales"', async () => {
     const { supervisorAgent } = await import('../../server/agents/sdk/supervisorAgent');
     const salesHandoff = supervisorAgent.handoffs.find(
