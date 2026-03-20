@@ -1,10 +1,12 @@
 /**
  * Vapi Voice Integration Types
- * Types for Vapi webhook payloads, assistant config, and squad config.
- * Created as dependency for webhook handling (03-02).
+ *
+ * Type definitions for Vapi webhook payloads, assistant configurations,
+ * and squad configurations used by the voice integration layer.
  */
 
-// Vapi webhook message types
+// ---- Webhook message types ----
+
 export type VapiMessageType =
   | 'tool-calls'
   | 'end-of-call-report'
@@ -14,7 +16,8 @@ export type VapiMessageType =
   | 'transfer-destination-request'
   | 'transcript';
 
-// Individual tool call from Vapi
+// ---- Tool call types ----
+
 export interface VapiToolCall {
   id: string;
   type: 'function';
@@ -24,7 +27,6 @@ export interface VapiToolCall {
   };
 }
 
-// Vapi tool-calls webhook message
 export interface VapiToolCallMessage {
   type: 'tool-calls';
   toolCallList: VapiToolCall[];
@@ -36,7 +38,6 @@ export interface VapiToolCallMessage {
   };
 }
 
-// Result format Vapi expects for tool calls
 export interface VapiToolCallResult {
   results: Array<{
     toolCallId: string;
@@ -44,15 +45,10 @@ export interface VapiToolCallResult {
   }>;
 }
 
-// End-of-call report from Vapi
+// ---- End-of-call report ----
+
 export interface VapiEndOfCallReport {
   type: 'end-of-call-report';
-  call?: {
-    id: string;
-    customer?: {
-      number?: string;
-    };
-  };
   artifact?: {
     messages?: Array<{
       role: string;
@@ -61,15 +57,25 @@ export interface VapiEndOfCallReport {
     }>;
     transcript?: string;
   };
+  analysis?: {
+    summary?: string;
+    successEvaluation?: string;
+  };
+  call?: {
+    id: string;
+    startedAt?: string;
+    endedAt?: string;
+    customer?: {
+      number?: string;
+    };
+  };
   endedReason?: string;
-  summary?: string;
   recordingUrl?: string;
-  startedAt?: string;
-  endedAt?: string;
   cost?: number;
 }
 
-// Assistant request message from Vapi
+// ---- Assistant request ----
+
 export interface VapiAssistantRequest {
   type: 'assistant-request';
   call?: {
@@ -80,7 +86,8 @@ export interface VapiAssistantRequest {
   };
 }
 
-// Hang event from Vapi
+// ---- Hang event ----
+
 export interface VapiHangMessage {
   type: 'hang';
   call?: {
@@ -88,60 +95,102 @@ export interface VapiHangMessage {
   };
 }
 
-// Generic server message wrapper
+// ---- Generic server message wrapper ----
+
 export interface VapiServerMessage {
-  message: VapiToolCallMessage | VapiEndOfCallReport | VapiAssistantRequest | VapiHangMessage | {
-    type: VapiMessageType;
-    call?: { id: string; customer?: { number?: string } };
-    [key: string]: unknown;
-  };
+  message:
+    | VapiToolCallMessage
+    | VapiEndOfCallReport
+    | VapiAssistantRequest
+    | VapiHangMessage
+    | {
+        type: VapiMessageType;
+        call?: { id: string; customer?: { number?: string } };
+        [key: string]: unknown;
+      };
 }
 
-// Assistant configuration for Vapi
+// ---- Tool definitions ----
+
+export interface VapiCustomToolMessage {
+  type: 'request-start' | 'request-complete';
+  content: string;
+}
+
+export interface VapiCustomTool {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, any>;
+  };
+  async?: boolean;
+  server?: {
+    url: string;
+  };
+  messages?: VapiCustomToolMessage[];
+}
+
+export interface VapiTransferDestination {
+  type: 'number';
+  number: string;
+  message: string;
+}
+
+export interface VapiTransferCallTool {
+  type: 'transferCall';
+  destinations: VapiTransferDestination[];
+}
+
+export type VapiTool = VapiCustomTool | VapiTransferCallTool;
+
+// ---- Voice configuration ----
+
+export interface VapiModel {
+  provider: string;
+  model: string;
+}
+
+export interface VapiVoice {
+  provider: string;
+  voiceId: string;
+}
+
+// ---- Assistant configuration ----
+
 export interface VapiAssistantConfig {
   name: string;
-  model: {
-    provider: string;
-    model: string;
-    messages: Array<{ role: string; content: string }>;
-    tools?: Array<{
-      type: string;
-      function: {
-        name: string;
-        description: string;
-        parameters: Record<string, unknown>;
-      };
-      server?: { url: string };
-    }>;
-  };
-  voice: {
-    provider: string;
-    voiceId: string;
-  };
-  firstMessage: string;
-  serverUrl?: string;
-  serverUrlSecret?: string;
-  transferPlan?: {
-    mode: string;
-    destinations: Array<{
-      type: string;
-      assistantName: string;
-      message: string;
-      description: string;
-    }>;
+  model: VapiModel;
+  voice: VapiVoice;
+  firstMessage: string | null;
+  instructions: string;
+  serverUrl: string;
+  tools: VapiTool[];
+  backchannelingEnabled?: boolean;
+  fillerInjectionEnabled?: boolean;
+  endCallPhrases?: string[];
+  silenceTimeoutSeconds?: number;
+  maxDurationSeconds?: number;
+  voicemailDetection?: {
+    enabled: boolean;
   };
 }
 
-// Squad configuration for Vapi
+// ---- Squad configuration ----
+
+export interface VapiAssistantDestination {
+  type: 'assistant';
+  assistantName: string;
+  message: string;
+  description: string;
+}
+
+export interface VapiSquadMember {
+  assistant: VapiAssistantConfig | { assistantId: string };
+  assistantDestinations?: VapiAssistantDestination[];
+}
+
 export interface VapiSquadConfig {
   name: string;
-  members: Array<{
-    assistant: VapiAssistantConfig;
-    assistantDestinations?: Array<{
-      type: string;
-      assistantName: string;
-      message: string;
-      description: string;
-    }>;
-  }>;
+  members: VapiSquadMember[];
 }
