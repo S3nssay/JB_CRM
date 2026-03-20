@@ -49,14 +49,14 @@ Plans:
   3. A second message from the same contact continues in the same conversation thread with context from the previous interaction injected into the agent
   4. When a query exceeds agent capability or confidence, the conversation is flagged for human review with a clear escalation note, and the caller is told a human will follow up
   5. A new tenancy trigger causes the Admin agent to generate an onboarding document checklist; an ending tenancy trigger causes an offboarding checklist — both trackable in the CRM
-**Plans**: TBD
+**Plans**: 5 plans
 
 Plans:
-- [ ] 02-01: Supervisor agent with intent classification and confidence-gated routing (OpenAI Agents SDK, handoff pattern, logging-only mode first)
-- [ ] 02-02: Sales specialist agent (property search, viewing booking, lead capture, follow-up via WhatsApp/SMS/email)
-- [ ] 02-03: Lettings specialist agent (mirrors Sales for rentals — rental enquiries, viewing booking, tenant lead capture, follow-up)
-- [ ] 02-04: Admin specialist agent (onboarding/offboarding checklists, document completion tracking and chasing)
-- [ ] 02-05: Cross-channel memory injection and WhatsApp/SMS post-action confirmations
+- [ ] 02-01-PLAN.md — SDK infrastructure, Supervisor agent with intent classification and handoff routing, webhook wiring, escalation service, message sender
+- [ ] 02-02-PLAN.md — Sales specialist agent (property search, viewing booking, lead capture, negotiation, follow-up scheduling)
+- [ ] 02-03-PLAN.md — Lettings specialist agent (rental enquiries, viewing booking, tenant lead capture, follow-up scheduling)
+- [ ] 02-04-PLAN.md — Admin specialist agent (onboarding/offboarding checklists, document completion tracking, chase scheduling)
+- [ ] 02-05-PLAN.md — Cross-channel memory injection, post-action confirmations, pg-boss scheduled messages (viewing reminders, follow-ups)
 
 ### Phase 3: Voice Integration
 **Goal**: Inbound calls to the estate agency are answered 24/7 by a voice AI receptionist that identifies itself as AI, routes callers to the correct specialist by intent, performs CRM tool calls during the call, and transfers to a human when escalation is needed.
