@@ -129,6 +129,48 @@ export const bookViewingTool = wrapRegistryTool(
   }),
 );
 
+// ---- Checklist tools ----
+
+// Lazy import to avoid circular dependency at module load
+let _checklistService: any = null;
+async function getChecklistService() {
+  if (!_checklistService) {
+    const mod = await import('../services/checklistService');
+    _checklistService = mod.checklistService;
+  }
+  return _checklistService;
+}
+
+export const generateChecklistTool = tool({
+  name: 'generate_checklist',
+  description: 'Generate a tenancy checklist (onboarding or offboarding). Creates checklist items from the standard template for the given tenancy.',
+  parameters: z4.object({
+    tenancyId: z4.number().describe('The tenancy ID to generate a checklist for'),
+    workflow: z4.enum(['onboarding', 'offboarding']).describe('Whether to generate onboarding or offboarding checklist'),
+  }),
+  execute: async (_context: AgentContext, input: { tenancyId: number; workflow: 'onboarding' | 'offboarding' }) => {
+    const svc = await getChecklistService();
+    const result = await svc.generateChecklist(input.tenancyId, input.workflow);
+    return JSON.stringify(result);
+  },
+});
+
+export const chaseChecklistItemTool = tool({
+  name: 'chase_checklist_item',
+  description: 'Chase a contact for an outstanding checklist item. Sends a reminder via the specified channel. Automatically escalates to staff after 3 unsuccessful chases.',
+  parameters: z4.object({
+    itemId: z4.number().describe('The checklist item ID to chase'),
+    channel: z4.enum(['whatsapp', 'sms', 'email']).describe('Communication channel to use'),
+    contactValue: z4.string().describe('Phone number or email address of the contact'),
+    tenancyId: z4.number().describe('The tenancy ID this item belongs to'),
+  }),
+  execute: async (_context: AgentContext, input: { itemId: number; channel: 'whatsapp' | 'sms' | 'email'; contactValue: string; tenancyId: number }) => {
+    const svc = await getChecklistService();
+    const result = await svc.chaseItem(input.itemId, input.channel, input.contactValue, input.tenancyId);
+    return JSON.stringify(result);
+  },
+});
+
 // ---- Escalation tool ----
 
 export const escalateToHumanTool = tool({
