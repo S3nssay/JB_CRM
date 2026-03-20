@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 02-02 (Sales Specialist Agent)
-last_updated: "2026-03-20T01:54:10.000Z"
-last_activity: 2026-03-20 — Completed 02-02 (Sales Specialist Agent)
+stopped_at: Completed 02-03 (Lettings Specialist Agent)
+last_updated: "2026-03-20T02:00:15.000Z"
+last_activity: 2026-03-20 — Completed 02-03 (Lettings Specialist Agent)
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 10
-  completed_plans: 8
-  percent: 80
+  completed_plans: 9
+  percent: 90
 ---
 
 # Project State
@@ -26,29 +26,29 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 ## Current Position
 
 Phase: 2 of 5 (Text-Channel Agents)
-Plan: 2 of 4 in current phase
-Status: Plan 02 Complete
-Last activity: 2026-03-20 — Completed 02-02 (Sales Specialist Agent)
+Plan: 3 of 4 in current phase
+Status: Plan 03 Complete
+Last activity: 2026-03-20 — Completed 02-03 (Lettings Specialist Agent)
 
-Progress: [████████░░] 80%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: ~8 min
-- Total execution time: ~55 min
+- Total plans completed: 9
+- Average duration: ~6 min
+- Total execution time: ~58 min
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 6 | 33min | 5.5min |
-| 02 | 2 (of 4) | 26min | 13min |
+| 02 | 3 (of 4) | 29min | 9.7min |
 
 **Recent Trend:**
-- Last 5 plans: 5min, 5min, 2min, 22min, 4min
-- Trend: Phase 2 specialist agents faster than foundation (established patterns)
+- Last 5 plans: 5min, 2min, 22min, 4min, 3min
+- Trend: Phase 2 specialist agents getting faster (established patterns, tool reuse)
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -59,6 +59,7 @@ Progress: [████████░░] 80%
 | Phase 01 P06 | 2min | 1 tasks | 1 files |
 | Phase 02 P01 | 22min | 2 tasks | 16 files |
 | Phase 02 P02 | 4min | 2 tasks | 4 files |
+| Phase 02 P03 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 02-02]: Full negotiation autonomy for Sales agent -- no floor/ceiling restrictions
 - [Phase 02-02]: Lazy pg-boss init in scheduleFollowUpTool to avoid DB connection at module load
 - [Phase 02-02]: Specialist agent pattern: persona instructions + domain tools + follow-up scheduling tool
+- [Phase 02-03]: Reused scheduleFollowUpTool from Sales (import, not duplication) for Lettings agent
+- [Phase 02-03]: Full negotiation autonomy for Lettings agent, same as Sales
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T01:54:10.000Z
-Stopped at: Completed 02-02 (Sales Specialist Agent)
-Resume file: .planning/phases/02-text-channel-agents/02-02-SUMMARY.md
+Last session: 2026-03-20T02:00:15.000Z
+Stopped at: Completed 02-03 (Lettings Specialist Agent)
+Resume file: .planning/phases/02-text-channel-agents/02-03-SUMMARY.md

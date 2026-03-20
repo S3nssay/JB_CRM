@@ -114,7 +114,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation | 6/6 | Complete   | 2026-03-19 |
-| 2. Text-Channel Agents | 2/5 | In Progress|  |
+| 2. Text-Channel Agents | 3/5 | In Progress|  |
 | 3. Voice Integration | 0/3 | Not started | - |
 | 4. Property Management Specialist | 0/3 | Not started | - |
 | 5. Arrears Chasing & Monitoring | 0/3 | Not started | - |

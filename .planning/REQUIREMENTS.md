@@ -39,10 +39,10 @@
 
 ### Lettings Specialist
 
-- [ ] **LETT-01**: Answers rental property enquiries using live CRM data (rent, availability, features, location)
-- [ ] **LETT-02**: Books viewings by checking availability and creating viewing appointments
-- [ ] **LETT-03**: Captures tenant leads (name, phone, email, requirements, budget) when viewings unavailable
-- [ ] **LETT-04**: Follows up with prospective tenants across channels (WhatsApp/SMS/email)
+- [x] **LETT-01**: Answers rental property enquiries using live CRM data (rent, availability, features, location)
+- [x] **LETT-02**: Books viewings by checking availability and creating viewing appointments
+- [x] **LETT-03**: Captures tenant leads (name, phone, email, requirements, budget) when viewings unavailable
+- [x] **LETT-04**: Follows up with prospective tenants across channels (WhatsApp/SMS/email)
 
 ### Property Management Specialist
 
@@ -120,10 +120,10 @@
 | SALES-02 | Phase 2 | Complete |
 | SALES-03 | Phase 2 | Complete |
 | SALES-04 | Phase 2 | Complete |
-| LETT-01 | Phase 2 | Pending |
-| LETT-02 | Phase 2 | Pending |
-| LETT-03 | Phase 2 | Pending |
-| LETT-04 | Phase 2 | Pending |
+| LETT-01 | Phase 2 | Complete |
+| LETT-02 | Phase 2 | Complete |
+| LETT-03 | Phase 2 | Complete |
+| LETT-04 | Phase 2 | Complete |
 | PM-01 | Phase 4 | Pending |
 | PM-02 | Phase 4 | Pending |
 | PM-03 | Phase 4 | Pending |
