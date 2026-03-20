@@ -115,6 +115,15 @@ export const createMaintenanceTicketTool = wrapRegistryTool(
   }),
 );
 
+export const lookupTenantPropertyTool = wrapRegistryTool(
+  'lookup_tenant_property',
+  'Look up a tenant by phone number or email address. Returns tenant details with their property and landlord information.',
+  z4.object({
+    contactPhone: z4.string().optional(),
+    contactEmail: z4.string().optional(),
+  }),
+);
+
 export const bookViewingTool = wrapRegistryTool(
   'book_viewing',
   'Book a property viewing appointment for a prospective buyer or tenant.',

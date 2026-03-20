@@ -163,9 +163,11 @@ import { queryKnowledgeBaseTool } from './definitions/queryKnowledgeBase';
 import { createLeadTool } from './definitions/createLead';
 import { createMaintenanceTicketTool } from './definitions/createMaintenanceTicket';
 import { bookViewingTool } from './definitions/bookViewing';
+import { lookupTenantPropertyTool } from './definitions/lookupTenantProperty';
 
 toolRegistry.register(searchPropertiesTool);
 toolRegistry.register(queryKnowledgeBaseTool);
 toolRegistry.register(createLeadTool);
 toolRegistry.register(createMaintenanceTicketTool);
 toolRegistry.register(bookViewingTool);
+toolRegistry.register(lookupTenantPropertyTool);
