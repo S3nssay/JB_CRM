@@ -27,8 +27,8 @@
 
 - [ ] **VOICE-01**: Voice AI answers all inbound calls 24/7 with natural British English speech
 - [ ] **VOICE-02**: Voice AI routes callers to correct specialist based on intent detection
-- [ ] **VOICE-03**: Voice AI supports tool-calling to perform CRM actions during calls
-- [ ] **VOICE-04**: Voice AI can transfer calls to human staff when escalation triggered
+- [x] **VOICE-03**: Voice AI supports tool-calling to perform CRM actions during calls
+- [x] **VOICE-04**: Voice AI can transfer calls to human staff when escalation triggered
 
 ### Sales Specialist
 
@@ -114,8 +114,8 @@
 | AGENT-07 | Phase 2 | Complete |
 | VOICE-01 | Phase 3 | Pending |
 | VOICE-02 | Phase 3 | Pending |
-| VOICE-03 | Phase 3 | Pending |
-| VOICE-04 | Phase 3 | Pending |
+| VOICE-03 | Phase 3 | Complete |
+| VOICE-04 | Phase 3 | Complete |
 | SALES-01 | Phase 2 | Complete |
 | SALES-02 | Phase 2 | Complete |
 | SALES-03 | Phase 2 | Complete |

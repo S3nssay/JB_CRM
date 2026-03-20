@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-stopped_at: Completed 02-05 (Cross-Channel Memory & Scheduled Messages)
-last_updated: "2026-03-20T02:21:05.000Z"
-last_activity: 2026-03-20 — Completed 02-05 (Cross-Channel Memory & Scheduled Messages)
+stopped_at: Completed 03-01 (Vapi Provider Adapter)
+last_updated: "2026-03-20T18:12:45.000Z"
+last_activity: 2026-03-20 — Completed 03-01 (Vapi Provider Adapter)
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 11
-  completed_plans: 11
-  percent: 100
+  total_plans: 14
+  completed_plans: 13
+  percent: 93
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 2 — Text-Channel Agents
+**Current focus:** Phase 3 — Voice Integration
 
 ## Current Position
 
-Phase: 2 of 5 (Text-Channel Agents)
-Plan: 5 of 5 in current phase
-Status: Phase 02 Complete
-Last activity: 2026-03-20 — Completed 02-05 (Cross-Channel Memory & Scheduled Messages)
+Phase: 3 of 5 (Voice Integration)
+Plan: 1 of 3 in current phase (03-01 and 03-02 complete)
+Status: In Progress
+Last activity: 2026-03-20 — Completed 03-01 (Vapi Provider Adapter)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 93%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
+- Total plans completed: 13
 - Average duration: ~7 min
-- Total execution time: ~72 min
+- Total execution time: ~81 min
 
 **By Phase:**
 
@@ -45,10 +45,11 @@ Progress: [██████████] 100%
 |-------|-------|-------|----------|
 | 01 | 6 | 33min | 5.5min |
 | 02 | 5 | 43min | 8.6min |
+| 03 | 2 | 21min | 10.5min |
 
 **Recent Trend:**
 - Last 5 plans: 22min, 4min, 3min, 9min, 5min
-- Trend: Phase 2 fully complete -- all specialist agents, memory injection, and scheduled messages
+- Trend: Phase 3 voice integration in progress -- webhook bridge and context loading done
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -62,6 +63,8 @@ Progress: [██████████] 100%
 | Phase 02 P03 | 3min | 2 tasks | 4 files |
 | Phase 02 P04 | 9min | 3 tasks | 10 files |
 | Phase 02 P05 | 5min | 2 tasks | 6 files |
+| Phase 03 P01 | 12min | 2 tasks | 4 files |
+| Phase 03 P02 | 9min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -102,6 +105,9 @@ Recent decisions affecting current work:
 - [Phase 02-04]: Chase escalation count tracked via audit log query filtering by toolInput metadata
 - [Phase 02-05]: Opt-out stored on contact_identity table (opted_out + opted_out_at columns) rather than separate table
 - [Phase 02-05]: STOP keyword in webhooks now sets opt-out flag in addition to blocking agent processing
+- [Phase 03-02]: Always return HTTP 200 from Vapi webhooks -- errors encoded as strings in result field (Vapi protocol requirement)
+- [Phase 03-02]: Call context stored in module-level Map keyed by Vapi call ID rather than overriding assistant config
+- [Phase 03-02]: Created voice/types.ts as blocking dependency from Plan 03-01 (not yet executed)
 
 ### Pending Todos
 
@@ -114,6 +120,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-20T02:21:05.000Z
-Stopped at: Completed 02-05 (Cross-Channel Memory & Scheduled Messages) -- Phase 02 fully complete
-Resume file: .planning/phases/02-text-channel-agents/02-05-SUMMARY.md
+Last session: 2026-03-20T18:10:07Z
+Stopped at: Completed 03-02 (Voice Tool-Call Webhooks)
+Resume file: .planning/phases/03-voice-integration/03-02-SUMMARY.md
