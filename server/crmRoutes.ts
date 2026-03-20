@@ -114,6 +114,7 @@ import path from 'path';
 import fs from 'fs';
 import { randomUUID, randomBytes } from 'crypto';
 import crypto from 'crypto';
+import { onTenancyCreated, onTenancyStatusChanged } from './agents/services/tenancyEventHooks';
 
 import { propertyImport } from './propertyImportService';
 import { websiteImport } from './websiteImportService';
@@ -13298,6 +13299,9 @@ crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
     }
 
     res.status(201).json(tenancy);
+
+    // Fire-and-forget: trigger automatic checklist generation
+    onTenancyCreated(tenancy.id, tenancy.status).catch(err => console.error('Checklist trigger error:', err));
   } catch (error) {
     console.error('Error creating tenancy:', error);
     res.status(400).json({ error: 'Failed to create tenancy' });
@@ -13307,6 +13311,9 @@ crmRouter.post('/pm/tenancies', requireAgent, async (req, res) => {
 // Update tenancy
 crmRouter.patch('/pm/tenancies/:id', requireAgent, async (req, res) => {
   try {
+    // Fetch old status before update (for event hook)
+    const [existing] = await db.select({ status: tenancies.status }).from(tenancies).where(eq(tenancies.id, parseInt(req.params.id)));
+
     const [tenancy] = await db.update(tenancies)
       .set({ ...req.body, updatedAt: new Date() })
       .where(eq(tenancies.id, parseInt(req.params.id)))
@@ -13341,6 +13348,11 @@ crmRouter.patch('/pm/tenancies/:id', requireAgent, async (req, res) => {
     }
 
     res.json(tenancy);
+
+    // Fire-and-forget: trigger checklist generation on status change
+    if (req.body.status && req.body.status !== existing?.status) {
+      onTenancyStatusChanged(tenancy.id, existing?.status ?? null, tenancy.status).catch(err => console.error('Checklist trigger error:', err));
+    }
   } catch (error) {
     console.error('Error updating tenancy:', error);
     res.status(400).json({ error: 'Failed to update tenancy' });

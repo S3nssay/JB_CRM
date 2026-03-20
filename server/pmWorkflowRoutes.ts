@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "./db";
+import { onTenancyStatusChanged } from './agents/services/tenancyEventHooks';
 
 export const pmWorkflowRouter = Router();
 
@@ -264,6 +265,9 @@ pmWorkflowRouter.post("/end-of-tenancy/:tenancyId/start", requireAgent, async (r
       tenancy: tenancyResult.rows[0],
       checklist: checklist.rows
     });
+
+    // Fire-and-forget: trigger automatic offboarding checklist generation
+    onTenancyStatusChanged(parseInt(tenancyId), 'active', 'ending').catch(err => console.error('Checklist trigger error:', err));
   } catch (error: any) {
     if (client) await client.query("ROLLBACK").catch(() => {});
     console.error("Error starting end of tenancy:", error);
