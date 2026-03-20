@@ -18,6 +18,7 @@ import { parseWithOpenAI } from './aiPropertySearch';
 import { SearchFilters, ParsedIntent } from '@shared/schema';
 import { aiPhone } from './aiPhoneService';
 import tenantRouter from './tenantRoutes';
+import { vapiWebhookRouter } from './agents/voice/vapiWebhooks';
 
 // Basic pattern matching for property queries (fallback)
 function parseBasicQuery(query: string): ParsedIntent {
@@ -201,8 +202,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', messageRouterAgent.router);
 
   // ==========================================
-  // TWILIO VOICE WEBHOOKS (at /api/voice/*)
-  // These are called by Twilio for inbound calls
+  // VAPI VOICE WEBHOOKS (at /api/voice/*)
+  // Vapi server URL endpoint for tool calls, context loading, and call events
+  // ==========================================
+  app.use('/api/voice', vapiWebhookRouter);
+
+  // ==========================================
+  // DEPRECATED: Legacy Twilio TwiML routes -- replaced by Vapi (calls now routed via SIP). Kept for fallback.
   // ==========================================
 
   // Twilio webhook for inbound calls
