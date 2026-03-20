@@ -232,3 +232,142 @@ describe('processEndOfCallReport', () => {
     expect(result.callerIdentified).toBe(true);
   });
 });
+
+describe('sendPostCallSummary', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (messageSender.sendPreferred as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    (conversationStore.storeMessage as ReturnType<typeof vi.fn>).mockResolvedValue(1);
+  });
+
+  it('sends SMS/WhatsApp via messageSender.sendPreferred', async () => {
+    const { sendPostCallSummary } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport();
+
+    await sendPostCallSummary('+447700900123', report, 100);
+
+    expect(messageSender.sendPreferred).toHaveBeenCalledWith(
+      '+447700900123',
+      expect.stringContaining('Thanks for calling John Barclay'),
+    );
+  });
+
+  it('stores outbound summary message in ConversationStore', async () => {
+    const { sendPostCallSummary } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport();
+
+    await sendPostCallSummary('+447700900123', report, 100);
+
+    expect(conversationStore.storeMessage).toHaveBeenCalledWith(
+      100,
+      expect.objectContaining({
+        from: 'agent',
+        channel: 'phone',
+      }),
+      'outbound',
+      'supervisor',
+    );
+  });
+
+  it('does not propagate errors if messageSender throws', async () => {
+    const { sendPostCallSummary } = await import('../../server/agents/voice/callLifecycle');
+    (messageSender.sendPreferred as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Twilio down'));
+
+    // Should not throw
+    await expect(sendPostCallSummary('+447700900123', buildReport(), 100)).resolves.toBeUndefined();
+  });
+});
+
+describe('processCallTransfer', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (escalationService.escalate as ReturnType<typeof vi.fn>).mockResolvedValue({
+      escalationId: 1,
+      assignedTo: 5,
+      notified: true,
+    });
+  });
+
+  it('calls escalationService.escalate when transfer is detected via endedReason', async () => {
+    const { processCallTransfer } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport({ endedReason: 'assistant-forwarded-call' });
+
+    await processCallTransfer('call-123', 100, '+447700900123', report);
+
+    expect(escalationService.escalate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 100,
+        reason: 'Voice call transferred to human',
+        urgency: 'normal',
+        channel: 'phone',
+        contactIdentifier: '+447700900123',
+      }),
+    );
+  });
+
+  it('calls escalationService.escalate when transfer is detected in transcript', async () => {
+    const { processCallTransfer } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport({
+      artifact: {
+        messages: [
+          { role: 'assistant', content: 'I am transferring you to our sales team now.' },
+        ],
+      },
+    });
+
+    await processCallTransfer('call-123', 100, '+447700900123', report);
+
+    expect(escalationService.escalate).toHaveBeenCalled();
+  });
+
+  it('does nothing when no transfer is detected', async () => {
+    const { processCallTransfer } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport(); // standard report, no transfer
+
+    await processCallTransfer('call-123', 100, '+447700900123', report);
+
+    expect(escalationService.escalate).not.toHaveBeenCalled();
+  });
+});
+
+describe('triggerPostCallFollowUps', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('schedules pg-boss job when viewing was booked', async () => {
+    const { triggerPostCallFollowUps } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport(); // has "booked a viewing" in transcript
+
+    await triggerPostCallFollowUps(report, 100, '+447700900123');
+
+    // pg-boss should have been instantiated and send called
+    const PgBoss = (await import('pg-boss')).default;
+    expect(PgBoss).toHaveBeenCalled();
+  });
+
+  it('does nothing when no actions detected', async () => {
+    const { triggerPostCallFollowUps } = await import('../../server/agents/voice/callLifecycle');
+    const report = buildReport({
+      artifact: {
+        messages: [
+          { role: 'user', content: 'Just a general enquiry.' },
+          { role: 'assistant', content: 'Happy to help. Have a good day.' },
+        ],
+      },
+    });
+
+    await triggerPostCallFollowUps(report, 100, '+447700900123');
+
+    // pg-boss should NOT have been called for viewing reminder
+    const PgBoss = (await import('pg-boss')).default;
+    // PgBoss may be called for module load but send should not be called
+    // (or PgBoss not instantiated at all)
+    const pgBossInstances = (PgBoss as ReturnType<typeof vi.fn>).mock.results;
+    for (const instance of pgBossInstances) {
+      if (instance.value?.send) {
+        expect(instance.value.send).not.toHaveBeenCalled();
+      }
+    }
+  });
+});

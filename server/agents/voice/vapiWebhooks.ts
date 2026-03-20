@@ -13,6 +13,12 @@ import type { ToolContext } from '../tools/types';
 import type { AgentType } from '../types';
 import type { VapiToolCallMessage, VapiToolCallResult } from './types';
 import { loadCallerContext } from './contextLoader';
+import {
+  processEndOfCallReport,
+  sendPostCallSummary,
+  processCallTransfer,
+  triggerPostCallFollowUps,
+} from './callLifecycle';
 
 // ---- Active call context cache ----
 // Stores resolved caller context keyed by Vapi call ID.
@@ -205,11 +211,31 @@ async function handleAssistantRequest(message: any, res: Response): Promise<void
 
 function handleEndOfCallReport(message: any, res: Response): void {
   const callId = message.call?.id;
-  if (callId) {
-    activeCallContexts.delete(callId); // Cleanup
-  }
-  // Placeholder for Plan 03-03 transcript processing
+  const storedContext = callId ? activeCallContexts.get(callId) : undefined;
+
+  // Respond to Vapi immediately (don't block webhook)
   res.status(200).json({});
+
+  // Process transcript and post-call actions asynchronously (fire-and-forget)
+  (async () => {
+    try {
+      const result = await processEndOfCallReport(message, storedContext);
+      const callerPhone = message.call?.customer?.number;
+
+      if (callerPhone && result.callerIdentified) {
+        await sendPostCallSummary(callerPhone, message, result.conversationId);
+      }
+
+      await processCallTransfer(callId || '', result.conversationId, callerPhone || '', message);
+      await triggerPostCallFollowUps(message, result.conversationId, callerPhone || '');
+    } catch (err) {
+      console.error('[VapiWebhooks] Post-call processing error:', err);
+    } finally {
+      if (callId) {
+        activeCallContexts.delete(callId);
+      }
+    }
+  })();
 }
 
 // ---- Hang handler ----
