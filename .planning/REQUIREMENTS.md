@@ -57,9 +57,9 @@
 
 ### Admin Specialist
 
-- [ ] **ADMIN-01**: Generates onboarding document checklists for new tenancies
-- [ ] **ADMIN-02**: Generates offboarding document checklists for ending tenancies
-- [ ] **ADMIN-03**: Tracks document completion status and chases outstanding items
+- [x] **ADMIN-01**: Generates onboarding document checklists for new tenancies
+- [x] **ADMIN-02**: Generates offboarding document checklists for ending tenancies
+- [x] **ADMIN-03**: Tracks document completion status and chases outstanding items
 
 ### Multi-Channel
 
@@ -132,9 +132,9 @@
 | PM-06 | Phase 5 | Pending |
 | PM-07 | Phase 5 | Pending |
 | PM-08 | Phase 5 | Pending |
-| ADMIN-01 | Phase 2 | Pending |
-| ADMIN-02 | Phase 2 | Pending |
-| ADMIN-03 | Phase 2 | Pending |
+| ADMIN-01 | Phase 2 | Complete |
+| ADMIN-02 | Phase 2 | Complete |
+| ADMIN-03 | Phase 2 | Complete |
 | CHAN-01 | Phase 1 | Complete |
 | CHAN-02 | Phase 1 | Complete |
 | CHAN-03 | Phase 2 | Pending |
