@@ -48,8 +48,8 @@
 
 - [x] **PM-01**: Takes maintenance/fault reports from tenants via any channel and creates work orders
 - [x] **PM-02**: Triages faults using property knowledge base (what system, warranty status, last service)
-- [ ] **PM-03**: Contacts appropriate contractor based on property knowledge base and fault type
-- [ ] **PM-04**: Books contractors and generates quotes for landlord approval
+- [x] **PM-03**: Contacts appropriate contractor based on property knowledge base and fault type
+- [x] **PM-04**: Books contractors and generates quotes for landlord approval
 - [ ] **PM-05**: Follows up with contractors to verify work completion
 - [ ] **PM-06**: Chases rent arrears with outbound calls/SMS/WhatsApp to tenants
 - [ ] **PM-07**: Attempts to secure payment commitments and sends payment links
@@ -126,8 +126,8 @@
 | LETT-04 | Phase 2 | Complete |
 | PM-01 | Phase 4 | Complete |
 | PM-02 | Phase 4 | Complete |
-| PM-03 | Phase 4 | Pending |
-| PM-04 | Phase 4 | Pending |
+| PM-03 | Phase 4 | Complete |
+| PM-04 | Phase 4 | Complete |
 | PM-05 | Phase 4 | Pending |
 | PM-06 | Phase 5 | Pending |
 | PM-07 | Phase 5 | Pending |
