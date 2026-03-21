@@ -138,6 +138,30 @@ export const bookViewingTool = wrapRegistryTool(
   }),
 );
 
+// ---- Contractor dispatch tools ----
+
+export const searchContractorsSdkTool = wrapRegistryTool(
+  'search_contractors',
+  'Search for contractors by specialization, service area, and emergency capability. Returns a ranked list (preferred first, then by rating).',
+  z4.object({
+    category: z4.string(),
+    postcode: z4.string().optional(),
+    emergency: z4.boolean().optional(),
+  }),
+);
+
+export const requestContractorQuoteSdkTool = wrapRegistryTool(
+  'request_contractor_quote',
+  'Request a quote from a contractor for a maintenance job. Creates a quote record and contacts the contractor via their preferred channel.',
+  z4.object({
+    ticketId: z4.number(),
+    contractorId: z4.number(),
+    jobDescription: z4.string(),
+    propertyAddress: z4.string(),
+    urgencyLevel: z4.string().optional(),
+  }),
+);
+
 // ---- Checklist tools ----
 
 // Lazy import to avoid circular dependency at module load

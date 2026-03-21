@@ -164,6 +164,8 @@ import { createLeadTool } from './definitions/createLead';
 import { createMaintenanceTicketTool } from './definitions/createMaintenanceTicket';
 import { bookViewingTool } from './definitions/bookViewing';
 import { lookupTenantPropertyTool } from './definitions/lookupTenantProperty';
+import { searchContractorsTool } from './definitions/searchContractors';
+import { requestContractorQuoteTool } from './definitions/requestContractorQuote';
 
 toolRegistry.register(searchPropertiesTool);
 toolRegistry.register(queryKnowledgeBaseTool);
@@ -171,3 +173,5 @@ toolRegistry.register(createLeadTool);
 toolRegistry.register(createMaintenanceTicketTool);
 toolRegistry.register(bookViewingTool);
 toolRegistry.register(lookupTenantPropertyTool);
+toolRegistry.register(searchContractorsTool);
+toolRegistry.register(requestContractorQuoteTool);
