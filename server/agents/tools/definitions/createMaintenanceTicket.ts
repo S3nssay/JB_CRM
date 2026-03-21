@@ -12,6 +12,11 @@ const inputSchema = z.object({
   // Schema urgency values: 'emergency', 'urgent', 'routine', 'low'
   priority: z.enum(['low', 'medium', 'high', 'emergency']),
   tenantId: z.number().optional(),
+  // AI triage fields (set by PM agent's classifyAndCreateTicket tool)
+  landlordId: z.number().optional(),
+  aiCategorization: z.string().optional(),
+  aiUrgencyScore: z.number().optional(),
+  aiRoutingReason: z.string().optional(),
 });
 
 const outputSchema = z.object({
@@ -53,6 +58,10 @@ export const createMaintenanceTicketTool: ToolDefinition<typeof inputSchema, typ
         category: input.category,
         urgency: mapPriorityToUrgency(input.priority),
         status: 'new',
+        ...(input.landlordId != null ? { landlordId: input.landlordId } : {}),
+        ...(input.aiCategorization != null ? { aiCategorization: input.aiCategorization } : {}),
+        ...(input.aiUrgencyScore != null ? { aiUrgencyScore: input.aiUrgencyScore } : {}),
+        ...(input.aiRoutingReason != null ? { aiRoutingReason: input.aiRoutingReason } : {}),
       })
       .returning({
         id: maintenanceTickets.id,

@@ -17,6 +17,7 @@ import { escalateToHumanTool } from './tools';
 import { salesAgent } from './salesAgent';
 import { lettingsAgent } from './lettingsAgent';
 import { adminAgent } from './adminAgent';
+import { pmAgent } from './pmAgent';
 
 // ---- Supervisor agent ----
 
@@ -26,6 +27,7 @@ Your role is to understand what each contact needs and connect them with the rig
 - Alex from Sales handles property purchases, sale viewings, offers, and price negotiations.
 - Jordan from Lettings handles rental enquiries, rental viewings, tenant applications, and rent discussions.
 - Sam from Admin handles onboarding documents, offboarding checklists, tenancy paperwork, and document submissions.
+- Morgan from Property Management handles maintenance faults, repairs, work orders, and contractor coordination.
 
 TONE AND STYLE:
 - Professional and warm, like a well-trained receptionist at a premium agency
@@ -76,6 +78,10 @@ export const supervisorAgent = new Agent<AgentContext>({
     handoff(adminAgent, {
       toolNameOverride: 'transfer_to_admin',
       toolDescription: 'Transfer to Admin for onboarding documents, offboarding checklists, tenancy paperwork, document submissions',
+    }),
+    handoff(pmAgent, {
+      toolNameOverride: 'transfer_to_property_management',
+      toolDescription: 'Transfer to Property Management for maintenance faults, repairs, contractor issues, work orders, property condition reports, and any tenant reporting a problem with their property',
     }),
   ],
 });
