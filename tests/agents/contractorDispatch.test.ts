@@ -265,3 +265,156 @@ describe('requestContractorQuote tool', () => {
     expect(message).toContain('Leaking pipe');
   });
 });
+
+// ---- landlordApproval tests ----
+
+describe('landlordApprovalService', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should auto-approve emergency work and send notification', async () => {
+    const { pool } = await import('../../server/db');
+    // Mock landlord lookup
+    (pool.query as any)
+      .mockResolvedValueOnce({
+        rows: [{ id: 10, name: 'Mr Smith', email: 'smith@test.com', mobile: '07700900010', phone: '02012345678' }],
+      })
+      // Mock quote update
+      .mockResolvedValueOnce({ rows: [] });
+
+    const { messageSender } = await import('../../server/agents/services/messageSender');
+    const { auditLogger } = await import('../../server/agents/middleware/auditLogger');
+
+    const { landlordApprovalService } = await import('../../server/agents/services/landlordApproval');
+    const result = await landlordApprovalService.requestApproval({
+      ticketId: 1,
+      landlordId: 10,
+      quoteAmount: 25000,
+      contractorName: 'ABC Plumbing',
+      faultDescription: 'Boiler repair',
+      isEmergency: true,
+    });
+
+    expect(result.status).toBe('auto_approved');
+    expect(result.reason).toContain('Emergency');
+    expect(result.landlordContacted).toBe(true);
+    // Should notify landlord (not request approval)
+    expect(messageSender.sendPreferred).toHaveBeenCalled();
+    // Should log emergency bypass
+    expect(auditLogger.logToolCall).toHaveBeenCalled();
+  });
+
+  it('should send approval request for non-emergency work', async () => {
+    const { pool } = await import('../../server/db');
+    (pool.query as any).mockResolvedValueOnce({
+      rows: [{ id: 10, name: 'Mr Smith', email: 'smith@test.com', mobile: '07700900010', phone: '02012345678' }],
+    });
+
+    const { messageSender } = await import('../../server/agents/services/messageSender');
+
+    const { landlordApprovalService } = await import('../../server/agents/services/landlordApproval');
+    const result = await landlordApprovalService.requestApproval({
+      ticketId: 1,
+      landlordId: 10,
+      quoteAmount: 15000,
+      contractorName: 'XYZ Electrical',
+      faultDescription: 'Socket replacement',
+      isEmergency: false,
+    });
+
+    expect(result.status).toBe('pending');
+    expect(result.landlordContacted).toBe(true);
+    expect(messageSender.sendPreferred).toHaveBeenCalled();
+    // Message should contain approval request language
+    const callArgs = (messageSender.sendPreferred as any).mock.calls[0];
+    const message = callArgs[1];
+    expect(message).toContain('APPROVE');
+  });
+});
+
+// ---- requestLandlordApproval tool ----
+
+describe('requestLandlordApproval tool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should be registered in the ToolRegistry', async () => {
+    const { toolRegistry } = await import('../../server/agents/tools/registry');
+    expect(toolRegistry.hasTool('request_landlord_approval')).toBe(true);
+  });
+});
+
+// ---- createWorkOrder tests ----
+
+describe('createWorkOrder tool', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should be registered in the ToolRegistry', async () => {
+    const { toolRegistry } = await import('../../server/agents/tools/registry');
+    expect(toolRegistry.hasTool('create_work_order')).toBe(true);
+  });
+
+  it('should generate WO number in WO-YYYYMMDD-XXXX format', async () => {
+    const { pool } = await import('../../server/db');
+    // Mock max WO number query
+    (pool.query as any)
+      .mockResolvedValueOnce({ rows: [{ max_num: null }] })
+      // Mock work order insert
+      .mockResolvedValueOnce({ rows: [{ id: 1, work_order_number: 'WO-20260321-0001', status: 'scheduled' }] })
+      // Mock maintenance ticket update
+      .mockResolvedValueOnce({ rows: [] })
+      // Mock contractor lookup for notification
+      .mockResolvedValueOnce({ rows: [{ id: 5, company_name: 'Test Co', contact_name: 'John', phone: '07700900005', email: 'john@test.com' }] })
+      // Mock property lookup
+      .mockResolvedValueOnce({ rows: [{ id: 10, address: '42 High St' }] });
+
+    const { createWorkOrderTool } = await import('../../server/agents/tools/definitions/createWorkOrder');
+    const result = await createWorkOrderTool.execute(
+      { ticketId: 1, contractorId: 5, scope: 'Replace boiler thermostat', scheduledStart: '2026-03-25T09:00:00Z', quotedAmount: 25000 },
+      { agentType: 'maintenance', conversationId: null, contactId: null, channel: 'whatsapp' },
+    );
+
+    expect(result.workOrderNumber).toMatch(/^WO-\d{8}-\d{4}$/);
+    expect(result.status).toBe('scheduled');
+  });
+
+  it('should send contractor notification after work order creation', async () => {
+    const { pool } = await import('../../server/db');
+    (pool.query as any)
+      .mockResolvedValueOnce({ rows: [{ max_num: null }] })
+      .mockResolvedValueOnce({ rows: [{ id: 1, work_order_number: 'WO-20260321-0001', status: 'scheduled' }] })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ id: 5, company_name: 'Test Co', contact_name: 'John', phone: '07700900005', email: 'john@test.com' }] })
+      .mockResolvedValueOnce({ rows: [{ id: 10, address: '42 High St' }] });
+
+    const { messageSender } = await import('../../server/agents/services/messageSender');
+
+    const { createWorkOrderTool } = await import('../../server/agents/tools/definitions/createWorkOrder');
+    await createWorkOrderTool.execute(
+      { ticketId: 1, contractorId: 5, scope: 'Fix leak', scheduledStart: '2026-03-25T09:00:00Z' },
+      { agentType: 'maintenance', conversationId: null, contactId: null, channel: 'whatsapp' },
+    );
+
+    expect(messageSender.sendPreferred).toHaveBeenCalled();
+    const callArgs = (messageSender.sendPreferred as any).mock.calls[0];
+    const message = callArgs[1];
+    expect(message).toContain('Work Order');
+  });
+});
+
+// ---- PM Agent dispatch tools ----
+
+describe('PM Agent dispatch tools', () => {
+  it('should include all dispatch tools in PM agent tools array', async () => {
+    const { pmAgent } = await import('../../server/agents/sdk/pmAgent');
+    const toolNames = pmAgent.tools.map((t: any) => t.name);
+    expect(toolNames).toContain('search_contractors');
+    expect(toolNames).toContain('request_contractor_quote');
+    expect(toolNames).toContain('request_landlord_approval');
+    expect(toolNames).toContain('create_work_order');
+  });
+});

@@ -166,6 +166,8 @@ import { bookViewingTool } from './definitions/bookViewing';
 import { lookupTenantPropertyTool } from './definitions/lookupTenantProperty';
 import { searchContractorsTool } from './definitions/searchContractors';
 import { requestContractorQuoteTool } from './definitions/requestContractorQuote';
+import { requestLandlordApprovalTool } from './definitions/requestLandlordApproval';
+import { createWorkOrderTool } from './definitions/createWorkOrder';
 
 toolRegistry.register(searchPropertiesTool);
 toolRegistry.register(queryKnowledgeBaseTool);
@@ -175,3 +177,5 @@ toolRegistry.register(bookViewingTool);
 toolRegistry.register(lookupTenantPropertyTool);
 toolRegistry.register(searchContractorsTool);
 toolRegistry.register(requestContractorQuoteTool);
+toolRegistry.register(requestLandlordApprovalTool);
+toolRegistry.register(createWorkOrderTool);

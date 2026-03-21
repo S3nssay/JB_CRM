@@ -16,6 +16,10 @@ import {
   queryKnowledgeBaseTool,
   lookupTenantPropertyTool,
   escalateToHumanTool,
+  searchContractorsSdkTool,
+  requestContractorQuoteSdkTool,
+  requestLandlordApprovalSdkTool,
+  createWorkOrderSdkTool,
 } from './tools';
 import { classifyUrgency } from '../services/emergencyRules';
 import { toolRegistry } from '../tools/registry';
@@ -131,8 +135,20 @@ When a tenant reports a fault, follow this sequence:
 2. Use query_knowledge_base to check the property's systems (heating type, warranty status, last service date)
 3. Use classify_and_create_ticket to classify urgency and create the maintenance ticket
 4. Inform the tenant: ticket reference number, urgency level, and what happens next
-5. For emergencies: "This has been flagged as an emergency. We are contacting a contractor immediately."
-6. For non-emergency: "We have logged this and will arrange a contractor. Your landlord will be notified."
+5. Use search_contractors to find suitable contractors for the fault category
+6. Use request_contractor_quote to get a quote from the best-ranked contractor
+7. For emergencies:
+   - Use request_landlord_approval with isEmergency=true (auto-approves and notifies landlord)
+   - Immediately use create_work_order to create the formal work order
+   - Tell the tenant: "This has been flagged as an emergency. We are contacting a contractor immediately."
+8. For non-emergency:
+   - Use request_landlord_approval with isEmergency=false to send approval request to landlord
+   - Tell the tenant: "We have sent the quote to your landlord for approval. We will update you once approved."
+9. After landlord approval is received: use create_work_order to create the formal work order
+
+COST FORMATTING:
+- Always present costs in human-readable format: convert pence to pounds (e.g. 25000 pence = "£250.00")
+- Example: "The quoted cost is £250.00"
 
 EMERGENCY GUIDANCE:
 If the tenant reports a gas leak:
@@ -172,6 +188,10 @@ export const pmAgent = new Agent<AgentContext>({
     classifyAndCreateTicketTool,
     queryKnowledgeBaseTool,
     lookupTenantPropertyTool,
+    searchContractorsSdkTool,
+    requestContractorQuoteSdkTool,
+    requestLandlordApprovalSdkTool,
+    createWorkOrderSdkTool,
     escalateToHumanTool,
   ],
 });

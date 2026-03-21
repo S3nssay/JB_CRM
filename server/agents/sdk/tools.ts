@@ -162,6 +162,35 @@ export const requestContractorQuoteSdkTool = wrapRegistryTool(
   }),
 );
 
+export const requestLandlordApprovalSdkTool = wrapRegistryTool(
+  'request_landlord_approval',
+  'Request landlord approval for maintenance work. For emergency work, auto-approves and notifies landlord. For non-emergency, sends approval request.',
+  z4.object({
+    ticketId: z4.number(),
+    landlordId: z4.number(),
+    quoteAmount: z4.number(),
+    contractorName: z4.string(),
+    faultDescription: z4.string(),
+    isEmergency: z4.boolean(),
+  }),
+);
+
+export const createWorkOrderSdkTool = wrapRegistryTool(
+  'create_work_order',
+  'Create a work order for approved maintenance work. Generates a WO number, updates the ticket, and notifies the contractor.',
+  z4.object({
+    ticketId: z4.number(),
+    contractorId: z4.number(),
+    scope: z4.string(),
+    scheduledStart: z4.string(),
+    scheduledEnd: z4.string().optional(),
+    quotedAmount: z4.number().optional(),
+    accessInstructions: z4.string().optional(),
+    keyLocation: z4.string().optional(),
+    tenantPresenceRequired: z4.boolean().optional(),
+  }),
+);
+
 // ---- Checklist tools ----
 
 // Lazy import to avoid circular dependency at module load
