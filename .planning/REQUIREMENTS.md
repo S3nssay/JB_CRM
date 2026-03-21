@@ -46,8 +46,8 @@
 
 ### Property Management Specialist
 
-- [ ] **PM-01**: Takes maintenance/fault reports from tenants via any channel and creates work orders
-- [ ] **PM-02**: Triages faults using property knowledge base (what system, warranty status, last service)
+- [x] **PM-01**: Takes maintenance/fault reports from tenants via any channel and creates work orders
+- [x] **PM-02**: Triages faults using property knowledge base (what system, warranty status, last service)
 - [ ] **PM-03**: Contacts appropriate contractor based on property knowledge base and fault type
 - [ ] **PM-04**: Books contractors and generates quotes for landlord approval
 - [ ] **PM-05**: Follows up with contractors to verify work completion
@@ -124,8 +124,8 @@
 | LETT-02 | Phase 2 | Complete |
 | LETT-03 | Phase 2 | Complete |
 | LETT-04 | Phase 2 | Complete |
-| PM-01 | Phase 4 | Pending |
-| PM-02 | Phase 4 | Pending |
+| PM-01 | Phase 4 | Complete |
+| PM-02 | Phase 4 | Complete |
 | PM-03 | Phase 4 | Pending |
 | PM-04 | Phase 4 | Pending |
 | PM-05 | Phase 4 | Pending |
