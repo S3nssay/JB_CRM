@@ -1,6 +1,6 @@
 # Phase 4: Property Management Specialist - Research
 
-**Researched:** 2026-03-20
+**Researched:** 2026-03-21
 **Domain:** Maintenance fault intake, property knowledge base triage, contractor dispatch, work order lifecycle, landlord approval workflows, automated follow-up scheduling
 **Confidence:** HIGH
 
@@ -10,196 +10,275 @@ Phase 4 builds the Property Management (PM) specialist agent on top of the prove
 
 The good news: nearly all infrastructure already exists. The `maintenance_ticket`, `work_order`, `contractor`, `contractor_quote`, `property_systems_inventory`, and `property_certification` tables are defined in `shared/schema.ts`. The `create_maintenance_ticket` and `query_knowledge_base` tools exist in the Tool Registry. The agent SDK patterns (Agent, tool, handoff, runner), message sender, audit logger, escalation service, and pg-boss scheduled messages are all battle-tested from Phase 2. The contact identity system resolves tenants across WhatsApp/SMS/email.
 
-The primary gaps are:
-1. **No PM specialist agent** -- the `maintenance` agent type is defined in `AgentType` but no SDK agent exists (only a legacy `MaintenanceAgent.ts` in `server/agents/specialists/` which is unused)
-2. **No contractor-facing tools** -- need tools to search contractors, request quotes, dispatch work orders, and contact contractors via their preferred channel
-3. **No landlord approval workflow** -- need a tool to send approval requests to landlords and track their responses
-4. **No emergency detection** -- need rules-based urgency classification (not just prompt-based) to decide emergency vs non-emergency dispatch
-5. **No work order follow-up system** -- need pg-boss jobs for automated follow-up at configurable intervals
-6. **No property-to-tenant resolution** -- when a tenant messages, we need to look up their property and landlord from the `tenant` table
+**Plan 04-01 has been executed.** The PM agent (Morgan from Property Management), emergency rules engine, tenant-to-property lookup tool, and supervisor routing are all implemented and tested. The remaining work is Plans 04-02 (contractor dispatch) and 04-03 (work order follow-up).
 
-## Existing Infrastructure (from Phase 1 and 2)
+**Primary recommendation:** Build contractor dispatch tools (search, quote, landlord approval, work order) following the existing `wrapRegistryTool` pattern, then add pg-boss follow-up workers following the `scheduledMessages.ts` pattern.
 
-### Database Tables (all exist in schema.ts)
+<phase_requirements>
+## Phase Requirements
+
+| ID | Description | Research Support |
+|----|-------------|-----------------|
+| PM-01 | Takes maintenance/fault reports from tenants via any channel and creates work orders | Plan 04-01 COMPLETE: pmAgent.ts with classifyAndCreateTicketTool, lookupTenantPropertyTool, supervisor handoff |
+| PM-02 | Triages faults using property knowledge base (what system, warranty status, last service) | Plan 04-01 COMPLETE: emergencyRules.ts rules engine + queryKnowledgeBaseTool integration in PM agent workflow |
+| PM-03 | Contacts appropriate contractor based on property KB and fault type | Plan 04-02: searchContractors tool (filter by specialization, service area, emergency capability) + requestContractorQuote tool (sends job details via preferred channel) |
+| PM-04 | Books contractors and generates quotes for landlord approval | Plan 04-02: requestLandlordApproval tool (emergency bypass / non-emergency approval request) + createWorkOrder tool (WO number generation, contractor notification) |
+| PM-05 | Follows up with contractors to verify work completion | Plan 04-03: pg-boss workers (wo-contractor-followup, wo-tenant-followup, wo-completion-check) with configurable urgency-based intervals and audit logging |
+</phase_requirements>
+
+## Existing Infrastructure (from Phase 1, 2, and 04-01)
+
+### Database Tables (all exist in schema.ts -- verified)
 
 | Table | Drizzle Name | Key Columns | Status |
 |-------|-------------|-------------|--------|
-| `maintenance_ticket` | `maintenanceTickets` | propertyId, tenantId, landlordId, category, urgency, status, assignedContractorId, estimatedCost, actualCost | Exists |
+| `maintenance_ticket` | `maintenanceTickets` | propertyId, tenantId, landlordId, category, urgency, status, assignedContractorId, estimatedCost, actualCost, aiCategorization, aiUrgencyScore, aiRoutingReason | Exists |
 | `maintenance_ticket_update` | `maintenanceTicketUpdates` | ticketId, updateType, message, previousStatus, newStatus | Exists |
 | `maintenance_category` | `maintenanceCategories` | name, keywords, defaultUrgency, defaultAssigneeId, escalationHours | Exists |
-| `work_order` | `workOrders` | maintenanceRequestId, contractorId, workOrderNumber, scope, scheduledStart, status, quotedAmount | Exists |
-| `contractor` | `contractors` | companyName, contactName, email, phone, emergencyPhone, specializations, serviceAreas, availableEmergency, responseTime, callOutFee, hourlyRate, rating, preferredContractor | Exists |
-| `contractor_quote` | `contractorQuotes` | ticketId, contractorId, quoteAmount, quoteDescription, status (pending/quoted/approved/scheduled/completed), approvedById | Exists |
+| `work_order` | `workOrders` | maintenanceRequestId, contractorId, workOrderNumber, scope, scheduledStart, scheduledEnd, actualStart, actualEnd, status, quotedAmount, followUpRequired, followUpNotes, completionReport | Exists |
+| `contractor` | `contractors` | companyName, contactName, email, phone, emergencyPhone, specializations (text[]), serviceAreas (text[]), availableEmergency, responseTime, callOutFee (pence), hourlyRate (pence), rating (1-5), preferredContractor, isActive | Exists |
+| `contractor_quote` | `contractorQuotes` | ticketId, contractorId, quoteAmount (pence), quoteDescription, estimatedDuration, availableDate, status, sentAt, respondedAt, contractorResponse, approvedById, approvedAt, approvalNotes, scheduledDate, scheduledTimeSlot | Exists |
 | `property_systems_inventory` | `propertySystemsInventory` | propertyId, systemType, make, model, warrantyExpiryDate, lastServiceDate, contractorId | Exists |
 | `property_certification` | `propertyCertifications` | propertyId, certificationType, expiryDate, status | Exists |
 
-### Existing SDK Tools
+### Implemented Components (Plan 04-01 -- COMPLETE)
 
-| Tool | File | Permissions | What it does |
-|------|------|-------------|-------------|
-| `create_maintenance_ticket` | `server/agents/tools/definitions/createMaintenanceTicket.ts` | supervisor, maintenance, office_admin | Creates a ticket with propertyId, title, description, category, urgency |
-| `query_knowledge_base` | `server/agents/tools/definitions/queryKnowledgeBase.ts` | All agent types | Queries certifications, systems inventory, maintenance history by propertyId |
-| `search_properties` | `server/agents/tools/definitions/searchProperties.ts` | Multiple | Searches properties |
-| `escalate_to_human` | `server/agents/sdk/tools.ts` | All via SDK | Escalates conversation to human staff |
+| Component | File | Status |
+|-----------|------|--------|
+| PM Agent (Morgan) | `server/agents/sdk/pmAgent.ts` | DONE -- Agent with classifyAndCreateTicketTool, queryKnowledgeBaseTool, lookupTenantPropertyTool, escalateToHumanTool |
+| Emergency Rules Engine | `server/agents/services/emergencyRules.ts` | DONE -- classifyUrgency() with seasonal winter logic, gas/flood/electrical/security patterns |
+| Tenant-to-Property Lookup | `server/agents/tools/definitions/lookupTenantProperty.ts` | DONE -- Resolves phone/email to tenant record with property and landlord |
+| Supervisor Routing | `server/agents/sdk/supervisorAgent.ts` | DONE -- handoff to PM agent as transfer_to_property_management |
+| Enhanced Maintenance Ticket | `server/agents/tools/definitions/createMaintenanceTicket.ts` | DONE -- Accepts landlordId, aiCategorization, aiUrgencyScore, aiRoutingReason |
+| PM Agent Tests | `tests/agents/pmAgent.test.ts` | DONE -- Persona, tools, emergency guidance, supervisor routing |
+| Emergency Rules Tests | `tests/agents/emergencyRules.test.ts` | DONE -- All urgency levels, winter/summer sensitivity |
 
-### Existing Services
+### Existing Services (available for Plans 04-02 and 04-03)
 
 | Service | File | What it provides |
 |---------|------|-----------------|
-| Message Sender | `server/agents/services/messageSender.ts` | Sends via WhatsApp/SMS/email with channel fallback |
-| Scheduled Messages | `server/agents/services/scheduledMessages.ts` | pg-boss job queue for deferred messages |
-| Escalation Service | `server/agents/services/escalationService.ts` | Round-robin staff escalation |
-| Audit Logger | `server/agents/middleware/auditLogger.ts` | Logs all tool calls, responses, escalations |
+| Message Sender | `server/agents/services/messageSender.ts` | `messageSender.send(channel, to, body)` and `messageSender.sendPreferred(phone, body)` |
+| Scheduled Messages | `server/agents/services/scheduledMessages.ts` | pg-boss lazy init pattern, `registerScheduledMessageWorkers(boss)` |
+| Escalation Service | `server/agents/services/escalationService.ts` | `escalationService.escalate({ conversationId, reason, urgency, channel })` |
+| Audit Logger | `server/agents/middleware/auditLogger.ts` | `auditLogger.logToolCall({ agentType, toolName, toolInput, toolOutput, durationMs, channel })` |
 | Agent Runner | `server/agents/sdk/runner.ts` | Runs agent with conversation history, AI identification |
 
-### Agent Patterns Established
+### Agent Patterns Established (verified in codebase)
 
 - **Agent creation:** `new Agent<AgentContext>({ name, model, instructions, tools })` with `gpt-4o` model
 - **Supervisor handoff:** `handoff(agent, { toolNameOverride, toolDescription })`
-- **Tool wrapping:** `wrapRegistryTool(name, description, z4Schema)` for Phase 1 tools, `tool({ name, description, parameters, execute })` for SDK-native tools
-- **Follow-up scheduling:** Lazy pg-boss instance, `boss.send(jobName, payload, { startAfter })` -- pattern from `salesAgent.ts`
-- **Persona conventions:** Named agents ("Alex from Sales", "Jordan from Lettings", "Sam from Admin"), British English, no emoji, channel-aware formatting
+- **Tool wrapping:** `wrapRegistryTool(name, description, z4Schema)` in `server/agents/sdk/tools.ts` for Phase 1 tools
+- **SDK-native tools:** `tool({ name, description, parameters, execute })` for tools needing custom logic
+- **Follow-up scheduling:** Lazy pg-boss instance, `boss.send(jobName, payload, { startAfter })` -- pattern from `scheduledMessages.ts`
+- **Persona conventions:** Named agents ("Alex from Sales", "Jordan from Lettings", "Sam from Admin", "Morgan from Property Management"), British English, no emoji, channel-aware formatting
 
-## New Components Required
+## Standard Stack
 
-### Plan 04-01: PM Specialist Agent Core
+### Core (all already in project)
 
-**PM Agent ("Morgan from Property Management")**
+| Library | Version | Purpose | Why Standard |
+|---------|---------|---------|--------------|
+| @openai/agents | SDK | Agent framework with tool calling | Already used for all specialist agents |
+| pg-boss | latest | Job queue for scheduled follow-ups | Already used for scheduled messages, follow-ups |
+| drizzle-orm | 0.39 | Database queries | Project ORM |
+| zod4 | alias | SDK tool parameter schemas | Required by @openai/agents SDK |
+| zod | 3.x | ToolRegistry input/output schemas | Project standard |
 
-New SDK agent at `server/agents/sdk/pmAgent.ts` that:
-1. Receives fault reports from tenants via any channel (Supervisor routes maintenance_request intent to PM agent)
-2. Looks up the tenant's property using a new `lookup_tenant_property` tool
-3. Queries the property KB (systems inventory, certifications, maintenance history) using existing `query_knowledge_base`
-4. Creates a maintenance ticket using existing `create_maintenance_ticket` (needs enhancement: should also set landlordId)
-5. Classifies urgency using rules-based logic (not just prompt):
-   - **Emergency**: gas leak, no heating (winter), flood/burst pipe, security breach, no hot water (with vulnerable tenant)
-   - **Urgent**: boiler fault (non-winter), electrical fault, broken lock, pest infestation
-   - **Routine**: dripping tap, minor repair, appliance issue, decoration
-   - **Low**: cosmetic issue, planned improvement
+### Supporting
 
-**Tenant-to-Property Resolution:**
-The `tenant` table has `property_id` and `landlord_id` columns. When a tenant messages, the contact identity resolves to a contact. We need a tool that, given a contact phone/email, looks up the tenant record to get propertyId and landlordId. This enables the PM agent to automatically know which property a fault report is about.
+| Library | Purpose | When to Use |
+|---------|---------|-------------|
+| messageSender (internal) | Multi-channel messaging | All outbound to contractors, landlords, tenants |
+| auditLogger (internal) | Audit trail | Every tool call, follow-up attempt, escalation |
+| escalationService (internal) | Staff escalation | Non-response after max follow-up attempts |
 
-**Enhanced create_maintenance_ticket:**
-Current tool doesn't set `landlordId` or `aiCategorization`/`aiUrgencyScore`/`aiRoutingReason`. Enhance to set these fields.
+## Architecture Patterns
 
-### Plan 04-02: Contractor Dispatch
+### New Files for Plans 04-02 and 04-03
 
-**New tools needed:**
+```
+server/agents/
+  tools/definitions/
+    searchContractors.ts          # Plan 04-02: Search contractors by specialization/area
+    requestContractorQuote.ts     # Plan 04-02: Create quote record + contact contractor
+    requestLandlordApproval.ts    # Plan 04-02: Approval request or emergency bypass
+    createWorkOrder.ts            # Plan 04-02: Create WO with generated number
+    scheduleWorkOrderFollowup.ts  # Plan 04-03: Schedule pg-boss follow-up jobs
+  services/
+    landlordApproval.ts           # Plan 04-02: Approval workflow service
+    workOrderFollowup.ts          # Plan 04-03: pg-boss workers for follow-ups
+tests/agents/
+    contractorDispatch.test.ts    # Plan 04-02 tests
+    workOrderFollowup.test.ts     # Plan 04-03 tests
+```
 
-1. `search_contractors` -- Query contractors table by specialization, service area, availability, emergency capability. Returns ranked list (preferred first, then by rating, then by response time).
+### Pattern: ToolRegistry Tool Definition
 
-2. `request_contractor_quote` -- Create a `contractor_quote` record, send job details to contractor via their preferred channel (phone -> SMS/WhatsApp, email). Returns quote ID.
+All new tools follow the existing pattern in `server/agents/tools/definitions/`:
 
-3. `request_landlord_approval` -- For non-emergency work: send the quote to the landlord via their preferred channel with approve/reject link or reply keyword. For emergency work: auto-approve and log the bypass reason.
+```typescript
+// Source: server/agents/tools/definitions/createMaintenanceTicket.ts (verified)
+import { z } from 'zod';
+import { db } from '../../../db';
+import { tableName } from '@shared/schema';
+import type { ToolDefinition, ToolContext } from '../types';
 
-4. `create_work_order` -- After landlord approval, create a `work_order` record linked to the maintenance ticket and contractor. Generate a work order number (WO-YYYYMMDD-XXXX format). Send job confirmation to contractor.
+const inputSchema = z.object({ /* fields */ });
+const outputSchema = z.object({ /* fields */ });
 
-**Emergency vs non-emergency logic:**
-- Emergency (urgency = 'emergency'): Skip landlord approval, dispatch immediately to emergency contractor, log bypass
-- Non-emergency: Request quote from selected contractor, send to landlord for approval, wait for response
+export const myTool: ToolDefinition<typeof inputSchema, typeof outputSchema> = {
+  name: 'tool_name',
+  description: 'What it does',
+  inputSchema,
+  outputSchema,
+  permissions: ['maintenance', 'supervisor'],
+  tier: 'autonomous',
+  async execute(input, _context: ToolContext) {
+    // DB operations, return output matching outputSchema
+  },
+};
+```
 
-**Landlord approval workflow:**
-- Send approval message via landlord's preferred channel (from `landlords` table: mobile -> WhatsApp/SMS, email)
-- Include: fault description, contractor name, quoted amount, estimated duration
-- Landlord replies "approve" or "reject" (or clicks link)
-- Approval triggers work order creation and contractor dispatch
-- Rejection triggers re-selection or escalation to staff
-- 48-hour timeout: if no response, auto-escalate to staff
+Then wrap in `server/agents/sdk/tools.ts`:
+```typescript
+export const mySDKTool = wrapRegistryTool(
+  'tool_name',
+  'Description for the LLM',
+  z4.object({ /* z4 schema matching inputSchema */ }),
+);
+```
 
-### Plan 04-03: Work Order Follow-up and Completion
+### Pattern: pg-boss Worker (for follow-ups)
 
-**pg-boss scheduled follow-ups:**
+```typescript
+// Source: server/agents/services/scheduledMessages.ts (verified)
+import PgBoss from 'pg-boss';
 
-1. After work order creation, schedule:
-   - `wo-contractor-followup`: Check with contractor at configurable interval (default 24h for emergency, 48h for urgent, 72h for routine)
-   - `wo-tenant-followup`: Check with tenant same schedule as contractor
-   - `wo-completion-check`: At scheduled end date, check if completed
+let _boss: PgBoss | null = null;
+function getBoss(): PgBoss {
+  if (!_boss) {
+    _boss = new PgBoss(process.env.DATABASE_URL!);
+  }
+  return _boss;
+}
 
-2. Follow-up message content:
-   - To contractor: "Hi {name}, checking on work order {WO-number} at {address}. Is the work progressing as planned?"
-   - To tenant: "Hi {name}, our contractor should have attended to the {issue} at your property. Has the issue been resolved?"
+export function registerMyWorkers(boss: PgBoss) {
+  boss.work('job-name', async (job) => {
+    // Process job.data
+  });
+}
+```
 
-3. Response handling:
-   - Tenant confirms resolved -> update work order status to 'completed', close ticket
-   - Tenant says not resolved -> create follow-up ticket or re-dispatch
-   - Contractor confirms complete -> update work order, await tenant confirmation
-   - No response after 2 follow-ups -> escalate to staff
+### Anti-Patterns to Avoid
 
-**Audit logging:**
-Every follow-up attempt logged via auditLogger with:
-- workOrderId, ticketId, followUpType (contractor/tenant), attempt number, response received, timestamp
+- **Prompt-only urgency classification:** Emergency detection MUST be code-level rules (emergencyRules.ts), not just prompt instructions. Already enforced by classifyAndCreateTicketTool.
+- **Blocking webhook handlers:** All outbound messages (to contractors, landlords) should be fire-and-forget after the primary operation succeeds. Don't block the tool response on message delivery.
+- **Hardcoded channel preference:** Use messageSender which handles channel fallback. Don't hardcode WhatsApp-only or SMS-only.
+
+## Don't Hand-Roll
+
+| Problem | Don't Build | Use Instead | Why |
+|---------|-------------|-------------|-----|
+| Multi-channel messaging | Custom WhatsApp/SMS/email sending | `messageSender.send()` / `messageSender.sendPreferred()` | Handles channel fallback, opt-out checking |
+| Job scheduling | Custom timers or cron | pg-boss with lazy init pattern | Already proven in scheduledMessages.ts, handles retries |
+| Audit logging | Console.log or custom DB writes | `auditLogger.logToolCall()` | Consistent audit trail format across all agents |
+| Staff escalation | Custom notification logic | `escalationService.escalate()` | Round-robin assignment, notification |
+
+## Common Pitfalls
+
+### Pitfall 1: Contractor specializations array matching
+**What goes wrong:** The `specializations` column is `text[]`. SQL array containment requires `@>` operator or `ANY()` syntax.
+**How to avoid:** Use raw SQL `WHERE $1 = ANY(specializations)` or Drizzle's array operators. Test with actual array data.
+**Warning signs:** Empty results when contractors exist with matching specializations.
+
+### Pitfall 2: Service area postcode matching
+**What goes wrong:** Service areas stored as text array (e.g., `['SW', 'SE', 'W']` or `['SW1', 'SE24']`). Matching requires prefix comparison.
+**How to avoid:** Extract first 2-4 characters of property postcode and check against each service area entry. Use LIKE or starts_with matching.
+**Warning signs:** Contractors not found even when they cover the area.
+
+### Pitfall 3: Amounts in pence
+**What goes wrong:** `callOutFee`, `hourlyRate`, `quoteAmount`, `quotedAmount` are all stored in pence (integer). Display to humans must convert to pounds.
+**How to avoid:** Always divide by 100 for display: `(amountPence / 100).toFixed(2)`. Always multiply by 100 for storage.
+**Warning signs:** Displaying "25000" instead of "250.00".
+
+### Pitfall 4: Work order number uniqueness
+**What goes wrong:** Two concurrent work orders on the same date could generate the same WO number if using MAX+1.
+**How to avoid:** Use a database sequence or add a unique constraint on `workOrderNumber`. The WO-YYYYMMDD-XXXX format needs atomic increment.
+**Warning signs:** Duplicate key errors on work_order inserts.
+
+### Pitfall 5: Follow-up on completed/cancelled work orders
+**What goes wrong:** A scheduled follow-up fires after the work order was already completed or cancelled.
+**How to avoid:** Every follow-up worker MUST check work order status first. If completed/cancelled, skip and log "skipped - already {status}".
+**Warning signs:** Tenants receiving "has the issue been resolved?" after it was resolved days ago.
 
 ## Technical Decisions
 
 ### Emergency Rules: Code, Not Prompt
-
-The emergency detection MUST be rules-based in code, not prompt instructions. This matches the project pattern from Phase 5's PM-08 requirement ("hard-coded frequency limits and compliance rules, not prompt-only"). Create an `emergencyRules.ts` file with a `classifyUrgency(faultDescription, category, systemInfo)` function that returns urgency + reasoning.
-
-**Emergency keyword patterns:**
-- Gas: "gas leak", "smell gas", "carbon monoxide"
-- Flood: "burst pipe", "flooding", "water pouring", "ceiling leaking"
-- Heating (winter Oct-Mar): "no heating", "heating broken", "boiler not working"
-- Security: "break-in", "door won't lock", "window smashed"
-- Hot water (vulnerable): "no hot water" + tenant flagged as vulnerable
+The emergency detection is rules-based in code (`emergencyRules.ts`), not prompt instructions. This is already implemented and matches the project pattern from PM-08 requirement ("hard-coded frequency limits and compliance rules, not prompt-only").
 
 ### Contractor Selection Algorithm
-
 ```
 1. Filter by specialization matching ticket category
-2. Filter by service area matching property postcode
+2. Filter by service area matching property postcode prefix
 3. If emergency: filter to availableEmergency = true
-4. Sort: preferredContractor DESC, rating DESC, responseTime ASC
-5. Return top 3 candidates
+4. Sort: preferredContractor DESC, rating DESC NULLS LAST
+5. Limit to 5 results
 ```
 
 ### Work Order Number Generation
+Format: `WO-YYYYMMDD-XXXX` where XXXX is a daily sequential counter. Use MAX+1 query scoped to same date prefix, or database sequence.
 
-Format: `WO-YYYYMMDD-XXXX` where XXXX is a daily sequential counter. Use a database sequence or MAX+1 query on same date.
+### Landlord Approval Workflow
+- Emergency (urgency = 'emergency'): Skip approval, auto-approve, send notification to landlord, dispatch immediately, log bypass in audit trail
+- Non-emergency: Send approval request to landlord via preferred channel, include fault description + contractor name + quoted amount. Landlord replies APPROVE or REJECT.
+- 48-hour timeout: if no landlord response, escalate to staff
 
-### Supervisor Routing Update
+### Follow-up Intervals (configurable by urgency)
+| Urgency | Contractor Follow-up | Tenant Follow-up |
+|---------|---------------------|-----------------|
+| Emergency | 24 hours | 24 hours |
+| Urgent | 48 hours | 48 hours |
+| Routine | 72 hours | 72 hours |
+| Low | 96 hours | 96 hours |
 
-The Supervisor agent needs a new handoff to the PM agent:
+Max 2 follow-up attempts before staff escalation.
+
+### Supervisor Routing Update (DONE)
+The Supervisor agent already has the handoff to PM agent:
 ```typescript
 handoff(pmAgent, {
   toolNameOverride: 'transfer_to_property_management',
-  toolDescription: 'Transfer to Property Management for maintenance faults, repairs, contractor issues, work orders, and property condition reports',
+  toolDescription: 'Transfer to Property Management for maintenance faults, repairs, contractor issues, work orders, and any tenant reporting a problem with their property',
 })
 ```
 
-### Tenant Identity Resolution
-
-When a tenant messages about a fault, the system needs to resolve their identity to a property:
-1. Contact identity (from Phase 1) resolves phone/email to a contactId
-2. New tool `lookup_tenant_property` queries `tenant` table by contact phone/email
-3. Returns: tenantId, propertyId, landlordId, property address, tenant name
-
-This avoids asking the tenant "which property?" when they only manage one property. If a tenant has multiple properties (rare for tenants), ask which one.
-
 ## Validation Architecture
 
-### Test Strategy
+### Test Framework
+| Property | Value |
+|----------|-------|
+| Framework | Vitest (established in Phase 1) |
+| Config file | vitest implicit config (no config file, uses defaults) |
+| Quick run command | `npx vitest run tests/agents/pmAgent.test.ts --reporter=verbose` |
+| Full suite command | `npx vitest run tests/agents/ --reporter=verbose` |
 
-All three plans use Vitest (established in Phase 1). Test patterns:
+### Phase Requirements -> Test Map
+| Req ID | Behavior | Test Type | Automated Command | File Exists? |
+|--------|----------|-----------|-------------------|-------------|
+| PM-01 | Fault intake and ticket creation via PM agent | unit | `npx vitest run tests/agents/pmAgent.test.ts -x` | Yes |
+| PM-02 | Emergency rules engine triage | unit | `npx vitest run tests/agents/emergencyRules.test.ts -x` | Yes |
+| PM-03 | Contractor search and quote request | unit | `npx vitest run tests/agents/contractorDispatch.test.ts -x` | No -- Wave 2 |
+| PM-04 | Landlord approval and work order creation | unit | `npx vitest run tests/agents/contractorDispatch.test.ts -x` | No -- Wave 2 |
+| PM-05 | Work order follow-up scheduling and audit | unit | `npx vitest run tests/agents/workOrderFollowup.test.ts -x` | No -- Wave 3 |
 
-1. **Unit tests** for emergency rules engine (pure function, no DB needed)
-2. **Unit tests** for contractor selection algorithm (mock DB queries)
-3. **Integration tests** for PM agent tool availability and persona
-4. **Integration tests** for work order follow-up job scheduling
+### Sampling Rate
+- **Per task commit:** `npx vitest run tests/agents/pmAgent.test.ts tests/agents/emergencyRules.test.ts --reporter=verbose`
+- **Per wave merge:** `npx vitest run tests/agents/ --reporter=verbose`
+- **Phase gate:** Full suite green before `/gsd:verify-work`
 
-### Test Files
-
-| Test | Plan | What it validates |
-|------|------|-------------------|
-| `tests/agents/pmAgent.test.ts` | 04-01 | PM agent tools, persona, emergency classification |
-| `tests/agents/emergencyRules.test.ts` | 04-01 | Rules-based urgency classification |
-| `tests/agents/contractorDispatch.test.ts` | 04-02 | Contractor search, quote request, landlord approval, work order creation |
-| `tests/agents/workOrderFollowup.test.ts` | 04-03 | Follow-up scheduling, completion verification, audit logging |
-
-### Verification Commands
-
-- Quick: `npx vitest run tests/agents/pmAgent.test.ts tests/agents/emergencyRules.test.ts --reporter=verbose`
-- Full: `npx vitest run tests/agents/ --reporter=verbose`
+### Wave 0 Gaps
+- [ ] `tests/agents/contractorDispatch.test.ts` -- covers PM-03, PM-04 (Plan 04-02)
+- [ ] `tests/agents/workOrderFollowup.test.ts` -- covers PM-05 (Plan 04-03)
 
 ## Risks and Mitigations
 
@@ -210,13 +289,36 @@ All three plans use Vitest (established in Phase 1). Test patterns:
 | Tenant identity resolution failure (unregistered phone) | Low | Fall back to asking tenant for property address/postcode; create ticket manually |
 | Multiple tenants at same property | Low | Ask tenant to confirm which unit (for HMOs); single-tenant properties auto-resolve |
 | Emergency misclassification | Low | Rules-based classification with keyword matching; all emergencies also audited for staff review |
+| Work order number collision under concurrency | Low | Use database-level unique constraint on workOrderNumber; retry with increment on conflict |
 
 ## Dependencies
 
 - **Phase 1:** Property KB tables, tool registry, conversation store, audit logger, contact identity -- all complete
 - **Phase 2:** SDK agent patterns, supervisor routing, message sender, pg-boss scheduled messages, escalation service -- all complete
 - **Phase 3:** Voice integration -- PM agent works on text channels regardless of Phase 3 completion; voice routing to PM can be added later
+- **Plan 04-01:** PM agent core, emergency rules, tenant lookup, supervisor handoff -- COMPLETE
 
-**Note on Phase 3 dependency:** The roadmap says Phase 4 depends on Phase 3. However, the PM agent's core functionality (text-channel fault intake, KB triage, contractor dispatch, follow-up) does not require voice. The dependency is because the success criteria mention "any channel" which includes voice once Phase 3 is done. Plans should be structured so that the PM agent works on text channels immediately, and voice routing is a configuration addition (adding PM handoff to voice Supervisor) after Phase 3.
+**Note on Phase 3 dependency:** The PM agent's core functionality (text-channel fault intake, KB triage, contractor dispatch, follow-up) does not require voice. The dependency is because the success criteria mention "any channel" which includes voice once Phase 3 is done. Plans are structured so that the PM agent works on text channels immediately, and voice routing is a configuration addition (adding PM handoff to voice Supervisor) after Phase 3.
 
-## RESEARCH COMPLETE
+## Sources
+
+### Primary (HIGH confidence)
+- `shared/schema.ts` -- Verified all table definitions: contractors (line 1285), contractorQuotes (line 1599), workOrders (line 800), maintenanceTickets, tenant, landlords, properties
+- `server/agents/sdk/pmAgent.ts` -- Verified PM agent implementation with tools and persona
+- `server/agents/sdk/tools.ts` -- Verified wrapRegistryTool pattern and all existing wrapped tools
+- `server/agents/services/emergencyRules.ts` -- Verified rules engine implementation
+- `server/agents/sdk/supervisorAgent.ts` -- Verified PM agent handoff
+- `server/agents/services/scheduledMessages.ts` -- Verified pg-boss lazy init pattern
+- `server/agents/services/messageSender.ts` -- Verified multi-channel send API
+- `server/agents/middleware/auditLogger.ts` -- Verified logToolCall API
+- `tests/agents/pmAgent.test.ts` -- Verified test patterns and mock setup
+
+## Metadata
+
+**Confidence breakdown:**
+- Standard stack: HIGH -- all libraries already in project, patterns proven across 3 phases
+- Architecture: HIGH -- follows exact same patterns as existing agents, tools verified against schema
+- Pitfalls: HIGH -- identified from actual schema column types and existing code patterns
+
+**Research date:** 2026-03-21
+**Valid until:** 2026-04-20 (stable -- no external dependencies changing)
