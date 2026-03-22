@@ -49,9 +49,34 @@ const INACTIVE_STATUSES = ['completed', 'cancelled', 'failed'];
 
 export class WorkOrderFollowupService {
   private boss: PgBoss;
+  private started = false;
 
   constructor() {
     this.boss = new PgBoss(process.env.DATABASE_URL || '');
+  }
+
+  /**
+   * Start pg-boss and register follow-up workers.
+   * Called lazily on first use (same pattern as ScheduledMessageService).
+   */
+  async start(): Promise<void> {
+    if (this.started) return;
+    await this.boss.start();
+
+    await this.boss.work('wo-contractor-followup', async (job: any) => {
+      await this.handleContractorFollowup(job);
+    });
+
+    await this.boss.work('wo-tenant-followup', async (job: any) => {
+      await this.handleTenantFollowup(job);
+    });
+
+    await this.boss.work('wo-completion-check', async (job: any) => {
+      await this.handleCompletionCheck(job);
+    });
+
+    this.started = true;
+    console.log('[WorkOrderFollowup] Workers registered');
   }
 
   /**
@@ -59,6 +84,7 @@ export class WorkOrderFollowupService {
    * Queues: contractor follow-up, tenant follow-up, and completion check.
    */
   async scheduleFollowups(workOrderId: number, urgency: string): Promise<void> {
+    await this.start();
     // 1. Look up work order
     const { rows: woRows } = await pool.query(
       `SELECT id, maintenance_request_id, contractor_id, work_order_number, scheduled_end, status
