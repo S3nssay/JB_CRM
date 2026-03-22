@@ -168,6 +168,7 @@ import { searchContractorsTool } from './definitions/searchContractors';
 import { requestContractorQuoteTool } from './definitions/requestContractorQuote';
 import { requestLandlordApprovalTool } from './definitions/requestLandlordApproval';
 import { createWorkOrderTool } from './definitions/createWorkOrder';
+import { scheduleWorkOrderFollowupTool } from './definitions/scheduleWorkOrderFollowup';
 
 toolRegistry.register(searchPropertiesTool);
 toolRegistry.register(queryKnowledgeBaseTool);
@@ -179,3 +180,4 @@ toolRegistry.register(searchContractorsTool);
 toolRegistry.register(requestContractorQuoteTool);
 toolRegistry.register(requestLandlordApprovalTool);
 toolRegistry.register(createWorkOrderTool);
+toolRegistry.register(scheduleWorkOrderFollowupTool);

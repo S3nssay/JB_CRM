@@ -20,6 +20,7 @@ import {
   requestContractorQuoteSdkTool,
   requestLandlordApprovalSdkTool,
   createWorkOrderSdkTool,
+  scheduleWorkOrderFollowupSdkTool,
 } from './tools';
 import { classifyUrgency } from '../services/emergencyRules';
 import { toolRegistry } from '../tools/registry';
@@ -145,6 +146,9 @@ When a tenant reports a fault, follow this sequence:
    - Use request_landlord_approval with isEmergency=false to send approval request to landlord
    - Tell the tenant: "We have sent the quote to your landlord for approval. We will update you once approved."
 9. After landlord approval is received: use create_work_order to create the formal work order
+10. After creating any work order: ALWAYS use schedule_work_order_followup to schedule automated follow-ups
+    - Inform the tenant: "We have scheduled the work and will follow up to make sure everything is resolved."
+    - Tell the tenant the follow-up timeline: "You will hear from us within {intervalHours} hours to check everything went smoothly."
 
 COST FORMATTING:
 - Always present costs in human-readable format: convert pence to pounds (e.g. 25000 pence = "£250.00")
@@ -192,6 +196,7 @@ export const pmAgent = new Agent<AgentContext>({
     requestContractorQuoteSdkTool,
     requestLandlordApprovalSdkTool,
     createWorkOrderSdkTool,
+    scheduleWorkOrderFollowupSdkTool,
     escalateToHumanTool,
   ],
 });

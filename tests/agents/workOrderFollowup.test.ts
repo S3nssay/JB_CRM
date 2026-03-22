@@ -534,3 +534,79 @@ describe('WorkOrderFollowupService', () => {
     });
   });
 });
+
+// ---- PM Agent integration tests ----
+
+vi.mock('zod4', async () => {
+  return await import('zod');
+});
+
+vi.mock('@openai/agents', () => {
+  class MockAgent {
+    name: string;
+    model: string;
+    instructions: string;
+    tools: any[];
+    handoffs: any[];
+    constructor(config: any) {
+      this.name = config.name;
+      this.model = config.model;
+      this.instructions = config.instructions;
+      this.tools = config.tools || [];
+      this.handoffs = config.handoffs || [];
+    }
+  }
+  return {
+    Agent: MockAgent,
+    tool: (config: any) => ({
+      type: 'function',
+      name: config.name,
+      description: config.description,
+      parameters: config.parameters,
+      execute: config.execute,
+    }),
+    handoff: vi.fn().mockImplementation((agent: any, options?: any) => ({
+      type: 'handoff',
+      agent,
+      ...options,
+    })),
+    run: vi.fn().mockResolvedValue({ finalOutput: 'Test response' }),
+  };
+});
+
+vi.mock('../../server/agents/channels/conversationStore', () => ({
+  conversationStore: {
+    getConversationHistory: vi.fn().mockResolvedValue([]),
+    storeMessage: vi.fn().mockResolvedValue(1),
+  },
+}));
+
+vi.mock('../../server/agents/middleware/aiIdentification', () => ({
+  ensureAIIdentification: vi.fn((text: string) => text),
+  isFirstAIMessage: vi.fn().mockResolvedValue(false),
+}));
+
+describe('PM Agent follow-up integration', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('should include schedule_work_order_followup tool', async () => {
+    const { pmAgent } = await import('../../server/agents/sdk/pmAgent');
+    const toolNames = pmAgent.tools.map((t: any) => t.name);
+    expect(toolNames).toContain('schedule_work_order_followup');
+  });
+
+  it('should mention follow-up scheduling in instructions', async () => {
+    const { pmAgent } = await import('../../server/agents/sdk/pmAgent');
+    expect(pmAgent.instructions).toContain('schedule_work_order_followup');
+    expect(pmAgent.instructions.toLowerCase()).toContain('follow up');
+  });
+});
+
+describe('scheduleWorkOrderFollowupTool', () => {
+  it('should be registered in the tool registry', async () => {
+    const { toolRegistry } = await import('../../server/agents/tools/registry');
+    expect(toolRegistry.hasTool('schedule_work_order_followup')).toBe(true);
+  });
+});

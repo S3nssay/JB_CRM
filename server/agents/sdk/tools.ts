@@ -191,6 +191,17 @@ export const createWorkOrderSdkTool = wrapRegistryTool(
   }),
 );
 
+// ---- Work order follow-up tool ----
+
+export const scheduleWorkOrderFollowupSdkTool = wrapRegistryTool(
+  'schedule_work_order_followup',
+  'Schedule automated follow-up checks for a work order. Queues contractor progress checks, tenant satisfaction checks, and completion verification at urgency-based intervals.',
+  z4.object({
+    workOrderId: z4.number(),
+    urgency: z4.string(),
+  }),
+);
+
 // ---- Checklist tools ----
 
 // Lazy import to avoid circular dependency at module load
