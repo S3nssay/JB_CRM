@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Foundation** - Property knowledge base schema, conversation store, tool registry, and audit trail (completed 2026-03-19)
 - [x] **Phase 2: Text-Channel Agents** - Supervisor, Sales, Lettings, and Admin specialists live on WhatsApp/SMS/email (completed 2026-03-20)
 - [ ] **Phase 3: Voice Integration** - Voice AI (Vapi) answering inbound calls 24/7 with specialist routing
-- [ ] **Phase 4: Property Management Specialist** - Maintenance intake, contractor dispatch, work order management
+- [x] **Phase 4: Property Management Specialist** - Maintenance intake, contractor dispatch, work order management (completed 2026-03-22)
 - [ ] **Phase 5: Arrears Chasing & Monitoring** - Compliant rent arrears outreach and staff agent monitoring dashboard
 
 ## Phase Details
@@ -116,5 +116,5 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 1. Foundation | 6/6 | Complete   | 2026-03-19 |
 | 2. Text-Channel Agents | 5/5 | Complete | 2026-03-20 |
 | 3. Voice Integration | 2/3 | In Progress|  |
-| 4. Property Management Specialist | 2/3 | In Progress|  |
+| 4. Property Management Specialist | 3/3 | Complete   | 2026-03-22 |
 | 5. Arrears Chasing & Monitoring | 0/3 | Not started | - |

@@ -50,7 +50,7 @@
 - [x] **PM-02**: Triages faults using property knowledge base (what system, warranty status, last service)
 - [x] **PM-03**: Contacts appropriate contractor based on property knowledge base and fault type
 - [x] **PM-04**: Books contractors and generates quotes for landlord approval
-- [ ] **PM-05**: Follows up with contractors to verify work completion
+- [x] **PM-05**: Follows up with contractors to verify work completion
 - [ ] **PM-06**: Chases rent arrears with outbound calls/SMS/WhatsApp to tenants
 - [ ] **PM-07**: Attempts to secure payment commitments and sends payment links
 - [ ] **PM-08**: Arrears chasing has hard-coded frequency limits and compliance rules (not prompt-only)
@@ -128,7 +128,7 @@
 | PM-02 | Phase 4 | Complete |
 | PM-03 | Phase 4 | Complete |
 | PM-04 | Phase 4 | Complete |
-| PM-05 | Phase 4 | Pending |
+| PM-05 | Phase 4 | Complete |
 | PM-06 | Phase 5 | Pending |
 | PM-07 | Phase 5 | Pending |
 | PM-08 | Phase 5 | Pending |
