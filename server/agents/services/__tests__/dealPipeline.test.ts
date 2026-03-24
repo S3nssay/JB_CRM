@@ -5,7 +5,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ---- Hoisted mocks ----
 const { mockCreateDealStep, mockUpdateDealStep, mockGetDealSteps, mockCreateDealEvent,
-  mockUpdateDeal, mockGetDeal, mockEmit, mockSubscribe, mockEscalate, mockCreateNotification } = vi.hoisted(() => ({
+  mockUpdateDeal, mockGetDeal, mockEmit, mockSubscribe, mockEscalate, mockCreateNotification,
+  mockPoolQuery, mockGenerateChecklist, mockSend, mockSendPreferred } = vi.hoisted(() => ({
   mockCreateDealStep: vi.fn(),
   mockUpdateDealStep: vi.fn(),
   mockGetDealSteps: vi.fn(),
@@ -16,6 +17,10 @@ const { mockCreateDealStep, mockUpdateDealStep, mockGetDealSteps, mockCreateDeal
   mockSubscribe: vi.fn().mockReturnValue(Promise.resolve(undefined)),
   mockEscalate: vi.fn().mockReturnValue(Promise.resolve({ escalationId: 1, assignedTo: 1, notified: true })),
   mockCreateNotification: vi.fn(),
+  mockPoolQuery: vi.fn().mockReturnValue(Promise.resolve({ rows: [] })),
+  mockGenerateChecklist: vi.fn().mockReturnValue(Promise.resolve({ created: 3, items: ['item1', 'item2', 'item3'] })),
+  mockSend: vi.fn().mockReturnValue(Promise.resolve(true)),
+  mockSendPreferred: vi.fn().mockReturnValue(Promise.resolve(true)),
 }));
 
 vi.mock('../dealService', () => ({
@@ -57,7 +62,20 @@ vi.mock('../escalationService', () => ({
 }));
 
 vi.mock('../../../db', () => ({
-  pool: { query: vi.fn() },
+  pool: { query: mockPoolQuery },
+}));
+
+vi.mock('../checklistService', () => ({
+  checklistService: {
+    generateChecklist: mockGenerateChecklist,
+  },
+}));
+
+vi.mock('../messageSender', () => ({
+  messageSender: {
+    send: mockSend,
+    sendPreferred: mockSendPreferred,
+  },
 }));
 
 // Prevent pg-boss from actually initializing
@@ -250,5 +268,105 @@ describe('dealPipelineService.skipStep', () => {
     }));
     // Deal should complete since step_a is completed and optional_step is now skipped
     expect(mockUpdateDeal).toHaveBeenCalledWith(1, expect.objectContaining({ status: 'completed' }));
+  });
+});
+
+describe('Pipeline step actions fire during initializePipeline', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateDealStep.mockImplementation(async (data: any) => ({
+      id: Math.floor(Math.random() * 1000),
+      ...data,
+      status: 'pending',
+    }));
+    mockCreateDealEvent.mockResolvedValue({ id: 1 });
+    mockUpdateDealStep.mockImplementation(async (id: number, data: any) => ({ id, ...data }));
+    mockUpdateDeal.mockResolvedValue({ id: 1 });
+    mockCreateNotification.mockResolvedValue({ id: 1 });
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it('initializePipeline triggers step action events for steps with no deps', async () => {
+    await dealPipelineService.initializePipeline('lettings_agreed', {
+      id: 1,
+      property_id: 10,
+      deal_type: 'lettings_agreed',
+      tenant_id: 5,
+      deal_data: { rentAmount: 150000, depositAmount: 50000, startDate: '2026-04-01' },
+    });
+
+    // Wait for fire-and-forget async IIFEs to settle
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // Step actions should have created deal events and notifications
+    // (right_to_rent, deposit_registration, inventory_report, welcome_message, checkin_inspection all have no deps)
+    const eventCalls = mockCreateDealEvent.mock.calls;
+    const hasStepActionEvents = eventCalls.some((c: any[]) => c[0]?.eventType === 'step.action');
+    expect(hasStepActionEvents).toBe(true);
+  });
+
+  it('offboarding_checklist step calls checklistService.generateChecklist', async () => {
+    await dealPipelineService.initializePipeline('tenancy_ending', {
+      id: 2,
+      property_id: 20,
+      deal_type: 'tenancy_ending',
+      tenancy_id: 15,
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // checklistService.generateChecklist should have been called for offboarding
+    expect(mockGenerateChecklist).toHaveBeenCalledWith(15, 'offboarding');
+  });
+
+  it('welcome_message step sends message via messageSender', async () => {
+    mockPoolQuery
+      .mockResolvedValueOnce({ rows: [] }) // property_systems_inventory
+      .mockResolvedValueOnce({ rows: [] }) // property_certifications
+      .mockResolvedValueOnce({ rows: [{ phone: '+447123456789', email: 'tenant@test.com' }] }); // tenant lookup
+
+    await dealPipelineService.initializePipeline('lettings_agreed', {
+      id: 3,
+      property_id: 30,
+      deal_type: 'lettings_agreed',
+      tenant_id: 10,
+      deal_data: { rentAmount: 150000, startDate: '2026-04-01' },
+    });
+
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // messageSender.sendPreferred should have been called for welcome message
+    expect(mockSendPreferred).toHaveBeenCalled();
+  });
+});
+
+describe('advanceStep triggers step actions for dependent steps', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCreateDealEvent.mockResolvedValue({ id: 1 });
+    mockUpdateDealStep.mockImplementation(async (id: number, data: any) => ({ id, ...data }));
+    mockUpdateDeal.mockResolvedValue({ id: 1 });
+    mockEmit.mockResolvedValue('job-id');
+    mockCreateNotification.mockResolvedValue({ id: 1 });
+    mockPoolQuery.mockResolvedValue({ rows: [] });
+  });
+
+  it('step action fires for ast_contract when right_to_rent completes', async () => {
+    mockGetDealSteps.mockResolvedValue([
+      { id: 1, step_id: 'right_to_rent', status: 'in_progress', depends_on: null, is_skipped: false },
+      { id: 2, step_id: 'ast_contract', status: 'pending', depends_on: JSON.stringify(['right_to_rent']), is_skipped: false },
+    ]);
+    mockGetDeal.mockResolvedValue({ id: 1, property_id: 10, deal_type: 'lettings_agreed' });
+
+    await dealPipelineService.advanceStep(1, 'right_to_rent');
+
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // ast_contract step action should create a deal event
+    const eventCalls = mockCreateDealEvent.mock.calls;
+    const hasAstEvent = eventCalls.some((c: any[]) =>
+      c[0]?.title?.includes('AST contract')
+    );
+    expect(hasAstEvent).toBe(true);
   });
 });

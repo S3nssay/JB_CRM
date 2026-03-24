@@ -3550,6 +3550,40 @@ crmRouter.put('/offers/:id', requireAgent, async (req, res) => {
       } else if (status === 'withdrawn') {
         updateFields.push(`withdrawn_at = $${valueIndex++}`);
         updateValues.push(now);
+
+        // Fire-and-forget: trigger sale_collapsed if previously accepted
+        if (currentOffer.status === 'accepted') {
+          (async () => {
+            try {
+              const { dealService } = await import('./agents/services/dealService');
+              const { dealPipelineService } = await import('./agents/services/dealPipelineService');
+              const { dealEventBus, DEAL_EVENTS } = await import('./agents/services/dealEventBus');
+
+              const deal = await dealService.createDeal({
+                dealType: 'sale_collapsed',
+                propertyId: currentOffer.property_id,
+                buyerId: currentOffer.lead_id,
+                currentPipeline: 'sale_collapsed',
+                dealData: {
+                  offerAmount: currentOffer.offer_amount,
+                  offerId: currentOffer.id,
+                  collapseReason: 'withdrawn',
+                },
+              });
+
+              await dealPipelineService.initializePipeline('sale_collapsed', deal);
+
+              await dealEventBus.emit(DEAL_EVENTS.SALE_COLLAPSED, {
+                dealId: deal.id,
+                propertyId: currentOffer.property_id,
+                dealType: 'sale_collapsed',
+                offerId: currentOffer.id,
+              });
+            } catch (err) {
+              console.error('[crmRoutes] sale_collapsed pipeline trigger error:', err);
+            }
+          })();
+        }
       }
     }
 
@@ -3600,6 +3634,37 @@ crmRouter.put('/offers/:id', requireAgent, async (req, res) => {
         INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
         VALUES ($1, 'status_change', 'Offer accepted by landlord', $2, $3)
       `, [currentOffer.lead_id, currentOffer.property_id, req.user?.id || null]);
+
+      // Fire-and-forget: trigger sale_agreed deal pipeline
+      (async () => {
+        try {
+          const { dealService } = await import('./agents/services/dealService');
+          const { dealPipelineService } = await import('./agents/services/dealPipelineService');
+          const { dealEventBus, DEAL_EVENTS } = await import('./agents/services/dealEventBus');
+
+          const deal = await dealService.createDeal({
+            dealType: 'sale_agreed',
+            propertyId: currentOffer.property_id,
+            buyerId: currentOffer.lead_id,
+            currentPipeline: 'sale_agreed',
+            dealData: {
+              offerAmount: currentOffer.offer_amount,
+              offerId: currentOffer.id,
+            },
+          });
+
+          await dealPipelineService.initializePipeline('sale_agreed', deal);
+
+          await dealEventBus.emit(DEAL_EVENTS.SALE_AGREED, {
+            dealId: deal.id,
+            propertyId: currentOffer.property_id,
+            dealType: 'sale_agreed',
+            offerId: currentOffer.id,
+          });
+        } catch (err) {
+          console.error('[crmRoutes] sale_agreed pipeline trigger error:', err);
+        }
+      })();
     } else if (status === 'rejected') {
       await pool.query(`
         INSERT INTO lead_activity (lead_id, activity_type, description, related_property_id, performed_by)
