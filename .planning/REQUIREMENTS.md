@@ -51,9 +51,9 @@
 - [x] **PM-03**: Contacts appropriate contractor based on property knowledge base and fault type
 - [x] **PM-04**: Books contractors and generates quotes for landlord approval
 - [x] **PM-05**: Follows up with contractors to verify work completion
-- [ ] **PM-06**: Chases rent arrears with outbound calls/SMS/WhatsApp to tenants
+- [x] **PM-06**: Chases rent arrears with outbound calls/SMS/WhatsApp to tenants
 - [ ] **PM-07**: Attempts to secure payment commitments and sends payment links
-- [ ] **PM-08**: Arrears chasing has hard-coded frequency limits and compliance rules (not prompt-only)
+- [x] **PM-08**: Arrears chasing has hard-coded frequency limits and compliance rules (not prompt-only)
 
 ### Admin Specialist
 
@@ -129,9 +129,9 @@
 | PM-03 | Phase 4 | Complete |
 | PM-04 | Phase 4 | Complete |
 | PM-05 | Phase 4 | Complete |
-| PM-06 | Phase 5 | Pending |
+| PM-06 | Phase 5 | Complete |
 | PM-07 | Phase 5 | Pending |
-| PM-08 | Phase 5 | Pending |
+| PM-08 | Phase 5 | Complete |
 | ADMIN-01 | Phase 2 | Complete |
 | ADMIN-02 | Phase 2 | Complete |
 | ADMIN-03 | Phase 2 | Complete |

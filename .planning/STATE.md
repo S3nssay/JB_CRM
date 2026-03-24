@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 6 context gathered
-last_updated: "2026-03-24T10:48:09.702Z"
-last_activity: 2026-03-22 — Completed 04-03 (Work Order Follow-up)
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-03-24T11:45:00Z"
+last_activity: 2026-03-24 — Completed 05-01 (Arrears Chasing Agent)
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 17
-  percent: 85
+  completed_plans: 18
+  percent: 90
 ---
 
 # Project State
@@ -21,23 +21,23 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 4 — Property Management
+**Current focus:** Phase 5 — Arrears Monitoring
 
 ## Current Position
 
-Phase: 4 of 5 (Property Management)
-Plan: 3 of 3 in current phase (04-03 complete -- PHASE COMPLETE)
+Phase: 5 of 6 (Arrears Monitoring)
+Plan: 1 of 3 in current phase
 Status: In Progress
-Last activity: 2026-03-22 — Completed 04-03 (Work Order Follow-up)
+Last activity: 2026-03-24 — Completed 05-01 (Arrears Chasing Agent)
 
-Progress: [████████▌░] 85%
+Progress: [█████████░] 90%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17
+- Total plans completed: 18
 - Average duration: ~6 min
-- Total execution time: ~104 min
+- Total execution time: ~111 min
 
 **By Phase:**
 
@@ -49,9 +49,11 @@ Progress: [████████▌░] 85%
 
 | 04 | 3 | 16min | 5.3min |
 
+| 05 | 1 | 7min | 7.0min |
+
 **Recent Trend:**
-- Last 5 plans: 3min, 9min, 5min, 7min, 5min
-- Trend: Phase 4 property management COMPLETE
+- Last 5 plans: 9min, 5min, 7min, 5min, 7min
+- Trend: Phase 5 arrears monitoring started
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -71,6 +73,7 @@ Progress: [████████▌░] 85%
 | Phase 04 P01 | 3min | 2 tasks | 9 files |
 | Phase 04 P02 | 8min | 2 tasks | 9 files |
 | Phase 04 P03 | 5min | 2 tasks | 6 files |
+| Phase 05 P01 | 7min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -131,6 +134,11 @@ Recent decisions affecting current work:
 - [Phase 04-03]: Urgency-based follow-up intervals: emergency=24h, urgent=48h, routine=72h, low=96h
 - [Phase 04-03]: MAX_FOLLOWUP_ATTEMPTS=2 before escalation; completion check max 3 rechecks at 24h intervals
 - [Phase 04-03]: Lazy import for workOrderFollowupService in tool definition (avoid DB at module load)
+- [Phase 05-01]: Compliance rules enforced in code (ArrearsComplianceGuard), not LLM prompts -- LLM cannot bypass contact limits
+- [Phase 05-01]: Vulnerability detection uses regex keyword matching by category (financial, mental_health, health, domestic, bereavement)
+- [Phase 05-01]: 48-hour contact window per-type: messages share one window, phone_call has separate window
+- [Phase 05-01]: UK time enforcement uses Intl.DateTimeFormat with Europe/London timezone for DST-aware checks
+- [Phase 05-01]: Lazy imports for arrearsComplianceGuard and messageSender in tools.ts (avoid circular deps)
 
 ### Roadmap Evolution
 
@@ -147,6 +155,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T10:48:09.669Z
-Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-cross-agent-collaboration-deal-lifecycle-automation/06-CONTEXT.md
+Last session: 2026-03-24T11:45:00Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: .planning/phases/05-arrears-monitoring/05-01-SUMMARY.md
