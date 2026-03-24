@@ -276,3 +276,247 @@ export const escalateToHumanTool = tool({
     return 'Escalation recorded. Our team will be in touch with you shortly.';
   },
 });
+
+// ---- Arrears tools ----
+
+// Lazy imports to avoid circular dependencies at module load
+let _arrearsComplianceGuard: any = null;
+async function getArrearsComplianceGuard() {
+  if (!_arrearsComplianceGuard) {
+    const mod = await import('../services/arrearsComplianceGuard');
+    _arrearsComplianceGuard = mod.arrearsComplianceGuard;
+  }
+  return _arrearsComplianceGuard;
+}
+
+let _messageSender: any = null;
+async function getMessageSender() {
+  if (!_messageSender) {
+    const mod = await import('../services/messageSender');
+    _messageSender = mod.messageSender;
+  }
+  return _messageSender;
+}
+
+export const lookupArrearsCaseTool = tool({
+  name: 'lookup_arrears_case',
+  description: 'Look up arrears case details for a tenant including amount owed, days overdue, and contact history',
+  parameters: z4.object({
+    tenantId: z4.number(),
+  }),
+  execute: async (_context: AgentContext, input: { tenantId: number }) => {
+    const { db: database } = await import('../../db');
+    const { arrears, dunningActions, tenant, properties } = await import('@shared/schema');
+    const { eq, and, desc } = await import('drizzle-orm');
+
+    // Get active arrears for tenant
+    const arrearsRows = await database
+      .select()
+      .from(arrears)
+      .where(
+        and(
+          eq(arrears.tenantId, input.tenantId),
+          eq(arrears.status, 'active'),
+        ),
+      );
+
+    if (arrearsRows.length === 0) {
+      return JSON.stringify({ found: false, message: 'No active arrears case found for this tenant' });
+    }
+
+    const arrearsCase = arrearsRows[0];
+
+    // Get tenant details
+    const tenantRows = await database
+      .select()
+      .from(tenant)
+      .where(eq(tenant.id, input.tenantId))
+      .limit(1);
+
+    // Get property details
+    let propertyInfo = null;
+    if (arrearsCase.propertyId) {
+      const propRows = await database
+        .select()
+        .from(properties)
+        .where(eq(properties.id, arrearsCase.propertyId))
+        .limit(1);
+      if (propRows.length > 0) {
+        propertyInfo = { id: propRows[0].id, address: propRows[0].address };
+      }
+    }
+
+    // Get last 5 dunning actions
+    const recentActions = await database
+      .select()
+      .from(dunningActions)
+      .where(eq(dunningActions.arrearsId, arrearsCase.id))
+      .orderBy(desc(dunningActions.createdAt))
+      .limit(5);
+
+    return JSON.stringify({
+      found: true,
+      arrears: {
+        id: arrearsCase.id,
+        amount: arrearsCase.amount,
+        amountFormatted: `£${(arrearsCase.amount / 100).toFixed(2)}`,
+        daysOverdue: arrearsCase.daysOverdue,
+        dunningLevel: arrearsCase.dunningLevel,
+        status: arrearsCase.status,
+        lastReminderSent: arrearsCase.lastReminderSent,
+      },
+      tenant: tenantRows.length > 0 ? { id: tenantRows[0].id, name: tenantRows[0].name } : null,
+      property: propertyInfo,
+      recentContacts: recentActions.map((a: any) => ({
+        type: a.actionType,
+        channel: a.channel,
+        status: a.status,
+        sentAt: a.sentAt,
+      })),
+    });
+  },
+});
+
+export const sendPaymentReminderTool = tool({
+  name: 'send_payment_reminder',
+  description: 'Send a payment reminder to a tenant in arrears. Compliance rules are enforced automatically.',
+  parameters: z4.object({
+    arrearsId: z4.number(),
+    channel: z4.enum(['sms', 'whatsapp', 'email']),
+    message: z4.string(),
+  }),
+  execute: async (_context: AgentContext, input: { arrearsId: number; channel: 'sms' | 'whatsapp' | 'email'; message: string }) => {
+    const { db: database } = await import('../../db');
+    const { arrears, contactIdentities } = await import('@shared/schema');
+    const { eq, and } = await import('drizzle-orm');
+
+    const complianceGuard = await getArrearsComplianceGuard();
+    const sender = await getMessageSender();
+
+    // Look up the arrears case
+    const arrearsRows = await database
+      .select()
+      .from(arrears)
+      .where(eq(arrears.id, input.arrearsId))
+      .limit(1);
+
+    if (arrearsRows.length === 0) {
+      return JSON.stringify({ sent: false, reason: 'Arrears case not found' });
+    }
+
+    const arrearsCase = arrearsRows[0];
+
+    // Check compliance
+    const check = await complianceGuard.canContact(arrearsCase.tenantId, input.channel);
+
+    if (!check.allowed) {
+      // Log the blocked attempt
+      await complianceGuard.logContactAttempt(
+        input.arrearsId,
+        input.channel,
+        input.channel,
+        'blocked',
+        `Blocked: ${check.reason}`,
+      );
+
+      return JSON.stringify({
+        sent: false,
+        reason: check.reason,
+        nextAllowedAt: check.nextAllowedAt,
+      });
+    }
+
+    // Look up contact info
+    const contacts = await database
+      .select()
+      .from(contactIdentities)
+      .where(
+        and(
+          eq(contactIdentities.contactId, arrearsCase.tenantId),
+          eq(contactIdentities.contactType, 'tenant'),
+        ),
+      )
+      .limit(5);
+
+    const phoneContact = contacts.find((c: any) =>
+      c.identifierType === 'phone' && c.isPrimary,
+    ) || contacts.find((c: any) => c.identifierType === 'phone');
+
+    const emailContact = contacts.find((c: any) =>
+      c.identifierType === 'email' && c.isPrimary,
+    ) || contacts.find((c: any) => c.identifierType === 'email');
+
+    let sent = false;
+    if (input.channel === 'email' && emailContact) {
+      sent = await sender.send('email', emailContact.identifierValue, input.message, {
+        subject: 'Outstanding Rent Balance - John Barclay Estate Agents',
+      });
+    } else if (phoneContact) {
+      sent = await sender.send(input.channel, phoneContact.identifierValue, input.message);
+    }
+
+    // Log the attempt
+    await complianceGuard.logContactAttempt(
+      input.arrearsId,
+      input.channel,
+      input.channel,
+      sent ? 'sent' : 'failed',
+      sent ? 'Reminder sent successfully' : 'Failed to deliver message',
+    );
+
+    await auditLogger.logToolCall({
+      agentType: 'arrears',
+      toolName: 'send_payment_reminder',
+      toolInput: { arrearsId: input.arrearsId, channel: input.channel },
+      toolOutput: { sent },
+      durationMs: 0,
+    }).catch(() => {});
+
+    return JSON.stringify({ sent, channel: input.channel });
+  },
+});
+
+export const escalateArrearsCaseTool = tool({
+  name: 'escalate_arrears_case',
+  description: 'Escalate an arrears case to a human case manager. Use when: vulnerability detected, contact limit reached, or tenant situation requires human judgment.',
+  parameters: z4.object({
+    arrearsId: z4.number(),
+    reason: z4.string(),
+  }),
+  execute: async (context: AgentContext, input: { arrearsId: number; reason: string }) => {
+    const { db: database } = await import('../../db');
+    const { arrears } = await import('@shared/schema');
+    const { eq, sql } = await import('drizzle-orm');
+    const escService = await getEscalationService();
+
+    // Escalate
+    const result = await escService.escalate({
+      conversationId: context.conversationId,
+      reason: `Arrears case #${input.arrearsId}: ${input.reason}`,
+      urgency: 'urgent',
+      channel: context.channel,
+    });
+
+    // Update dunning level (cap at 5)
+    await database
+      .update(arrears)
+      .set({
+        dunningLevel: sql`LEAST(${arrears.dunningLevel} + 1, 5)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(arrears.id, input.arrearsId));
+
+    // Audit log
+    await auditLogger.logEscalation({
+      agentType: 'arrears',
+      reasoning: `Arrears escalation: ${input.reason}`,
+      conversationId: context.conversationId,
+      channel: context.channel,
+    });
+
+    if (result.assignedTo) {
+      return `Case escalated to a human case manager (staff ID: ${result.assignedTo}). They will review the situation and contact the tenant directly.`;
+    }
+    return 'Escalation recorded. A case manager will review this shortly.';
+  },
+});

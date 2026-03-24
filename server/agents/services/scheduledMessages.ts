@@ -16,6 +16,13 @@ import { eq, or } from 'drizzle-orm';
 
 // ---- Types ----
 
+export interface ArrearsChaseJobData {
+  arrearsId: number;
+  tenantId: number;
+  contactPhone: string;
+  channel: 'whatsapp' | 'sms';
+}
+
 export interface PostActionParams {
   action: 'book_viewing' | 'create_lead';
   contactPhone: string;
@@ -98,6 +105,77 @@ export class ScheduledMessageService {
       await this.processFollowUpJob({ ...job.data, messageType: 'follow-up-checkin' });
     });
 
+    await this.boss.work('arrears-chase', async (job: any) => {
+      const data = job.data as ArrearsChaseJobData;
+      if (await this.checkOptOut(data.contactPhone)) {
+        console.log(`[ScheduledMessages] Skipping arrears chase for opted-out contact ${data.contactPhone}`);
+        return;
+      }
+
+      try {
+        const { arrearsComplianceGuard } = await import('./arrearsComplianceGuard');
+        const { arrears } = await import('@shared/schema');
+        const { eq } = await import('drizzle-orm');
+
+        const check = await arrearsComplianceGuard.canContact(data.tenantId, data.channel);
+
+        if (!check.allowed) {
+          // Log blocked attempt
+          await arrearsComplianceGuard.logContactAttempt(
+            data.arrearsId,
+            data.channel,
+            data.channel,
+            'blocked',
+            `Scheduled chase blocked: ${check.reason}`,
+          );
+
+          // Reschedule for next allowed time if available
+          if (check.nextAllowedAt) {
+            await this.boss.send('arrears-chase', data, {
+              startAfter: check.nextAllowedAt.toISOString(),
+              retryLimit: 3,
+              retryDelay: 300,
+            });
+            console.log(`[ScheduledMessages] Arrears chase rescheduled for ${check.nextAllowedAt.toISOString()}`);
+          }
+          return;
+        }
+
+        // Get arrears amount for message
+        const arrearsRows = await db
+          .select()
+          .from(arrears)
+          .where(eq(arrears.id, data.arrearsId))
+          .limit(1);
+
+        const amount = arrearsRows.length > 0
+          ? `£${(arrearsRows[0].amount / 100).toFixed(2)}`
+          : 'your outstanding balance';
+
+        const message = `This is a reminder from John Barclay Estate Agents regarding your outstanding rent balance of ${amount}. Please contact us to arrange payment.`;
+
+        await messageSender.sendPreferred(data.contactPhone, message);
+
+        await arrearsComplianceGuard.logContactAttempt(
+          data.arrearsId,
+          data.channel,
+          data.channel,
+          'sent',
+          'Scheduled arrears chase sent',
+        );
+
+        await auditLogger.logToolCall({
+          agentType: 'supervisor',
+          toolName: 'scheduled_message',
+          toolInput: { type: 'arrears-chase', tenantId: data.tenantId, arrearsId: data.arrearsId },
+          toolOutput: { sent: true },
+          durationMs: 0,
+        }).catch(() => {});
+      } catch (err) {
+        console.error('[ScheduledMessages] Arrears chase failed:', err);
+      }
+    });
+
     await this.boss.work('checklist-chase', async (job: any) => {
       const data = job.data;
       if (await this.checkOptOut(data.contactPhone)) {
@@ -146,6 +224,17 @@ export class ScheduledMessageService {
       type: 'morning' as const,
     }, {
       startAfter: morningOf.toISOString(),
+      retryLimit: 3,
+      retryDelay: 300,
+    });
+  }
+
+  /**
+   * Schedule an arrears chase job for a future time.
+   */
+  async scheduleArrearsChase(data: ArrearsChaseJobData, runAt: Date): Promise<void> {
+    await this.boss.send('arrears-chase', data, {
+      startAfter: runAt.toISOString(),
       retryLimit: 3,
       retryDelay: 300,
     });
