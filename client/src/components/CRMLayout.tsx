@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImportKeyDataDialog } from '@/components/ImportKeyDataDialog';
+import NotificationBell from '@/components/NotificationBell';
 import {
   Building2, Users, Home, Wrench, BarChart3,
   Settings, LogOut, Bell, GitBranch, Mic, Shield,
@@ -112,9 +113,7 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
             </div>
 
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
+              {user && <NotificationBell />}
               <div className="flex items-center space-x-2">
                 <span className="text-sm text-gray-700">{user?.fullName}</span>
                 <Button
