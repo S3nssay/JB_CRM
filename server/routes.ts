@@ -19,6 +19,7 @@ import { SearchFilters, ParsedIntent } from '@shared/schema';
 import { aiPhone } from './aiPhoneService';
 import tenantRouter from './tenantRoutes';
 import { vapiWebhookRouter } from './agents/voice/vapiWebhooks';
+import { dealRouter } from './dealRoutes';
 
 // Basic pattern matching for property queries (fallback)
 function parseBasicQuery(query: string): ParsedIntent {
@@ -202,6 +203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', accountingRouter);
   app.use('/api/crm', messageRouterAgent.router);
   app.use('/api/crm', agentMonitoringRouter);
+  app.use('/api/crm', dealRouter);
 
   // ==========================================
   // VAPI VOICE WEBHOOKS (at /api/voice/*)
