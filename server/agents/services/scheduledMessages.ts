@@ -23,6 +23,16 @@ export interface ArrearsChaseJobData {
   channel: 'whatsapp' | 'sms';
 }
 
+export interface PaymentCommitmentFollowUpData {
+  arrearsId: number;
+  tenantId: number;
+  contactPhone: string;
+  channel: 'whatsapp' | 'sms';
+  commitAmount: number; // pence
+  commitDate: string; // ISO date
+  attemptNumber: number; // starts at 1
+}
+
 export interface PostActionParams {
   action: 'book_viewing' | 'create_lead';
   contactPhone: string;
@@ -188,6 +198,169 @@ export class ScheduledMessageService {
         console.error('[ScheduledMessages] Checklist chase failed:', err);
       }
     });
+
+    await this.boss.work('payment-commitment-followup', async (job: any) => {
+      const data = job.data as PaymentCommitmentFollowUpData;
+
+      // Check opt-out
+      if (await this.checkOptOut(data.contactPhone)) {
+        console.log(`[ScheduledMessages] Skipping payment follow-up for opted-out contact ${data.contactPhone}`);
+        return;
+      }
+
+      try {
+        const { arrears, payments } = await import('@shared/schema');
+        const { eq, and, gte, lte } = await import('drizzle-orm');
+        const { arrearsComplianceGuard } = await import('./arrearsComplianceGuard');
+
+        // Check if payment was received (within date range around commitment date)
+        const commitDate = new Date(data.commitDate);
+        const searchStart = new Date(commitDate.getTime() - 1 * 24 * 60 * 60 * 1000); // 1 day before
+        const searchEnd = new Date(commitDate.getTime() + 3 * 24 * 60 * 60 * 1000); // 3 days after
+
+        const paymentRows = await db
+          .select()
+          .from(payments)
+          .where(
+            and(
+              eq(payments.tenantId, data.tenantId),
+              eq(payments.status, 'completed'),
+              gte(payments.paidAt, searchStart),
+              lte(payments.paidAt, searchEnd),
+            ),
+          )
+          .limit(1);
+
+        if (paymentRows.length > 0) {
+          const payment = paymentRows[0];
+          const paidAmount = payment.amount;
+
+          // Log success
+          await auditLogger.logToolCall({
+            agentType: 'supervisor',
+            action: 'payment_commitment_verified',
+            toolName: 'payment_commitment_followup',
+            toolInput: { arrearsId: data.arrearsId, tenantId: data.tenantId },
+            toolOutput: { arrearsId: data.arrearsId, amountPaid: paidAmount },
+            durationMs: 0,
+          } as any).catch(() => {});
+
+          // Check arrears to determine status
+          const arrearsRows = await db
+            .select()
+            .from(arrears)
+            .where(eq(arrears.id, data.arrearsId))
+            .limit(1);
+
+          if (arrearsRows.length > 0) {
+            const arrearsCase = arrearsRows[0];
+            const newStatus = paidAmount >= arrearsCase.amount ? 'cleared' : 'partially_paid';
+            const newAmount = newStatus === 'cleared' ? 0 : arrearsCase.amount - paidAmount;
+
+            await db
+              .update(arrears)
+              .set({
+                status: newStatus,
+                amount: newAmount,
+                updatedAt: new Date(),
+              })
+              .where(eq(arrears.id, data.arrearsId));
+          }
+
+          // Payment resolved -- do not send any message
+          return;
+        }
+
+        // Payment NOT received
+
+        // If 3+ attempts, escalate regardless
+        if (data.attemptNumber >= 3) {
+          const { escalationService } = await import('./escalationService');
+          await escalationService.escalate({
+            conversationId: 0,
+            reason: `Payment commitment follow-up: Arrears #${data.arrearsId} - ${data.attemptNumber} follow-up attempts exhausted, no payment received`,
+            urgency: 'urgent',
+            channel: data.channel,
+          });
+
+          await auditLogger.logToolCall({
+            agentType: 'supervisor',
+            toolName: 'payment_commitment_followup',
+            toolInput: { arrearsId: data.arrearsId, attemptNumber: data.attemptNumber },
+            toolOutput: { escalated: true, reason: 'Max follow-up attempts reached' },
+            durationMs: 0,
+          }).catch(() => {});
+
+          return;
+        }
+
+        // Check compliance before sending follow-up
+        const check = await arrearsComplianceGuard.canContact(data.tenantId, data.channel);
+
+        if (!check.allowed) {
+          if (check.reason && check.reason.includes('escalate')) {
+            // Escalation required
+            const { escalationService } = await import('./escalationService');
+            await escalationService.escalate({
+              conversationId: 0,
+              reason: `Payment commitment follow-up: Arrears #${data.arrearsId} - ${check.reason}`,
+              urgency: 'urgent',
+              channel: data.channel,
+            });
+            return;
+          }
+
+          if (check.nextAllowedAt) {
+            // Reschedule for next allowed time
+            await this.boss.send('payment-commitment-followup', data, {
+              startAfter: check.nextAllowedAt.toISOString(),
+              retryLimit: 3,
+              retryDelay: 300,
+            });
+            return;
+          }
+
+          // Blocked with no next time -- log and stop
+          return;
+        }
+
+        // Send follow-up message
+        const amountFormatted = `£${(data.commitAmount / 100).toFixed(2)}`;
+        const followUpMsg = `We noticed your committed payment of ${amountFormatted} was due on ${data.commitDate}. Can you confirm when we should expect this?`;
+
+        await messageSender.sendPreferred(data.contactPhone, followUpMsg);
+
+        // Log the contact attempt
+        await arrearsComplianceGuard.logContactAttempt(
+          data.arrearsId,
+          data.channel,
+          data.channel,
+          'sent',
+          'Payment commitment follow-up sent',
+        );
+
+        // Schedule another follow-up in 48 hours
+        const fortyEightHours = new Date(Date.now() + 48 * 60 * 60 * 1000);
+        await this.boss.send('payment-commitment-followup', {
+          ...data,
+          attemptNumber: data.attemptNumber + 1,
+        }, {
+          startAfter: fortyEightHours.toISOString(),
+          retryLimit: 3,
+          retryDelay: 300,
+        });
+
+        await auditLogger.logToolCall({
+          agentType: 'supervisor',
+          toolName: 'payment_commitment_followup',
+          toolInput: { arrearsId: data.arrearsId, attemptNumber: data.attemptNumber },
+          toolOutput: { followUpSent: true },
+          durationMs: 0,
+        }).catch(() => {});
+      } catch (err) {
+        console.error('[ScheduledMessages] Payment commitment follow-up failed:', err);
+      }
+    });
   }
 
   /**
@@ -238,6 +411,18 @@ export class ScheduledMessageService {
       retryLimit: 3,
       retryDelay: 300,
     });
+  }
+
+  /**
+   * Schedule a payment commitment follow-up job.
+   */
+  async schedulePaymentFollowUp(data: PaymentCommitmentFollowUpData, runAt: Date): Promise<string> {
+    const jobId = await this.boss.send('payment-commitment-followup', data, {
+      startAfter: runAt.toISOString(),
+      retryLimit: 3,
+      retryDelay: 300,
+    });
+    return jobId;
   }
 
   /**
