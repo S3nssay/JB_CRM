@@ -111,7 +111,7 @@ Plans:
 **Goal:** Agents collaborate across deal lifecycles -- when one specialist completes a stage (tenancy agreed, sale agreed, renewal due, tenancy ending), downstream agents are automatically triggered via an event bus, with a shared deal record, visual timeline, real-time notifications, and full staff override controls.
 **Requirements**: DEAL-01, DEAL-02, DEAL-03, DEAL-04, DEAL-05, DEAL-06
 **Depends on:** Phase 5
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 - [ ] 06-01-PLAN.md — Schema (deals, deal_steps, deal_events, notifications tables), DealEventBus (pg-boss), DealPipelineService (coded pipeline templates with dependency resolution), DealService (CRUD)
@@ -131,4 +131,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 3. Voice Integration | 2/3 | In Progress|  |
 | 4. Property Management Specialist | 3/3 | Complete   | 2026-03-22 |
 | 5. Arrears Chasing & Monitoring | 2/3 | In Progress|  |
-| 6. Cross-Agent Collaboration | 2/4 | In Progress|  |
+| 6. Cross-Agent Collaboration | 3/4 | In Progress|  |
