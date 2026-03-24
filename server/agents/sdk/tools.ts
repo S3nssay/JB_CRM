@@ -277,6 +277,26 @@ export const escalateToHumanTool = tool({
   },
 });
 
+// ---- Payment link service (lazy import) ----
+
+let _paymentLinkService: any = null;
+async function getPaymentLinkService() {
+  if (!_paymentLinkService) {
+    const mod = await import('../services/paymentLinkService');
+    _paymentLinkService = mod.paymentLinkService;
+  }
+  return _paymentLinkService;
+}
+
+let _scheduledMessageService: any = null;
+async function getScheduledMessageService() {
+  if (!_scheduledMessageService) {
+    const mod = await import('../services/scheduledMessages');
+    _scheduledMessageService = mod.scheduledMessageService;
+  }
+  return _scheduledMessageService;
+}
+
 // ---- Arrears tools ----
 
 // Lazy imports to avoid circular dependencies at module load
@@ -518,5 +538,203 @@ export const escalateArrearsCaseTool = tool({
       return `Case escalated to a human case manager (staff ID: ${result.assignedTo}). They will review the situation and contact the tenant directly.`;
     }
     return 'Escalation recorded. A case manager will review this shortly.';
+  },
+});
+
+// ---- Payment commitment & link tools ----
+
+export const capturePaymentCommitmentTool = tool({
+  name: 'capture_payment_commitment',
+  description: 'Record a payment commitment made by a tenant. Schedules an automated follow-up to verify payment on the committed date.',
+  parameters: z4.object({
+    arrearsId: z4.number(),
+    commitDate: z4.string().describe('ISO date string when tenant commits to pay'),
+    commitAmount: z4.number().describe('Amount in pence the tenant commits to pay'),
+    notes: z4.string().optional().describe('Any notes about the commitment'),
+  }),
+  execute: async (_context: AgentContext, input: { arrearsId: number; commitDate: string; commitAmount: number; notes?: string }) => {
+    const { db: database } = await import('../../db');
+    const { arrears, dunningActions, contactIdentities } = await import('@shared/schema');
+    const { eq, and, sql } = await import('drizzle-orm');
+
+    // Look up arrears case
+    const arrearsRows = await database
+      .select()
+      .from(arrears)
+      .where(eq(arrears.id, input.arrearsId))
+      .limit(1);
+
+    if (arrearsRows.length === 0) {
+      return JSON.stringify({ captured: false, reason: 'Arrears case not found' });
+    }
+
+    const arrearsCase = arrearsRows[0];
+    const commitDetails = `COMMITMENT: ${new Date().toISOString()} - Amount: ${input.commitAmount}p, Due: ${input.commitDate}${input.notes ? `, Notes: ${input.notes}` : ''}`;
+
+    // Update arrears notes with commitment
+    await database
+      .update(arrears)
+      .set({
+        notes: arrearsCase.notes ? `${arrearsCase.notes}\n${commitDetails}` : commitDetails,
+        updatedAt: new Date(),
+      })
+      .where(eq(arrears.id, input.arrearsId));
+
+    // Log to dunning_actions
+    await database.insert(dunningActions).values({
+      arrearsId: input.arrearsId,
+      actionType: 'payment_commitment',
+      status: 'sent',
+      notes: commitDetails,
+      sentAt: new Date(),
+    });
+
+    // Audit log
+    await auditLogger.logToolCall({
+      agentType: 'arrears',
+      toolName: 'capture_payment_commitment',
+      toolInput: { arrearsId: input.arrearsId, commitDate: input.commitDate, commitAmount: input.commitAmount },
+      toolOutput: { captured: true },
+      durationMs: 0,
+    }).catch(() => {});
+
+    // Schedule pg-boss follow-up for the commitment date
+    try {
+      // Look up tenant contact for follow-up
+      const contacts = await database
+        .select()
+        .from(contactIdentities)
+        .where(
+          and(
+            eq(contactIdentities.contactId, arrearsCase.tenantId),
+            eq(contactIdentities.contactType, 'tenant'),
+          ),
+        )
+        .limit(5);
+
+      const phoneContact = contacts.find((c: any) =>
+        c.identifierType === 'phone' && c.isPrimary,
+      ) || contacts.find((c: any) => c.identifierType === 'phone');
+
+      const sms = await getScheduledMessageService();
+      await sms.schedulePaymentFollowUp({
+        arrearsId: input.arrearsId,
+        tenantId: arrearsCase.tenantId,
+        contactPhone: phoneContact?.identifierValue || '',
+        channel: 'sms',
+        commitAmount: input.commitAmount,
+        commitDate: input.commitDate,
+        attemptNumber: 1,
+      }, new Date(input.commitDate));
+    } catch (err) {
+      console.error('[capturePaymentCommitment] Failed to schedule follow-up:', err);
+    }
+
+    return JSON.stringify({ captured: true, followUpScheduledFor: input.commitDate });
+  },
+});
+
+export const generatePaymentLinkTool = tool({
+  name: 'generate_payment_link',
+  description: 'Generate a payment link (Stripe or GoCardless) for an arrears balance and send it to the tenant via their preferred channel.',
+  parameters: z4.object({
+    arrearsId: z4.number(),
+    amount: z4.number().describe('Amount in pence'),
+    channel: z4.enum(['sms', 'whatsapp', 'email']).describe('Channel to send the link'),
+  }),
+  execute: async (_context: AgentContext, input: { arrearsId: number; amount: number; channel: 'sms' | 'whatsapp' | 'email' }) => {
+    const { db: database } = await import('../../db');
+    const { arrears, dunningActions, contactIdentities } = await import('@shared/schema');
+    const { eq, and } = await import('drizzle-orm');
+
+    // Look up arrears to get tenantId
+    const arrearsRows = await database
+      .select()
+      .from(arrears)
+      .where(eq(arrears.id, input.arrearsId))
+      .limit(1);
+
+    if (arrearsRows.length === 0) {
+      return JSON.stringify({ sent: false, reason: 'Arrears case not found' });
+    }
+
+    const arrearsCase = arrearsRows[0];
+    const plService = await getPaymentLinkService();
+
+    // Generate link (auto-detects Stripe vs GoCardless)
+    const linkResult = await plService.generateLink(arrearsCase.tenantId, input.arrearsId, input.amount);
+
+    // Look up contact info
+    const contacts = await database
+      .select()
+      .from(contactIdentities)
+      .where(
+        and(
+          eq(contactIdentities.contactId, arrearsCase.tenantId),
+          eq(contactIdentities.contactType, 'tenant'),
+        ),
+      )
+      .limit(5);
+
+    const phoneContact = contacts.find((c: any) =>
+      c.identifierType === 'phone' && c.isPrimary,
+    ) || contacts.find((c: any) => c.identifierType === 'phone');
+
+    const emailContact = contacts.find((c: any) =>
+      c.identifierType === 'email' && c.isPrimary,
+    ) || contacts.find((c: any) => c.identifierType === 'email');
+
+    // Send message
+    const sender = await getMessageSender();
+    let sent = false;
+    const amountFormatted = `£${(input.amount / 100).toFixed(2)}`;
+
+    if (linkResult.method === 'gocardless') {
+      // GoCardless: direct debit collection initiated
+      const msg = `A direct debit collection of ${amountFormatted} has been initiated for your outstanding rent balance. This will be collected from your bank account on the next available date.`;
+      if (input.channel === 'email' && emailContact) {
+        sent = await sender.send('email', emailContact.identifierValue, msg, {
+          subject: 'Direct Debit Collection - John Barclay Estate Agents',
+        });
+      } else if (phoneContact) {
+        sent = await sender.send(input.channel, phoneContact.identifierValue, msg);
+      }
+    } else if (linkResult.url) {
+      // Stripe: payment link
+      const msg = `You can make a payment of ${amountFormatted} for your outstanding rent balance using this secure link: ${linkResult.url}`;
+      if (input.channel === 'email' && emailContact) {
+        sent = await sender.send('email', emailContact.identifierValue, msg, {
+          subject: 'Payment Link - John Barclay Estate Agents',
+        });
+      } else if (phoneContact) {
+        sent = await sender.send(input.channel, phoneContact.identifierValue, msg);
+      }
+    }
+
+    // Log to dunning_actions
+    await database.insert(dunningActions).values({
+      arrearsId: input.arrearsId,
+      actionType: 'payment_link',
+      channel: input.channel,
+      status: sent ? 'sent' : 'pending',
+      notes: linkResult.url ? `Link: ${linkResult.url}` : `GoCardless payment: ${linkResult.paymentRef}`,
+      sentAt: sent ? new Date() : null,
+    });
+
+    // Audit log
+    await auditLogger.logToolCall({
+      agentType: 'arrears',
+      toolName: 'generate_payment_link',
+      toolInput: { arrearsId: input.arrearsId, amount: input.amount, channel: input.channel },
+      toolOutput: { method: linkResult.method, url: linkResult.url, sent },
+      durationMs: 0,
+    }).catch(() => {});
+
+    return JSON.stringify({
+      method: linkResult.method,
+      url: linkResult.url,
+      paymentRef: linkResult.paymentRef,
+      sent,
+    });
   },
 });

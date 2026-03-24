@@ -12,6 +12,8 @@ import type { AgentContext } from './context';
 import {
   lookupArrearsCaseTool,
   sendPaymentReminderTool,
+  capturePaymentCommitmentTool,
+  generatePaymentLinkTool,
   escalateArrearsCaseTool,
   escalateToHumanTool,
 } from './tools';
@@ -57,6 +59,11 @@ ESCALATION TRIGGERS (use escalate_arrears_case or escalate_to_human):
 - Negative sentiment detected
 - You are not confident in the correct response
 
+PAYMENT COMMITMENTS:
+- When a tenant agrees to make a payment, use capture_payment_commitment to record the commitment and schedule a follow-up.
+- After capturing a commitment, offer to send a payment link using generate_payment_link.
+- If the tenant wants to pay immediately, generate a payment link right away without needing a commitment capture.
+
 IMPORTANT:
 - Do not provide legal or financial advice
 - Do not make commitments about write-offs or reductions
@@ -68,5 +75,5 @@ export const arrearsAgent = new Agent<AgentContext>({
   name: 'Sarah from Accounts',
   model: 'gpt-4o',
   instructions: ARREARS_INSTRUCTIONS,
-  tools: [lookupArrearsCaseTool, sendPaymentReminderTool, escalateArrearsCaseTool, escalateToHumanTool],
+  tools: [lookupArrearsCaseTool, sendPaymentReminderTool, capturePaymentCommitmentTool, generatePaymentLinkTool, escalateArrearsCaseTool, escalateToHumanTool],
 });
