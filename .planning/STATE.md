@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-03-24T11:45:00Z"
-last_activity: 2026-03-24 — Completed 05-01 (Arrears Chasing Agent)
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-03-24T12:01:00Z"
+last_activity: 2026-03-24 — Completed 05-02 (Payment Commitment & Link Dispatch)
 progress:
   total_phases: 6
   completed_phases: 4
   total_plans: 20
-  completed_plans: 18
-  percent: 90
+  completed_plans: 19
+  percent: 95
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 ## Current Position
 
 Phase: 5 of 6 (Arrears Monitoring)
-Plan: 1 of 3 in current phase
+Plan: 2 of 3 in current phase
 Status: In Progress
-Last activity: 2026-03-24 — Completed 05-01 (Arrears Chasing Agent)
+Last activity: 2026-03-24 — Completed 05-02 (Payment Commitment & Link Dispatch)
 
-Progress: [█████████░] 90%
+Progress: [█████████▌] 95%
 
 ## Performance Metrics
 
@@ -49,11 +49,11 @@ Progress: [█████████░] 90%
 
 | 04 | 3 | 16min | 5.3min |
 
-| 05 | 1 | 7min | 7.0min |
+| 05 | 2 | 19min | 9.5min |
 
 **Recent Trend:**
-- Last 5 plans: 9min, 5min, 7min, 5min, 7min
-- Trend: Phase 5 arrears monitoring started
+- Last 5 plans: 5min, 7min, 5min, 7min, 12min
+- Trend: Phase 5 arrears monitoring progressing
 
 *Updated after each plan completion*
 | Phase 01 P01 | 7min | 2 tasks | 11 files |
@@ -74,6 +74,7 @@ Progress: [█████████░] 90%
 | Phase 04 P02 | 8min | 2 tasks | 9 files |
 | Phase 04 P03 | 5min | 2 tasks | 6 files |
 | Phase 05 P01 | 7min | 2 tasks | 8 files |
+| Phase 05 P02 | 12min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -139,6 +140,9 @@ Recent decisions affecting current work:
 - [Phase 05-01]: 48-hour contact window per-type: messages share one window, phone_call has separate window
 - [Phase 05-01]: UK time enforcement uses Intl.DateTimeFormat with Europe/London timezone for DST-aware checks
 - [Phase 05-01]: Lazy imports for arrearsComplianceGuard and messageSender in tools.ts (avoid circular deps)
+- [Phase 05-02]: Auto-detect payment method: GoCardless for existing mandates, Stripe links for one-off
+- [Phase 05-02]: 3 follow-up attempt limit before mandatory human escalation
+- [Phase 05-02]: Payment verification window: commitDate -1 day to +3 days for processing delays
 
 ### Roadmap Evolution
 
@@ -155,6 +159,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T11:45:00Z
-Stopped at: Completed 05-01-PLAN.md
-Resume file: .planning/phases/05-arrears-monitoring/05-01-SUMMARY.md
+Last session: 2026-03-24T12:01:00Z
+Stopped at: Completed 05-02-PLAN.md
+Resume file: .planning/phases/05-arrears-monitoring/05-02-SUMMARY.md
