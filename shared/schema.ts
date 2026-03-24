@@ -7799,3 +7799,108 @@ export const assignmentRules = pgTable("assignment_rule", {
 export const insertAssignmentRuleSchema = createInsertSchema(assignmentRules).omit({ id: true, createdAt: true });
 export type AssignmentRule = typeof assignmentRules.$inferSelect;
 export type InsertAssignmentRule = z.infer<typeof insertAssignmentRuleSchema>;
+
+// ==========================================
+// DEAL LIFECYCLE
+// ==========================================
+
+export const deals = pgTable("deal", {
+  id: serial("id").primaryKey(),
+  dealType: text("deal_type").notNull(), // lettings_agreed, tenancy_ending, lease_renewal, rent_review, sale_agreed, sale_collapsed
+  status: text("status").notNull().default("active"), // active, paused, completed, cancelled
+  propertyId: integer("property_id").notNull(),
+  tenancyId: integer("tenancy_id"),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+  buyerId: integer("buyer_id"),
+  dealData: json("deal_data"),
+  currentPipeline: text("current_pipeline"),
+  pausedAt: timestamp("paused_at"),
+  pausedBy: integer("paused_by"),
+  pauseReason: text("pause_reason"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelledBy: integer("cancelled_by"),
+  cancelReason: text("cancel_reason"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertDealSchema = createInsertSchema(deals).omit({ id: true, createdAt: true, updatedAt: true });
+export type Deal = typeof deals.$inferSelect;
+export type InsertDeal = z.infer<typeof insertDealSchema>;
+
+// ==========================================
+// DEAL STEPS
+// ==========================================
+
+export const dealSteps = pgTable("deal_step", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").notNull(),
+  stepId: text("step_id").notNull(),
+  stepName: text("step_name").notNull(),
+  agentType: text("agent_type").notNull(), // admin, lettings, pm, sales
+  status: text("status").notNull().default("pending"), // pending, in_progress, completed, failed, skipped
+  dependsOn: text("depends_on"), // JSON array of step IDs
+  isOptional: boolean("is_optional").notNull().default(false),
+  isSkipped: boolean("is_skipped").notNull().default(false),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  failedAt: timestamp("failed_at"),
+  failureReason: text("failure_reason"),
+  timeoutAt: timestamp("timeout_at"),
+  escalatedAt: timestamp("escalated_at"),
+  escalatedTo: integer("escalated_to"),
+  overriddenBy: integer("overridden_by"),
+  overriddenAt: timestamp("overridden_at"),
+  overrideAction: text("override_action"), // skip, complete
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertDealStepSchema = createInsertSchema(dealSteps).omit({ id: true, createdAt: true, updatedAt: true });
+export type DealStep = typeof dealSteps.$inferSelect;
+export type InsertDealStep = z.infer<typeof insertDealStepSchema>;
+
+// ==========================================
+// DEAL EVENTS (TIMELINE)
+// ==========================================
+
+export const dealEvents = pgTable("deal_event", {
+  id: serial("id").primaryKey(),
+  dealId: integer("deal_id").notNull(),
+  eventType: text("event_type").notNull(),
+  agentType: text("agent_type"),
+  stepId: text("step_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  metadata: json("metadata"),
+  actorType: text("actor_type").notNull(), // system, agent, staff
+  actorId: integer("actor_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertDealEventSchema = createInsertSchema(dealEvents).omit({ id: true, createdAt: true });
+export type DealEvent = typeof dealEvents.$inferSelect;
+export type InsertDealEvent = z.infer<typeof insertDealEventSchema>;
+
+// ==========================================
+// NOTIFICATIONS
+// ==========================================
+
+export const notifications = pgTable("notification", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  dealId: integer("deal_id"),
+  title: text("title").notNull(),
+  body: text("body"),
+  type: text("type").notNull(), // timeout, escalation, completion, info
+  linkUrl: text("link_url"),
+  isRead: boolean("is_read").notNull().default(false),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
