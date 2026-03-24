@@ -12,7 +12,8 @@ export type AgentType =
   | 'maintenance'
   | 'lead_gen_sales'
   | 'lead_gen_rentals'
-  | 'marketing';
+  | 'marketing'
+  | 'arrears';
 
 // Task Priority Levels
 export type TaskPriority = 'urgent' | 'high' | 'medium' | 'low';
