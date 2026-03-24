@@ -123,6 +123,8 @@ import InventoryTracking from "@/pages/InventoryTracking";
 import CompanySettings from "@/pages/CompanySettings";
 import TenancyOnboarding from "@/pages/TenancyOnboarding";
 import PropertyKnowledgeBase from "@/pages/PropertyKnowledgeBase";
+import DealList from "@/pages/DealList";
+import DealTimeline from "@/pages/DealTimeline";
 
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
@@ -421,6 +423,10 @@ function Router() {
         </Route>
 
         <Route path="/crm/agent-monitoring"><CRMLayout><AgentMonitoringDashboard /></CRMLayout></Route>
+
+        {/* Deal Lifecycle Routes */}
+        <Route path="/crm/deals/:id">{(params: any) => <CRMLayout><DealTimeline {...params} /></CRMLayout>}</Route>
+        <Route path="/crm/deals"><CRMLayout><DealList /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>

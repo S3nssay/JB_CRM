@@ -356,6 +356,17 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               </div>}
             </div>
 
+            {/* Deals Section */}
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider mb-1.5 px-3">
+                Deals
+              </p>
+              <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/deals') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/deals')}>
+                <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/deals') ? 'text-white' : 'text-gray-400'}`} />
+                All Deals
+              </button>
+            </div>
+
             {/* Sales & Lettings Section */}
             <div className="mt-4 pt-3 border-t border-gray-200">
               <button
