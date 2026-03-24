@@ -162,9 +162,9 @@ describe('Arrears Agent', () => {
     expect(arrearsAgent.name).toBe('Sarah from Accounts');
   });
 
-  it('should have exactly 4 tools', async () => {
+  it('should have exactly 6 tools', async () => {
     const { arrearsAgent } = await import('../../server/agents/sdk/arrearsAgent');
-    expect(arrearsAgent.tools).toHaveLength(4);
+    expect(arrearsAgent.tools).toHaveLength(6);
   });
 
   it('should include all required tools', async () => {
