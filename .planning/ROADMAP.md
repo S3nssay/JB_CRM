@@ -135,13 +135,16 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 ### Phase 7: Agent Corrections & Cost Ledger
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Remove negotiation autonomy from Sales (Alex) and Lettings (Jordan) agents, replacing it with professional offer recording. Add offer management UI for staff. Add PM cost ledger tracking maintenance and compliance spend per property and per landlord with configurable threshold alerts.
+**Requirements**: CORR-01, CORR-02, CORR-03, CORR-04, COST-01, COST-02, COST-03, OFFER-UI, COST-UI
 **Depends on:** Phase 6
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 7 to break down)
+- [ ] 07-01-PLAN.md — Schema extensions (lettings offer fields, certification cost, cost thresholds), agent prompt corrections (remove negotiation, add OFFERS section), recordOffer tool
+- [ ] 07-02-PLAN.md — Offer management REST API (CRUD, accept/reject/counter), notification bell + email triggers for new offers
+- [ ] 07-03-PLAN.md — Cost ledger API (per-property and per-landlord aggregation from work orders + certifications), threshold management with email alerts
+- [ ] 07-04-PLAN.md — Offers dashboard page, offers section on property page, cost ledger component on property + landlord pages, CRM sidebar and route wiring
 
 ### Phase 8: PM Finance Agent — Landlord Statements & Tenant Invoices
 
