@@ -738,3 +738,300 @@ export const generatePaymentLinkTool = tool({
     });
   },
 });
+
+// ---- Deal lifecycle tools ----
+
+// Lazy imports for deal services
+let _dealEventBus: any = null;
+let _DEAL_EVENTS: any = null;
+async function getDealEventBus() {
+  if (!_dealEventBus) {
+    const mod = await import('../services/dealEventBus');
+    _dealEventBus = mod.dealEventBus;
+    _DEAL_EVENTS = mod.DEAL_EVENTS;
+  }
+  return { dealEventBus: _dealEventBus, DEAL_EVENTS: _DEAL_EVENTS };
+}
+
+let _dealService: any = null;
+async function getDealService() {
+  if (!_dealService) {
+    const mod = await import('../services/dealService');
+    _dealService = mod.dealService;
+  }
+  return _dealService;
+}
+
+let _conversationStore: any = null;
+async function getConversationStore() {
+  if (!_conversationStore) {
+    const mod = await import('../channels/conversationStore');
+    _conversationStore = mod.conversationStore;
+  }
+  return _conversationStore;
+}
+
+/**
+ * emitDealEventTool: Allows agents to emit domain events during conversations.
+ */
+export const emitDealEventTool = tool({
+  name: 'emit_deal_event',
+  description: 'Emit a deal lifecycle event. Use when you detect a deal-relevant change during a conversation (e.g., rent agreed with tenant, sale progressing).',
+  parameters: z4.object({
+    eventType: z4.string().describe('Event type (e.g., tenancy.agreed, sale.agreed, step.completed)'),
+    dealId: z4.number().describe('The deal ID'),
+    metadata: z4.record(z4.string(), z4.any()).optional().describe('Additional event metadata'),
+  }),
+  execute: async (_context: AgentContext, input: { eventType: string; dealId: number; metadata?: Record<string, any> }) => {
+    const { dealEventBus } = await getDealEventBus();
+    const dealSvc = await getDealService();
+
+    const deal = await dealSvc.getDeal(input.dealId);
+    if (!deal) {
+      return JSON.stringify({ emitted: false, reason: 'Deal not found' });
+    }
+
+    await dealEventBus.emit(input.eventType, {
+      dealId: input.dealId,
+      propertyId: deal.property_id,
+      dealType: deal.deal_type,
+      ...input.metadata,
+    });
+
+    return JSON.stringify({ emitted: true, eventType: input.eventType, dealId: input.dealId });
+  },
+});
+
+/**
+ * readDealStatusTool: Allows agents to check deal progress.
+ */
+export const readDealStatusTool = tool({
+  name: 'read_deal_status',
+  description: 'Check the current status and progress of a deal, including all step statuses. Use to understand what other agents have done before acting.',
+  parameters: z4.object({
+    dealId: z4.number().optional().describe('Specific deal ID to look up'),
+    propertyId: z4.number().optional().describe('Find deals for a property'),
+  }),
+  execute: async (_context: AgentContext, input: { dealId?: number; propertyId?: number }) => {
+    const dealSvc = await getDealService();
+
+    if (input.dealId) {
+      const deal = await dealSvc.getDeal(input.dealId);
+      if (!deal) return JSON.stringify({ found: false, reason: 'Deal not found' });
+
+      const steps = await dealSvc.getDealSteps(input.dealId);
+      return JSON.stringify({
+        found: true,
+        deal: {
+          id: deal.id,
+          dealType: deal.deal_type,
+          status: deal.status,
+          propertyId: deal.property_id,
+          totalSteps: deal.total_steps,
+          completedSteps: deal.completed_steps,
+          failedSteps: deal.failed_steps,
+        },
+        steps: steps.map((s: any) => ({
+          stepId: s.step_id,
+          stepName: s.step_name,
+          status: s.status,
+          agentType: s.agent_type,
+          isSkipped: s.is_skipped,
+        })),
+      });
+    }
+
+    if (input.propertyId) {
+      const deals = await dealSvc.listDeals({ propertyId: input.propertyId });
+      return JSON.stringify({
+        found: deals.length > 0,
+        deals: deals.map((d: any) => ({
+          id: d.id,
+          dealType: d.deal_type,
+          status: d.status,
+          createdAt: d.created_at,
+        })),
+      });
+    }
+
+    return JSON.stringify({ found: false, reason: 'Provide dealId or propertyId' });
+  },
+});
+
+/**
+ * queryContactConversationsTool: Cross-agent conversation access.
+ */
+export const queryContactConversationsTool = tool({
+  name: 'query_contact_conversations',
+  description: 'Query full conversation history for a contact across all agent types. Use to understand previous interactions before acting.',
+  parameters: z4.object({
+    contactId: z4.number().describe('Contact identity ID'),
+    agentType: z4.string().optional().describe('Filter by agent type (e.g., lettings, sales, pm)'),
+    limit: z4.number().optional().default(10).describe('Max conversations to return'),
+  }),
+  execute: async (_context: AgentContext, input: { contactId: number; agentType?: string; limit?: number }) => {
+    const store = await getConversationStore();
+
+    const convos = await store.getConversationsForContact(input.contactId, {
+      agentType: input.agentType,
+      limit: input.limit || 10,
+    });
+
+    // Get last message for each conversation
+    const results = [];
+    for (const convo of convos) {
+      const history = await store.getConversationHistory(convo.id, 1);
+      results.push({
+        conversationId: convo.id,
+        status: convo.status,
+        lastChannel: convo.lastChannel,
+        lastMessageAt: convo.lastMessageAt,
+        lastMessagePreview: convo.lastMessagePreview,
+        lastMessage: history.length > 0 ? {
+          content: history[0].content?.slice(0, 200),
+          direction: history[0].direction,
+          agentType: history[0].agentType,
+          sentAt: history[0].sentAt,
+        } : null,
+      });
+    }
+
+    return JSON.stringify({
+      contactId: input.contactId,
+      conversationCount: results.length,
+      conversations: results,
+    });
+  },
+});
+
+/**
+ * flagInconsistencyTool: Inconsistency detection across deal data.
+ */
+export const flagInconsistencyTool = tool({
+  name: 'flag_inconsistency',
+  description: 'Flag a data inconsistency found in deal information. Use when you detect conflicting values for critical fields (rent amount, deposit, pet policy, number of occupants).',
+  parameters: z4.object({
+    dealId: z4.number().describe('The deal ID where inconsistency was found'),
+    field: z4.string().describe('The field name with conflicting values'),
+    existingValue: z4.string().describe('The currently recorded value'),
+    newValue: z4.string().describe('The new conflicting value'),
+    source: z4.string().describe('Where the new value came from'),
+  }),
+  execute: async (_context: AgentContext, input: { dealId: number; field: string; existingValue: string; newValue: string; source: string }) => {
+    const dealSvc = await getDealService();
+
+    // Create notification for staff
+    await dealSvc.createNotification({
+      userId: 1,
+      dealId: input.dealId,
+      title: `Data Inconsistency: ${input.field}`,
+      body: `Conflicting values detected for "${input.field}" on deal #${input.dealId}. Existing: "${input.existingValue}", New: "${input.newValue}" (source: ${input.source}). Please review and resolve.`,
+      type: 'inconsistency',
+    });
+
+    // Create deal event
+    await dealSvc.createDealEvent({
+      dealId: input.dealId,
+      eventType: 'inconsistency.detected',
+      title: `Inconsistency flagged: ${input.field}`,
+      actorType: 'agent',
+      metadata: {
+        field: input.field,
+        existingValue: input.existingValue,
+        newValue: input.newValue,
+        source: input.source,
+      },
+    });
+
+    return JSON.stringify({
+      flagged: true,
+      field: input.field,
+      message: 'Inconsistency flagged and notification sent to staff for review.',
+    });
+  },
+});
+
+/**
+ * emitCrossReferralTool: Cross-referral between departments.
+ */
+export const emitCrossReferralTool = tool({
+  name: 'emit_cross_referral',
+  description: 'Create a cross-referral lead from one department to another. Use when a contact in your department also needs services from another department (e.g., a lettings tenant interested in buying).',
+  parameters: z4.object({
+    fromDepartment: z4.string().describe('Your department (e.g., lettings, sales, pm)'),
+    toDepartment: z4.string().describe('Target department for the referral'),
+    contactId: z4.number().describe('Contact ID being referred'),
+    reason: z4.string().describe('Why this referral is being made'),
+    propertyId: z4.number().optional().describe('Related property ID if applicable'),
+  }),
+  execute: async (_context: AgentContext, input: { fromDepartment: string; toDepartment: string; contactId: number; reason: string; propertyId?: number }) => {
+    const { dealEventBus, DEAL_EVENTS } = await getDealEventBus();
+    const dealSvc = await getDealService();
+
+    // Map department to lead type
+    const deptToLeadType: Record<string, string> = {
+      sales: 'buyer',
+      lettings: 'tenant',
+      pm: 'landlord',
+    };
+
+    // Create a lead in the target department
+    const { pool: dbPool } = await import('../../db');
+    const leadType = deptToLeadType[input.toDepartment] || 'buyer';
+
+    let leadId = null;
+    try {
+      // Look up contact info
+      const contactResult = await dbPool.query(
+        `SELECT ci.identifier_value, ci.identifier_type, ci.contact_type
+         FROM contact_identity ci WHERE ci.id = $1`,
+        [input.contactId]
+      );
+      const contact = contactResult.rows[0];
+
+      if (contact) {
+        const leadResult = await dbPool.query(
+          `INSERT INTO leads (name, phone, email, lead_type, source, notes, status)
+           VALUES ($1, $2, $3, $4, 'referral', $5, 'new')
+           RETURNING id`,
+          [
+            contact.identifier_value,
+            contact.identifier_type === 'phone' ? contact.identifier_value : null,
+            contact.identifier_type === 'email' ? contact.identifier_value : null,
+            leadType,
+            `Cross-referral from ${input.fromDepartment}: ${input.reason}`,
+          ]
+        );
+        leadId = leadResult.rows[0]?.id;
+      }
+    } catch (err) {
+      console.error('[emitCrossReferral] lead creation error:', err);
+    }
+
+    // Create notification for target department
+    await dealSvc.createNotification({
+      userId: 1,
+      title: `Cross-Referral from ${input.fromDepartment}`,
+      body: `A contact has been referred to ${input.toDepartment}. Reason: ${input.reason}. ${leadId ? `Lead #${leadId} created.` : ''}`,
+      type: 'referral',
+    });
+
+    // Emit cross-referral event
+    await dealEventBus.emit(DEAL_EVENTS.CROSS_REFERRAL, {
+      dealId: 0,
+      propertyId: input.propertyId || 0,
+      dealType: 'cross_referral',
+      fromDepartment: input.fromDepartment,
+      toDepartment: input.toDepartment,
+      contactId: input.contactId,
+      leadId,
+    });
+
+    return JSON.stringify({
+      referred: true,
+      leadId,
+      toDepartment: input.toDepartment,
+      message: `Contact referred to ${input.toDepartment} department.${leadId ? ` Lead #${leadId} created.` : ''}`,
+    });
+  },
+});

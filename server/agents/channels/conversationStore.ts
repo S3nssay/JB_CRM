@@ -114,6 +114,44 @@ export class ConversationStore {
       .orderBy(desc(messages.createdAt))
       .limit(limit);
   }
+
+  /**
+   * Get all conversations for a contact (by contact identity ID).
+   * Optionally filter by agent type from the conversation's messages.
+   */
+  async getConversationsForContact(
+    contactId: number,
+    options?: { agentType?: string; limit?: number },
+  ) {
+    const limit = options?.limit ?? 20;
+
+    // Query conversations for this contact identity
+    let convos = await db
+      .select()
+      .from(conversations)
+      .where(eq(conversations.resolvedContactId, contactId))
+      .orderBy(desc(conversations.updatedAt))
+      .limit(limit);
+
+    // If agentType filter is specified, filter by conversations that have messages from that agent
+    if (options?.agentType && convos.length > 0) {
+      const convoIds = convos.map(c => c.id);
+      const agentMessages = await db
+        .select({ conversationId: messages.conversationId })
+        .from(messages)
+        .where(
+          and(
+            eq(messages.agentType, options.agentType),
+          )
+        )
+        .limit(500);
+
+      const agentConvoIds = new Set(agentMessages.map(m => m.conversationId));
+      convos = convos.filter(c => agentConvoIds.has(c.id));
+    }
+
+    return convos;
+  }
 }
 
 /** Singleton instance */

@@ -134,9 +134,9 @@ describe('Lettings Agent', () => {
     expect(lettingsAgent.model).toBe('gpt-4o');
   });
 
-  it('should have exactly 6 tools', async () => {
+  it('should have exactly 9 tools', async () => {
     const { lettingsAgent } = await import('../../server/agents/sdk/lettingsAgent');
-    expect(lettingsAgent.tools).toHaveLength(6);
+    expect(lettingsAgent.tools).toHaveLength(9);
   });
 
   it('should include search_properties tool for rental enquiries', async () => {

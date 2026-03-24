@@ -143,10 +143,10 @@ describe('Supervisor Agent', () => {
     expect(supervisorAgent.model).toBe('gpt-4o');
   });
 
-  it('should have handoffs to Sales, Lettings, and Admin', async () => {
+  it('should have handoffs to Sales, Lettings, Admin, and PM', async () => {
     const { supervisorAgent } = await import('../../server/agents/sdk/supervisorAgent');
     expect(supervisorAgent.handoffs).toBeDefined();
-    expect(supervisorAgent.handoffs.length).toBe(3);
+    expect(supervisorAgent.handoffs.length).toBe(4);
   });
 
   it('should hand off to real Lettings agent named "Jordan from Lettings"', async () => {

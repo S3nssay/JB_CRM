@@ -137,9 +137,9 @@ describe('Sales Agent', () => {
     expect(salesAgent.model).toBe('gpt-4o');
   });
 
-  it('should have exactly 6 tools', async () => {
+  it('should have exactly 9 tools', async () => {
     const { salesAgent } = await import('../../server/agents/sdk/salesAgent');
-    expect(salesAgent.tools).toHaveLength(6);
+    expect(salesAgent.tools).toHaveLength(9);
   });
 
   it('should include search_properties tool', async () => {

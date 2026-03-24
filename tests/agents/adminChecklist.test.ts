@@ -268,9 +268,9 @@ describe('Admin Agent', () => {
     expect(adminAgent.model).toBe('gpt-4o');
   });
 
-  it('should have exactly 3 tools', async () => {
+  it('should have exactly 4 tools', async () => {
     const { adminAgent } = await import('../../server/agents/sdk/adminAgent');
-    expect(adminAgent.tools).toHaveLength(3);
+    expect(adminAgent.tools).toHaveLength(4);
   });
 
   it('should include generate_checklist tool', async () => {

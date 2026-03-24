@@ -21,6 +21,9 @@ import {
   requestLandlordApprovalSdkTool,
   createWorkOrderSdkTool,
   scheduleWorkOrderFollowupSdkTool,
+  readDealStatusTool,
+  queryContactConversationsTool,
+  flagInconsistencyTool,
 } from './tools';
 import { classifyUrgency } from '../services/emergencyRules';
 import { toolRegistry } from '../tools/registry';
@@ -198,5 +201,8 @@ export const pmAgent = new Agent<AgentContext>({
     createWorkOrderSdkTool,
     scheduleWorkOrderFollowupSdkTool,
     escalateToHumanTool,
+    readDealStatusTool,
+    queryContactConversationsTool,
+    flagInconsistencyTool,
   ],
 });

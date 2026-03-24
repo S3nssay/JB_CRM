@@ -18,6 +18,9 @@ import {
   createLeadTool,
   queryKnowledgeBaseTool,
   escalateToHumanTool,
+  emitDealEventTool,
+  readDealStatusTool,
+  emitCrossReferralTool,
 } from './tools';
 
 // ---- Follow-up scheduling tool ----
@@ -165,5 +168,8 @@ export const salesAgent = new Agent<AgentContext>({
     queryKnowledgeBaseTool,
     escalateToHumanTool,
     scheduleFollowUpTool,
+    emitDealEventTool,
+    readDealStatusTool,
+    emitCrossReferralTool,
   ],
 });

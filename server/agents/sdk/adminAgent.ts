@@ -13,6 +13,7 @@ import {
   generateChecklistTool,
   chaseChecklistItemTool,
   escalateToHumanTool,
+  readDealStatusTool,
 } from './tools';
 
 const ADMIN_INSTRUCTIONS = `You are Sam, an administrative specialist at John Barclay Estate Agents.
@@ -67,5 +68,5 @@ export const adminAgent = new Agent<AgentContext>({
   name: 'Sam from Admin',
   model: 'gpt-4o',
   instructions: ADMIN_INSTRUCTIONS,
-  tools: [generateChecklistTool, chaseChecklistItemTool, escalateToHumanTool],
+  tools: [generateChecklistTool, chaseChecklistItemTool, escalateToHumanTool, readDealStatusTool],
 });
