@@ -106,10 +106,23 @@ Plans:
 - [ ] 05-02: Payment commitment capture and payment link dispatch (pg-boss scheduled follow-ups, Stripe/GoCardless link generation, audit logging)
 - [ ] 05-03: Agent monitoring dashboard (React UI — conversation thread viewer, escalation queue, per-agent metrics, audit log, cost tracking)
 
+### Phase 6: Cross-Agent Collaboration & Deal Lifecycle Automation
+
+**Goal:** Agents collaborate across deal lifecycles -- when one specialist completes a stage (tenancy agreed, sale agreed, renewal due, tenancy ending), downstream agents are automatically triggered via an event bus, with a shared deal record, visual timeline, real-time notifications, and full staff override controls.
+**Requirements**: DEAL-01, DEAL-02, DEAL-03, DEAL-04, DEAL-05, DEAL-06
+**Depends on:** Phase 5
+**Plans:** 4 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — Schema (deals, deal_steps, deal_events, notifications tables), DealEventBus (pg-boss), DealPipelineService (coded pipeline templates with dependency resolution), DealService (CRUD)
+- [ ] 06-02-PLAN.md — Deal REST API routes (CRUD, staff overrides: pause/skip/complete/cancel), SSE notification endpoint, notification CRUD
+- [ ] 06-03-PLAN.md — Pipeline step action wiring (checklistService, messageSender integration), tenancy/sale event hooks, agent deal tools (emit events, read status, cross-referral, inconsistency detection)
+- [ ] 06-04-PLAN.md — Deal list page, deal timeline page, notification bell component, property timeline widget, CRM sidebar and route wiring
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
+Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -118,3 +131,4 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5
 | 3. Voice Integration | 2/3 | In Progress|  |
 | 4. Property Management Specialist | 3/3 | Complete   | 2026-03-22 |
 | 5. Arrears Chasing & Monitoring | 0/3 | Not started | - |
+| 6. Cross-Agent Collaboration | 0/4 | Not started | - |
