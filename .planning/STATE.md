@@ -7,7 +7,7 @@ stopped_at: Completed 06-04-PLAN.md
 last_updated: "2026-03-24T13:00:28.661Z"
 last_activity: 2026-03-24 — Completed 06-04 (Deal Lifecycle CRM UI)
 progress:
-  total_phases: 6
+  total_phases: 10
   completed_phases: 6
   total_plans: 24
   completed_plans: 24
@@ -163,6 +163,10 @@ Recent decisions affecting current work:
 ### Roadmap Evolution
 
 - Phase 6 added: Cross-Agent Collaboration & Deal Lifecycle Automation
+- Phase 7 added: Agent Corrections & Cost Ledger (remove negotiation autonomy from Alex/Jordan, add offer recording, Morgan cost ledger)
+- Phase 8 added: PM Finance Agent — Landlord Statements & Tenant Invoices (Taylor)
+- Phase 9 added: Head of Property Management Agent (delegation layer over Morgan/Sarah/Taylor)
+- Phase 10 added: Business Accounts Agent — Company-Wide Financials (Riley)
 
 ### Pending Todos
 
