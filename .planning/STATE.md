@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 05-03-PLAN.md
-last_updated: "2026-03-24T12:17:49.183Z"
-last_activity: 2026-03-24 — Completed 05-03 (Agent Monitoring Dashboard)
+stopped_at: Completed 06-01-PLAN.md
+last_updated: "2026-03-24T12:28:31.620Z"
+last_activity: 2026-03-24 — Completed 06-01 (Deal Lifecycle Core Infrastructure)
 progress:
   total_phases: 6
   completed_phases: 5
   total_plans: 24
-  completed_plans: 20
-  percent: 100
+  completed_plans: 21
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 5 Complete — Arrears Monitoring
+**Current focus:** Phase 6 — Cross-Agent Collaboration & Deal Lifecycle Automation
 
 ## Current Position
 
-Phase: 5 of 6 (Arrears Monitoring)
-Plan: 3 of 3 in current phase
-Status: Phase 5 Complete
-Last activity: 2026-03-24 — Completed 05-03 (Agent Monitoring Dashboard)
+Phase: 6 of 6 (Cross-Agent Collaboration)
+Plan: 1 of 4 in current phase
+Status: In Progress
+Last activity: 2026-03-24 — Completed 06-01 (Deal Lifecycle Core Infrastructure)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 88%
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [██████████] 100%
 | Phase 05 P01 | 7min | 2 tasks | 8 files |
 | Phase 05 P02 | 12min | 2 tasks | 7 files |
 | Phase 05 P03 | 7min | 2 tasks | 6 files |
+| Phase 06 P01 | 8min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -146,6 +147,9 @@ Recent decisions affecting current work:
 - [Phase 05-02]: Payment verification window: commitDate -1 day to +3 days for processing delays
 - [Phase 05-03]: Raw SQL for monitoring queries (flexible aggregation, LATERAL joins for escalation reason)
 - [Phase 05-03]: Exported query functions for testability without HTTP layer
+- [Phase 06]: Pipeline templates defined as code constants, not database-stored
+- [Phase 06]: dependsOn stored as JSON string in text column for step dependency tracking
+- [Phase 06]: sourceEventId in deal event payloads prevents circular event loops
 
 ### Roadmap Evolution
 
@@ -162,6 +166,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T12:11:00Z
-Stopped at: Completed 05-03-PLAN.md
-Resume file: .planning/phases/05-arrears-monitoring/05-03-SUMMARY.md
+Last session: 2026-03-24T12:28:31.606Z
+Stopped at: Completed 06-01-PLAN.md
+Resume file: None
