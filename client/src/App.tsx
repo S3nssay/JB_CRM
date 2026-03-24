@@ -95,6 +95,7 @@ import CRMLayout from "@/components/CRMLayout";
 // Finance, Tenant & CRM pages
 import InvoiceManagement from "@/pages/InvoiceManagement";
 import ArrearsTracker from "@/pages/ArrearsTracker";
+import AgentMonitoringDashboard from "@/pages/AgentMonitoringDashboard";
 import LandlordStatements from "@/pages/LandlordStatements";
 import PortfolioFinancials from "@/pages/PortfolioFinancials";
 import RentReviewManager from "@/pages/RentReviewManager";
@@ -418,6 +419,8 @@ function Router() {
             </ClearanceProtectedRoute>
           </CRMLayout>
         </Route>
+
+        <Route path="/crm/agent-monitoring"><CRMLayout><AgentMonitoringDashboard /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
