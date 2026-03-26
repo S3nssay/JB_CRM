@@ -184,6 +184,7 @@ import { messageRouterAgent } from './services/messageRouterAgent';
 import emailIntegrationRoutes from './routes/emailIntegrationRoutes';
 import agentWebhooks from './agentWebhooks';
 import agentMonitoringRouter from './agentMonitoringRoutes';
+import { costLedgerRouter } from './costLedgerRoutes';
 import path from 'path';
 import express from 'express';
 
@@ -204,6 +205,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', messageRouterAgent.router);
   app.use('/api/crm', agentMonitoringRouter);
   app.use('/api/crm', dealRouter);
+  app.use('/api/crm', costLedgerRouter);
 
   // ==========================================
   // VAPI VOICE WEBHOOKS (at /api/voice/*)
