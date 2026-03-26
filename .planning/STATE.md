@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08-02-PLAN.md
-last_updated: "2026-03-26T20:07:30.683Z"
-last_activity: 2026-03-26 — Completed 08-02 (Taylor Agent + Tools + Cron)
+stopped_at: Completed 10-01-PLAN.md
+last_updated: "2026-03-26T20:10:37.397Z"
+last_activity: 2026-03-26 — Completed 10-01 (Riley Business Accounts Agent)
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 37
-  completed_plans: 30
-  percent: 81
+  completed_plans: 33
+  percent: 92
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 8 — PM Finance Agent (Landlord Statements & Tenant Invoices)
+**Current focus:** Phase 10 — Business Accounts Agent (Company-Wide Financials)
 
 ## Current Position
 
-Phase: 8 of 11 (PM Finance Agent)
-Plan: 2 of 4 in current phase
+Phase: 10 of 11 (Business Accounts Agent)
+Plan: 1 of 2 in current phase
 Status: In Progress
-Last activity: 2026-03-26 — Completed 08-02 (Taylor Agent + Tools + Cron)
+Last activity: 2026-03-26 — Completed 10-01 (Riley Business Accounts Agent)
 
-Progress: [████████░░] 81%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
@@ -86,6 +86,9 @@ Progress: [████████░░] 81%
 | Phase 07 P04 | 9min | 2 tasks | 7 files |
 | Phase 09 P02 | 7min | 2 tasks | 3 files |
 | Phase 08 P02 | 9min | 2 tasks | 6 files |
+| Phase 08 P01 | 12min | 2 tasks | 5 files |
+| Phase 10 P01 | 12 | 2 tasks | 4 files |
+| Phase 09 P01 | 12 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -177,6 +180,13 @@ Recent decisions affecting current work:
 - [Phase 09]: Health score formula: 100 base, -20 expired cert, -10 expiring, -5 open ticket, -15 active arrears, -25 vacant
 - [Phase 08]: Lazy imports for all pool/service dependencies in finance tools (consistent with existing agent patterns)
 - [Phase 08]: Finance cron dual-trigger: pg-boss cron for scheduled generation + deal event subscriptions for lifecycle triggers
+- [Phase 08]: Invoice numbers scoped by tenancyId (not propertyId) to avoid UNIQUE constraint violations on multi-tenancy properties
+- [Phase 08]: Let-only returns zero monthly fee (upfront fee type, no monthly deduction); VAT at 20% on management fees
+- [Phase 10]: [Phase 10-01]: Extracted shared accountingQueries module from route patterns for agent tool reuse
+- [Phase 10]: [Phase 10-01]: Clear domain boundary: Riley for company-wide financials, Taylor for tenant/landlord finance
+- [Phase 09]: Static source analysis for agent tests (avoids timeout from deep import chains)
+- [Phase 09]: Taylor/finance handoff commented out pending Phase 8 financeAgent creation
+- [Phase 09]: Supervisory agent pattern: query tools for read-only insights, handoffs for operational delegation
 
 ### Roadmap Evolution
 
@@ -198,6 +208,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T20:07:30.658Z
-Stopped at: Completed 08-02-PLAN.md
+Last session: 2026-03-26T20:10:30.179Z
+Stopped at: Completed 10-01-PLAN.md
 Resume file: None
