@@ -68,6 +68,11 @@ app.use((req, res, next) => {
   const { imapPollingService } = await import('./services/email/imapPollingService');
   imapPollingService.start(5 * 60 * 1000); // Poll every 5 minutes
 
+  // Register portfolio monitoring cron jobs (lazy, non-blocking)
+  import('./services/portfolioMonitorService')
+    .then(mod => mod.registerPortfolioMonitorJobs())
+    .catch(err => console.error('Failed to register portfolio monitor jobs:', err));
+
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
