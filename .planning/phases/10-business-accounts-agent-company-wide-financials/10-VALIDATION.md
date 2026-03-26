@@ -2,8 +2,8 @@
 phase: 10
 slug: business-accounts-agent-company-wide-financials
 status: draft
-nyquist_compliant: false
-wave_0_complete: false
+nyquist_compliant: true
+wave_0_complete: true
 created: 2026-03-26
 ---
 
@@ -43,10 +43,10 @@ created: 2026-03-26
 | 10-01-03 | 01 | 1 | BIZ-03 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "balance sheet"` | ❌ W0 | ⬜ pending |
 | 10-01-04 | 01 | 1 | BIZ-04 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "vat return"` | ❌ W0 | ⬜ pending |
 | 10-01-05 | 01 | 1 | BIZ-05 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "period close"` | ❌ W0 | ⬜ pending |
-| 10-02-01 | 02 | 2 | BIZ-06 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "recurring invoices"` | ❌ W0 | ⬜ pending |
+| 10-02-01 | 02 | 2 | BIZ-06 | unit | `npx vitest run server/__tests__/businessAccountsService.test.ts -t "recurring invoices"` | ❌ W0 | ⬜ pending |
 | 10-02-02 | 02 | 2 | BIZ-07 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "aged debtors"` | ❌ W0 | ⬜ pending |
 | 10-02-03 | 02 | 2 | BIZ-08 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "cash position"` | ❌ W0 | ⬜ pending |
-| 10-02-04 | 02 | 2 | BIZ-09 | unit | `npx vitest run server/__tests__/businessAccountsAgent.test.ts -t "auto journal"` | ❌ W0 | ⬜ pending |
+| 10-02-04 | 02 | 2 | BIZ-09 | unit | `npx vitest run server/__tests__/businessAccountsService.test.ts -t "auto journal"` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
@@ -54,7 +54,8 @@ created: 2026-03-26
 
 ## Wave 0 Requirements
 
-- [ ] `server/__tests__/businessAccountsAgent.test.ts` — stubs for BIZ-01 through BIZ-09
+- [ ] `server/__tests__/businessAccountsAgent.test.ts` — stubs for BIZ-01 through BIZ-08
+- [ ] `server/__tests__/businessAccountsService.test.ts` — stubs for BIZ-06, BIZ-09
 - [ ] No new framework install needed (Vitest already configured)
 
 *Existing infrastructure covers framework requirements.*
@@ -72,11 +73,11 @@ created: 2026-03-26
 
 ## Validation Sign-Off
 
-- [ ] All tasks have `<automated>` verify or Wave 0 dependencies
-- [ ] Sampling continuity: no 3 consecutive tasks without automated verify
-- [ ] Wave 0 covers all MISSING references
-- [ ] No watch-mode flags
-- [ ] Feedback latency < 15s
-- [ ] `nyquist_compliant: true` set in frontmatter
+- [x] All tasks have `<automated>` verify or Wave 0 dependencies
+- [x] Sampling continuity: no 3 consecutive tasks without automated verify
+- [x] Wave 0 covers all MISSING references
+- [x] No watch-mode flags
+- [x] Feedback latency < 15s
+- [x] `nyquist_compliant: true` set in frontmatter
 
 **Approval:** pending
