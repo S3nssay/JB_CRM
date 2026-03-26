@@ -161,13 +161,15 @@ Plans:
 
 ### Phase 9: Head of Property Management Agent
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Jamie, the Head of Property Management agent, provides a supervisory coordination layer over Morgan (maintenance), Sarah (arrears), Sam (admin), and Taylor (finance) -- offering cross-domain portfolio awareness, proactive compliance monitoring with daily certification expiry checks, portfolio health scoring, and a landlord-facing conversational interface for portfolio-level questions.
+**Requirements**: HPM-01, HPM-02, HPM-03, HPM-04, HPM-05, HPM-06, HPM-07, HPM-08
 **Depends on:** Phase 8
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 9 to break down)
+- [ ] 09-01-PLAN.md — Head of PM agent (Jamie) definition with cross-domain portfolio query tools (7 tools), specialist handoffs to Morgan/Sarah/Sam/Taylor, Supervisor registration
+- [ ] 09-02-PLAN.md — Proactive portfolio monitoring service (pg-boss cron: daily compliance check, weekly health report), email alerting, server startup wiring
+- [ ] 09-03-PLAN.md — PM overview API routes (compliance alerts, portfolio health scores, agent activity), enhanced PM tracking dashboard with new widgets
 
 ### Phase 10: Business Accounts Agent — Company-Wide Financials
 
