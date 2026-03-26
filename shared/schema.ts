@@ -619,6 +619,12 @@ export const propertyOffers = pgTable("property_offer", {
   decisionBy: integer("decision_by"), // User ID who made decision
   rejectionReason: text("rejection_reason"),
 
+  // Lettings-specific fields
+  employmentStatus: text("employment_status"),
+  rentalReferences: text("rental_references"),
+  moveInTimeline: text("move_in_timeline"),
+  offerSource: text("offer_source").default("agent"), // 'agent', 'direct', 'portal'
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
@@ -1366,9 +1372,27 @@ export const propertyCertifications = pgTable("property_certification", {
   complianceNotes: text("compliance_notes"),
   failureReasons: text("failure_reasons"),
 
+  // Cost tracking
+  cost: integer("cost"), // cost in pence, nullable
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
+
+// Property cost thresholds for configurable spend alerts
+export const propertyCostThresholds = pgTable("property_cost_threshold", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  annualLimit: integer("annual_limit").notNull(), // In pence
+  notificationEmail: text("notification_email").notNull(),
+  lastAlertSent: timestamp("last_alert_sent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyCostThresholdSchema = createInsertSchema(propertyCostThresholds).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertPropertyCostThreshold = z.infer<typeof insertPropertyCostThresholdSchema>;
+export type PropertyCostThreshold = typeof propertyCostThresholds.$inferSelect;
 
 // Property systems inventory (heating, plumbing, electrical, etc.)
 export const propertySystemsInventory = pgTable("property_systems_inventory", {
