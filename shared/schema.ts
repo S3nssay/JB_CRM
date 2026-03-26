@@ -6681,6 +6681,9 @@ export type InsertDunningAction = z.infer<typeof insertDunningActionSchema>;
 export const landlordStatements = pgTable("landlord_statement", {
   id: serial("id").primaryKey(),
   landlordId: integer("landlord_id").notNull(),
+  propertyId: integer("property_id"),
+  statementNumber: text("statement_number"),
+  attentionNeeded: boolean("attention_needed").default(false),
   statementPeriodStart: timestamp("statement_period_start").notNull(),
   statementPeriodEnd: timestamp("statement_period_end").notNull(),
   totalRentCollected: integer("total_rent_collected").notNull().default(0),

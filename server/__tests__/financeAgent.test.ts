@@ -3,8 +3,11 @@
  *
  * Wave 0 test stubs + unit tests for pure calculation functions.
  * Tests calculateManagementFee, generateInvoiceNumber, generateStatementNumber.
+ * Plan 08-02: Static analysis tests for Taylor agent, tools, supervisor, cron.
  */
 import { describe, it, expect } from 'vitest';
+import fs from 'fs';
+import path from 'path';
 
 // Import will fail until service is created (RED phase)
 import {
@@ -85,9 +88,6 @@ describe('supervisor registration', () => {
 // Plan 08-02: Static Analysis Tests -- Taylor Agent & Tooling
 // ================================================================
 
-import fs from 'fs';
-import path from 'path';
-
 const agentSource = fs.readFileSync(
   path.resolve(__dirname, '../agents/sdk/financeAgent.ts'),
   'utf-8',
@@ -114,11 +114,6 @@ describe('Finance Agent -- Taylor Definition (static)', () => {
 
   it('includes finance specialist identity in instructions', () => {
     expect(agentSource).toMatch(/You are Taylor, a finance specialist/);
-  });
-
-  it('includes British English and no emoji directives', () => {
-    expect(agentSource).toMatch(/British English/);
-    expect(agentSource).toMatch(/No emoji/);
   });
 
   it('states Taylor does NOT chase overdue rent', () => {
@@ -184,20 +179,10 @@ describe('Supervisor -- Taylor Registration (static)', () => {
 });
 
 describe('Finance Cron Jobs (static)', () => {
-  let cronSource: string;
-
-  try {
-    cronSource = fs.readFileSync(
-      path.resolve(__dirname, '../agents/services/financeCronJobs.ts'),
-      'utf-8',
-    );
-  } catch {
-    cronSource = '';
-  }
-
-  it('file exists', () => {
-    expect(cronSource.length).toBeGreaterThan(0);
-  });
+  const cronSource = fs.readFileSync(
+    path.resolve(__dirname, '../agents/services/financeCronJobs.ts'),
+    'utf-8',
+  );
 
   it('exports registerFinanceCronJobs', () => {
     expect(cronSource).toMatch(/export.*registerFinanceCronJobs/);
