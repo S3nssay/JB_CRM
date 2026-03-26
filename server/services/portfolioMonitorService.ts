@@ -86,8 +86,8 @@ export async function handleComplianceCheck(): Promise<void> {
         ELSE 'expiring_soon'
       END AS urgency
     FROM property_certification pc
-    JOIN properties p ON p.id = pc.property_id
-    LEFT JOIN landlords l ON l.id = p.landlord_id
+    JOIN property p ON p.id = pc.property_id
+    LEFT JOIN landlord l ON l.id = p.landlord_id
     WHERE pc.expiry_date <= CURRENT_DATE + INTERVAL '30 days'
       AND pc.status NOT IN ('renewed', 'superseded')
     ORDER BY pc.expiry_date ASC
@@ -195,8 +195,8 @@ export async function handleWeeklyHealthReport(): Promise<void> {
         WHERE tc.property_id = p.id
           AND tc.status = 'active'
       ) AS is_vacant
-    FROM properties p
-    LEFT JOIN landlords l ON l.id = p.landlord_id
+    FROM property p
+    LEFT JOIN landlord l ON l.id = p.landlord_id
     WHERE p.is_managed = true
     ORDER BY l.name, p.address
   `);

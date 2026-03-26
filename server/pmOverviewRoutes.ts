@@ -33,8 +33,8 @@ router.get('/pm-overview/compliance-alerts', requireAgent, async (_req: Request,
         `SELECT pc.id, pc.property_id, p.address AS property_address,
                 pc.certification_type, pc.expiry_date, l.name AS landlord_name
          FROM property_certification pc
-         JOIN properties p ON p.id = pc.property_id
-         LEFT JOIN landlords l ON l.id = p.landlord_id
+         JOIN property p ON p.id = pc.property_id
+         LEFT JOIN landlord l ON l.id = p.landlord_id
          WHERE p.is_managed = true
            AND pc.expiry_date <= $1
          ORDER BY pc.expiry_date ASC`,
@@ -42,7 +42,7 @@ router.get('/pm-overview/compliance-alerts', requireAgent, async (_req: Request,
       ),
       pool.query(
         `SELECT COUNT(DISTINCT p.id)::int AS total
-         FROM properties p WHERE p.is_managed = true`
+         FROM property p WHERE p.is_managed = true`
       ),
     ]);
 
@@ -90,8 +90,8 @@ router.get('/pm-overview/portfolio-health', requireAgent, async (_req: Request, 
         // All managed properties
         pool.query(
           `SELECT p.id, p.address, l.name AS landlord_name
-           FROM properties p
-           LEFT JOIN landlords l ON l.id = p.landlord_id
+           FROM property p
+           LEFT JOIN landlord l ON l.id = p.landlord_id
            WHERE p.is_managed = true
            ORDER BY p.address`
         ),
@@ -99,7 +99,7 @@ router.get('/pm-overview/portfolio-health', requireAgent, async (_req: Request, 
         pool.query(
           `SELECT pc.property_id, COUNT(*)::int AS cnt
            FROM property_certification pc
-           JOIN properties p ON p.id = pc.property_id
+           JOIN property p ON p.id = pc.property_id
            WHERE p.is_managed = true AND pc.expiry_date < $1
            GROUP BY pc.property_id`,
           [now]
@@ -108,7 +108,7 @@ router.get('/pm-overview/portfolio-health', requireAgent, async (_req: Request, 
         pool.query(
           `SELECT pc.property_id, COUNT(*)::int AS cnt
            FROM property_certification pc
-           JOIN properties p ON p.id = pc.property_id
+           JOIN property p ON p.id = pc.property_id
            WHERE p.is_managed = true AND pc.expiry_date >= $1 AND pc.expiry_date <= $2
            GROUP BY pc.property_id`,
           [now, thirtyDays]
@@ -117,7 +117,7 @@ router.get('/pm-overview/portfolio-health', requireAgent, async (_req: Request, 
         pool.query(
           `SELECT mt.property_id, COUNT(*)::int AS cnt
            FROM maintenance_ticket mt
-           JOIN properties p ON p.id = mt.property_id
+           JOIN property p ON p.id = mt.property_id
            WHERE p.is_managed = true AND mt.status NOT IN ('completed', 'closed')
            GROUP BY mt.property_id`
         ),
@@ -125,7 +125,7 @@ router.get('/pm-overview/portfolio-health', requireAgent, async (_req: Request, 
         pool.query(
           `SELECT a.property_id, COUNT(*)::int AS cnt
            FROM arrears a
-           JOIN properties p ON p.id = a.property_id
+           JOIN property p ON p.id = a.property_id
            WHERE p.is_managed = true AND a.status = 'active'
            GROUP BY a.property_id`
         ),
@@ -133,7 +133,7 @@ router.get('/pm-overview/portfolio-health', requireAgent, async (_req: Request, 
         pool.query(
           `SELECT DISTINCT tc.property_id
            FROM tenancy_contract tc
-           JOIN properties p ON p.id = tc.property_id
+           JOIN property p ON p.id = tc.property_id
            WHERE p.is_managed = true AND tc.status = 'active'`
         ),
       ]);
