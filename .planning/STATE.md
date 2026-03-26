@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 10-01-PLAN.md
+stopped_at: Completed 10-02-PLAN.md
 last_updated: "2026-03-26T20:20:00.000Z"
-last_activity: 2026-03-26 — Completed 09-03 (PM Overview Dashboard)
+last_activity: 2026-03-26 — Completed 10-02 (Business Accounts Automation)
 progress:
   total_phases: 11
-  completed_phases: 7
+  completed_phases: 8
   total_plans: 37
   completed_plans: 34
-  percent: 92
+  percent: 95
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 
 ## Current Position
 
-Phase: 10 of 11 (Business Accounts Agent)
-Plan: 1 of 2 in current phase
-Status: In Progress
-Last activity: 2026-03-26 — Completed 09-03 (PM Overview Dashboard)
+Phase: 10 of 11 (Business Accounts Agent) -- COMPLETE
+Plan: 2 of 2 in current phase
+Status: Phase Complete
+Last activity: 2026-03-26 — Completed 10-02 (Business Accounts Automation)
 
-Progress: [█████████░] 92%
+Progress: [██████████] 95%
 
 ## Performance Metrics
 
@@ -89,6 +89,7 @@ Progress: [█████████░] 92%
 | Phase 08 P01 | 12min | 2 tasks | 5 files |
 | Phase 10 P01 | 12 | 2 tasks | 4 files |
 | Phase 09 P03 | 7min | 2 tasks | 4 files |
+| Phase 10 P02 | 8min | 2 tasks | 5 files |
 | Phase 09 P01 | 12 | 2 tasks | 4 files |
 
 ## Accumulated Context
@@ -185,6 +186,9 @@ Recent decisions affecting current work:
 - [Phase 08]: Let-only returns zero monthly fee (upfront fee type, no monthly deduction); VAT at 20% on management fees
 - [Phase 10]: [Phase 10-01]: Extracted shared accountingQueries module from route patterns for agent tool reuse
 - [Phase 10]: [Phase 10-01]: Clear domain boundary: Riley for company-wide financials, Taylor for tenant/landlord finance
+- [Phase 10]: [Phase 10-02]: Account codes corrected: 4020=Sales Commission Income, 4010=Letting Fee Income (matching chart_of_accounts seed)
+- [Phase 10]: [Phase 10-02]: Added SALE_COMPLETED to dealEventBus; commission triggers on completion not just agreement
+- [Phase 10]: [Phase 10-02]: Fire-and-forget event handlers with zero-amount guard for journal entry creation
 - [Phase 09]: Static source analysis for agent tests (avoids timeout from deep import chains)
 - [Phase 09]: Taylor/finance handoff commented out pending Phase 8 financeAgent creation
 - [Phase 09]: Supervisory agent pattern: query tools for read-only insights, handoffs for operational delegation
@@ -209,6 +213,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T20:20:00.000Z
-Stopped at: Completed 09-03-PLAN.md
+Last session: 2026-03-26T20:22:00Z
+Stopped at: Completed 10-02-PLAN.md
 Resume file: None
