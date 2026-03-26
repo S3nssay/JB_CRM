@@ -294,6 +294,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <FileSpreadsheet className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/statements') ? 'text-white' : 'text-gray-400'}`} />
                   Landlord Statements
                 </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/finance/statements') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/finance/statements')}>
+                  <FileSpreadsheet className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/finance/statements') ? 'text-white' : 'text-gray-400'}`} />
+                  Pending Statements
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/finance/invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/finance/invoices')}>
+                  <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/finance/invoices') ? 'text-white' : 'text-gray-400'}`} />
+                  Tenant Invoices (Agent)
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/financials') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/financials')}>
                   <TrendingUp className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/financials') ? 'text-white' : 'text-gray-400'}`} />
                   Portfolio Financials

@@ -126,6 +126,8 @@ import PropertyKnowledgeBase from "@/pages/PropertyKnowledgeBase";
 import DealList from "@/pages/DealList";
 import DealTimeline from "@/pages/DealTimeline";
 import OffersManagement from "@/pages/OffersManagement";
+import PendingStatements from "@/pages/PendingStatements";
+import TenantInvoices from "@/pages/TenantInvoices";
 
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
@@ -431,6 +433,10 @@ function Router() {
 
         {/* Offers Management */}
         <Route path="/crm/offers"><CRMLayout><OffersManagement /></CRMLayout></Route>
+
+        {/* Finance Agent Pages */}
+        <Route path="/crm/finance/statements"><CRMLayout><PendingStatements /></CRMLayout></Route>
+        <Route path="/crm/finance/invoices"><CRMLayout><TenantInvoices /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
