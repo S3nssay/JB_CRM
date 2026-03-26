@@ -8,6 +8,10 @@ import { recordPaymentAndReconcile } from './reconciliationEngine';
 import { createRedirectFlow, completeRedirectFlow, collectPayment, cancelMandate, verifyWebhookSignature, processWebhookEvents, isGoCardlessConfigured } from './gocardlessService';
 import multer from 'multer';
 import { accountingRecordRentPayment, accountingRecordManagementFee, accountingRecordLandlordPayment, accountingRecordExpense } from './accountingIntegration';
+import { generateMonthlyStatements, generateMonthlyInvoices } from './services/financeAgentService';
+import { generateStatementPDF } from './services/pdfService';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export const financeRouter = Router();
 
@@ -1108,6 +1112,360 @@ financeRouter.post('/rent-reviews/:id/implement', requireAgent, async (req: any,
   } catch (error) {
     console.error('Error implementing rent review:', error);
     res.status(500).json({ error: 'Failed to implement rent review' });
+  }
+});
+
+// ==========================================
+// TAYLOR FINANCE AGENT: STATEMENT APPROVAL WORKFLOW
+// ==========================================
+
+// List pending (draft) statements with landlord and property details
+financeRouter.get('/statements/pending', requireAgent, async (req: any, res) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM landlord_statement WHERE status = 'draft'`
+    );
+    const total = parseInt(countResult.rows[0].total);
+
+    const result = await pool.query(`
+      SELECT
+        ls.*,
+        l.name as landlord_name,
+        l.email as landlord_email,
+        p.address_line1 as property_address,
+        p.postcode as property_postcode
+      FROM landlord_statement ls
+      LEFT JOIN landlord l ON l.id = ls.landlord_id
+      LEFT JOIN property p ON p.id = ls.property_id
+      WHERE ls.status = 'draft'
+      ORDER BY ls.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset]);
+
+    // Fetch line items for each statement
+    const statements = [];
+    for (const row of result.rows) {
+      const lineItemsResult = await pool.query(
+        `SELECT * FROM statement_line_item WHERE statement_id = $1 ORDER BY transaction_date`,
+        [row.id]
+      );
+      statements.push({
+        id: row.id,
+        landlordId: row.landlord_id,
+        propertyId: row.property_id,
+        statementNumber: row.statement_number,
+        attentionNeeded: row.attention_needed,
+        statementPeriodStart: row.statement_period_start,
+        statementPeriodEnd: row.statement_period_end,
+        totalRentCollected: row.total_rent_collected,
+        managementFees: row.management_fees,
+        maintenanceDeductions: row.maintenance_deductions,
+        otherDeductions: row.other_deductions,
+        vatOnFees: row.vat_on_fees,
+        netPayable: row.net_payable,
+        status: row.status,
+        pdfUrl: row.pdf_url,
+        createdAt: row.created_at,
+        landlordName: row.landlord_name,
+        landlordEmail: row.landlord_email,
+        propertyAddress: [row.property_address, row.property_postcode].filter(Boolean).join(', '),
+        lineItems: lineItemsResult.rows.map((li: any) => ({
+          id: li.id,
+          lineType: li.line_type,
+          description: li.description,
+          amount: li.amount,
+          transactionDate: li.transaction_date,
+        })),
+      });
+    }
+
+    res.json({ statements, total, page, limit });
+  } catch (error) {
+    console.error('Error fetching pending statements:', error);
+    res.status(500).json({ error: 'Failed to fetch pending statements' });
+  }
+});
+
+// Approve a draft statement (draft -> approved)
+financeRouter.post('/statements/:id/approve', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const statement = await storage.getStatement(id);
+    if (!statement) return res.status(404).json({ error: 'Statement not found' });
+    if (statement.status !== 'draft') {
+      return res.status(400).json({ error: `Cannot approve statement in '${statement.status}' status. Must be 'draft'.` });
+    }
+
+    const updated = await storage.updateStatement(id, { status: 'approved' });
+    console.log(`[Finance] Statement ${id} approved by user ${req.user?.id}`);
+    res.json(updated);
+  } catch (error) {
+    console.error('Error approving statement:', error);
+    res.status(500).json({ error: 'Failed to approve statement' });
+  }
+});
+
+// Send an approved statement (approved -> sent): generates PDF, emails landlord
+financeRouter.post('/statements/:id/send', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const statement = await storage.getStatement(id);
+    if (!statement) return res.status(404).json({ error: 'Statement not found' });
+    if (statement.status !== 'approved') {
+      return res.status(400).json({ error: `Cannot send statement in '${statement.status}' status. Must be 'approved'.` });
+    }
+
+    // Load landlord and property details
+    const landlordResult = await pool.query(`SELECT name, email FROM landlord WHERE id = $1`, [statement.landlordId]);
+    if (landlordResult.rows.length === 0) return res.status(404).json({ error: 'Landlord not found' });
+    const landlord = landlordResult.rows[0];
+
+    let propertyAddress = 'Property';
+    if (statement.propertyId) {
+      const propResult = await pool.query(`SELECT address_line1, postcode FROM property WHERE id = $1`, [statement.propertyId]);
+      if (propResult.rows.length > 0) {
+        propertyAddress = [propResult.rows[0].address_line1, propResult.rows[0].postcode].filter(Boolean).join(', ');
+      }
+    }
+
+    // Load line items
+    const lineItemsResult = await pool.query(
+      `SELECT * FROM statement_line_item WHERE statement_id = $1 ORDER BY transaction_date`,
+      [id]
+    );
+
+    // Generate PDF
+    const pdfData = {
+      statementNumber: statement.statementNumber || `STMT-${id}`,
+      landlordName: landlord.name || 'Landlord',
+      propertyAddress,
+      periodStart: new Date(statement.statementPeriodStart),
+      periodEnd: new Date(statement.statementPeriodEnd),
+      lineItems: lineItemsResult.rows.map((li: any) => ({
+        date: new Date(li.transaction_date || statement.statementPeriodEnd),
+        description: li.description,
+        amount: li.amount,
+      })),
+      totalRentCollected: statement.totalRentCollected,
+      managementFees: statement.managementFees,
+      maintenanceDeductions: statement.maintenanceDeductions,
+      otherDeductions: statement.otherDeductions,
+      vatOnFees: statement.vatOnFees,
+      netPayable: statement.netPayable,
+    };
+
+    const pdfBuffer = await generateStatementPDF(pdfData);
+
+    // Save PDF to uploads directory
+    const periodStr = new Date(statement.statementPeriodEnd).toISOString().slice(0, 7).replace('-', '');
+    const pdfFilename = `STMT-${periodStr}-${statement.propertyId || statement.landlordId}.pdf`;
+    const pdfDir = path.join(process.cwd(), 'uploads', 'statements');
+    if (!fs.existsSync(pdfDir)) {
+      fs.mkdirSync(pdfDir, { recursive: true });
+    }
+    const pdfPath = path.join(pdfDir, pdfFilename);
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    const pdfUrl = `/uploads/statements/${pdfFilename}`;
+
+    // Update statement with PDF URL
+    await storage.updateStatement(id, { pdfUrl });
+
+    // Send email to landlord with PDF attachment
+    if (landlord.email) {
+      const connResult = await pool.query(
+        `SELECT id, user_id FROM email_connection WHERE status = 'active' ORDER BY id LIMIT 1`
+      );
+      if (connResult.rows.length > 0) {
+        const conn = connResult.rows[0];
+        const periodStart = new Date(statement.statementPeriodStart).toLocaleDateString('en-GB');
+        const periodEnd = new Date(statement.statementPeriodEnd).toLocaleDateString('en-GB');
+        const fmt = (pence: number) => `&pound;${(pence / 100).toFixed(2)}`;
+
+        await pool.query(
+          `INSERT INTO sent_email (connection_id, user_id, to_addresses, subject, body_html, status)
+           VALUES ($1, $2, $3, $4, $5, 'queued')`,
+          [
+            conn.id,
+            conn.user_id,
+            [landlord.email],
+            `Landlord Statement - ${periodStart} to ${periodEnd}`,
+            `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <div style="background: #791E75; padding: 20px; color: white; text-align: center;">
+    <h1 style="margin: 0; font-size: 24px;">John Barclay</h1>
+    <p style="margin: 5px 0 0; opacity: 0.9;">Landlord Statement</p>
+  </div>
+  <div style="padding: 30px; background: #ffffff; border: 1px solid #e5e7eb;">
+    <p>Dear ${landlord.name},</p>
+    <p>Please find attached your statement for the period <strong>${periodStart}</strong> to <strong>${periodEnd}</strong>.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 10px 0; color: #6b7280;">Rent Collected</td>
+        <td style="padding: 10px 0; text-align: right; font-weight: 600; color: #16a34a;">${fmt(statement.totalRentCollected)}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 10px 0; color: #6b7280;">Management Fees</td>
+        <td style="padding: 10px 0; text-align: right; color: #ea580c;">-${fmt(statement.managementFees)}</td>
+      </tr>
+      <tr style="border-bottom: 1px solid #e5e7eb;">
+        <td style="padding: 10px 0; color: #6b7280;">VAT on Fees</td>
+        <td style="padding: 10px 0; text-align: right; color: #ea580c;">-${fmt(statement.vatOnFees)}</td>
+      </tr>
+      <tr>
+        <td style="padding: 10px 0; font-size: 18px; color: #6b7280;">Net Payable</td>
+        <td style="padding: 10px 0; text-align: right; font-size: 18px; font-weight: 700; color: #791E75;">${fmt(statement.netPayable)}</td>
+      </tr>
+    </table>
+    <p>Payment will be made to your registered bank account.</p>
+    <p style="margin-top: 30px;">Kind regards,<br/><strong>John Barclay Estate &amp; Management Agents</strong></p>
+  </div>
+</div>`,
+          ]
+        );
+      }
+    }
+
+    // Update status to sent
+    await storage.updateStatement(id, { status: 'sent', sentAt: new Date() });
+    console.log(`[Finance] Statement ${id} sent to ${landlord.email || 'no-email'} by user ${req.user?.id}`);
+
+    res.json({ success: true, pdfUrl, message: `Statement sent to ${landlord.email || 'landlord'}` });
+  } catch (error) {
+    console.error('Error sending statement:', error);
+    res.status(500).json({ error: 'Failed to send statement' });
+  }
+});
+
+// Reject (delete) a draft statement and its line items
+financeRouter.post('/statements/:id/reject', requireAgent, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const statement = await storage.getStatement(id);
+    if (!statement) return res.status(404).json({ error: 'Statement not found' });
+    if (statement.status !== 'draft') {
+      return res.status(400).json({ error: `Cannot reject statement in '${statement.status}' status. Must be 'draft'.` });
+    }
+
+    const reason = req.body.reason || 'No reason provided';
+
+    // Delete line items first, then statement
+    await pool.query(`DELETE FROM statement_line_item WHERE statement_id = $1`, [id]);
+    await pool.query(`DELETE FROM landlord_statement WHERE id = $1`, [id]);
+
+    console.log(`[Finance] Statement ${id} rejected and deleted by user ${req.user?.id}. Reason: ${reason}`);
+    res.json({ success: true, message: 'Statement rejected and deleted' });
+  } catch (error) {
+    console.error('Error rejecting statement:', error);
+    res.status(500).json({ error: 'Failed to reject statement' });
+  }
+});
+
+// Manual trigger: generate monthly statements via Taylor finance agent
+financeRouter.post('/statements/generate-monthly', requireAgent, async (req: any, res) => {
+  try {
+    const { year, month } = req.body;
+    if (!year || !month) {
+      return res.status(400).json({ error: 'year and month are required' });
+    }
+
+    const result = await generateMonthlyStatements(parseInt(year), parseInt(month));
+    console.log(`[Finance] Monthly statements generated: ${result.created} created, ${result.attentionNeeded} need attention`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error generating monthly statements:', error);
+    res.status(500).json({ error: 'Failed to generate monthly statements' });
+  }
+});
+
+// Manual trigger: generate monthly invoices via Taylor finance agent
+financeRouter.post('/invoices/generate-monthly', requireAgent, async (req: any, res) => {
+  try {
+    const result = await generateMonthlyInvoices(new Date());
+    console.log(`[Finance] Monthly invoices generated: ${result.created} created, ${result.sent} sent`);
+    res.json(result);
+  } catch (error) {
+    console.error('Error generating monthly invoices:', error);
+    res.status(500).json({ error: 'Failed to generate monthly invoices' });
+  }
+});
+
+// Enhanced invoice listing with joins and filters
+financeRouter.get('/invoices/list', requireAgent, async (req: any, res) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let paramIdx = 1;
+
+    if (req.query.tenantId) {
+      conditions.push(`i.tenant_id = $${paramIdx++}`);
+      params.push(parseInt(req.query.tenantId as string));
+    }
+    if (req.query.propertyId) {
+      conditions.push(`i.property_id = $${paramIdx++}`);
+      params.push(parseInt(req.query.propertyId as string));
+    }
+    if (req.query.status) {
+      conditions.push(`i.status = $${paramIdx++}`);
+      params.push(req.query.status as string);
+    }
+    if (req.query.invoiceType) {
+      conditions.push(`i.invoice_type = $${paramIdx++}`);
+      params.push(req.query.invoiceType as string);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as total FROM invoice i ${whereClause}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].total);
+
+    const result = await pool.query(`
+      SELECT
+        i.*,
+        t.name as tenant_name,
+        p.address_line1 as property_address,
+        p.postcode as property_postcode
+      FROM invoice i
+      LEFT JOIN tenant t ON t.id = i.tenant_id
+      LEFT JOIN property p ON p.id = i.property_id
+      ${whereClause}
+      ORDER BY i.due_date DESC
+      LIMIT $${paramIdx++} OFFSET $${paramIdx++}
+    `, [...params, limit, offset]);
+
+    const invoices = result.rows.map((row: any) => ({
+      id: row.id,
+      invoiceNumber: row.invoice_number,
+      propertyId: row.property_id,
+      tenantId: row.tenant_id,
+      landlordId: row.landlord_id,
+      tenancyId: row.tenancy_id,
+      invoiceType: row.invoice_type,
+      amount: row.amount,
+      vatAmount: row.vat_amount,
+      totalAmount: row.total_amount,
+      dueDate: row.due_date,
+      paidDate: row.paid_date,
+      status: row.status,
+      sentAt: row.sent_at,
+      createdAt: row.created_at,
+      tenantName: row.tenant_name,
+      propertyAddress: [row.property_address, row.property_postcode].filter(Boolean).join(', '),
+    }));
+
+    res.json({ invoices, total, page, limit });
+  } catch (error) {
+    console.error('Error fetching invoices list:', error);
+    res.status(500).json({ error: 'Failed to fetch invoices' });
   }
 });
 
