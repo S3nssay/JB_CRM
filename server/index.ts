@@ -78,6 +78,14 @@ app.use((req, res, next) => {
     .then(mod => mod.registerFinanceCronJobs())
     .catch(err => log('Finance cron registration failed: ' + err));
 
+  // Register Riley's business accounts cron jobs and deal event hooks
+  import('./services/businessAccountsService')
+    .then(async (mod) => {
+      await mod.registerBusinessAccountsCronJobs();
+      await mod.registerBusinessAccountsEventHooks();
+    })
+    .catch(err => log('Business accounts cron registration failed: ' + err));
+
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });

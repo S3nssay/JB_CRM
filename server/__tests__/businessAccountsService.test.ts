@@ -143,3 +143,167 @@ describe('accountingRecordLettingFee', () => {
     expect(lettingFn![0]).toContain("'4010'");
   });
 });
+
+// ==========================================================
+// Task 2: Cron Jobs, Event Hooks, Server Startup Wiring
+// ==========================================================
+
+// Read service source for static analysis
+const serviceSource = fs.readFileSync(
+  path.resolve(__dirname, '../services/businessAccountsService.ts'),
+  'utf-8'
+);
+
+const indexSource = fs.readFileSync(
+  path.resolve(__dirname, '../index.ts'),
+  'utf-8'
+);
+
+const dealEventBusSource = fs.readFileSync(
+  path.resolve(__dirname, '../agents/services/dealEventBus.ts'),
+  'utf-8'
+);
+
+describe('businessAccountsService exports', () => {
+  it('should export registerBusinessAccountsCronJobs', () => {
+    expect(serviceSource).toMatch(/export\s+async\s+function\s+registerBusinessAccountsCronJobs/);
+  });
+
+  it('should export registerBusinessAccountsEventHooks', () => {
+    expect(serviceSource).toMatch(/export\s+async\s+function\s+registerBusinessAccountsEventHooks/);
+  });
+});
+
+describe('Cron job schedules', () => {
+  it('should schedule riley:process-recurring-invoices daily at 6am', () => {
+    expect(serviceSource).toContain("'riley:process-recurring-invoices'");
+    expect(serviceSource).toContain("'0 6 * * *'");
+  });
+
+  it('should schedule riley:period-close-reminder on 5th of month at 9am', () => {
+    expect(serviceSource).toContain("'riley:period-close-reminder'");
+    expect(serviceSource).toContain("'0 9 5 * *'");
+  });
+
+  it('should schedule riley:vat-quarter-check quarterly', () => {
+    expect(serviceSource).toContain("'riley:vat-quarter-check'");
+    expect(serviceSource).toContain("'0 8 1 1,4,7,10 *'");
+  });
+});
+
+describe('Recurring invoice processor', () => {
+  it('should query recurring_invoice_templates for active templates due for generation', () => {
+    expect(serviceSource).toMatch(/recurring_invoice_templates.*is_active.*=.*true/i);
+    expect(serviceSource).toMatch(/next_generation_date/i);
+  });
+
+  it('should create business_invoices from templates', () => {
+    expect(serviceSource).toMatch(/INSERT INTO business_invoices/i);
+  });
+
+  it('should copy line items to business_invoice_lines', () => {
+    expect(serviceSource).toMatch(/INSERT INTO business_invoice_lines/i);
+  });
+
+  it('should update next_generation_date after processing', () => {
+    expect(serviceSource).toMatch(/UPDATE recurring_invoice_templates.*next_generation_date/i);
+  });
+});
+
+describe('Period close reminder', () => {
+  it('should query open financial periods past their end date', () => {
+    expect(serviceSource).toMatch(/financial_periods.*status.*=.*'open'/i);
+    expect(serviceSource).toMatch(/end_date/i);
+  });
+
+  it('should send email reminders to admin users', () => {
+    expect(serviceSource).toMatch(/sendEmail/);
+    expect(serviceSource).toMatch(/role.*=.*'admin'/i);
+  });
+
+  it('should NOT auto-close periods (reminder only)', () => {
+    // Should not contain UPDATE financial_periods SET status = 'closed'
+    expect(serviceSource).not.toMatch(/UPDATE financial_periods.*SET.*status.*=.*'closed'/i);
+  });
+});
+
+describe('VAT quarter check', () => {
+  it('should query draft VAT returns past their period end', () => {
+    expect(serviceSource).toMatch(/vat_returns.*status.*=.*'draft'/i);
+    expect(serviceSource).toMatch(/period_end/i);
+  });
+
+  it('should send email reminders for pending VAT returns', () => {
+    // Check that VAT handler also sends emails
+    const vatSection = serviceSource.match(
+      /riley:vat-quarter-check[\s\S]*?(?=console\.log.*\[Riley Cron\] VAT)/
+    );
+    expect(vatSection).not.toBeNull();
+    expect(vatSection![0]).toContain('sendEmail');
+  });
+});
+
+describe('Deal event hooks', () => {
+  it('should subscribe to SALE_COMPLETED event for commission journal', () => {
+    expect(serviceSource).toMatch(/DEAL_EVENTS\.SALE_COMPLETED/);
+    expect(serviceSource).toMatch(/accountingRecordCommissionIncome/);
+  });
+
+  it('should subscribe to TENANCY_AGREED event for letting fee journal', () => {
+    expect(serviceSource).toMatch(/DEAL_EVENTS\.TENANCY_AGREED/);
+    expect(serviceSource).toMatch(/accountingRecordLettingFee/);
+  });
+
+  it('should use fire-and-forget pattern (catch errors internally)', () => {
+    // Both event handlers should have try/catch blocks
+    const saleHandler = serviceSource.match(
+      /SALE_COMPLETED[\s\S]*?catch\s*\(/
+    );
+    const tenancyHandler = serviceSource.match(
+      /TENANCY_AGREED[\s\S]*?catch\s*\(/
+    );
+    expect(saleHandler).not.toBeNull();
+    expect(tenancyHandler).not.toBeNull();
+  });
+
+  it('should pass sourceType=deal and sourceId=dealId for traceability', () => {
+    expect(serviceSource).toContain("'deal'");
+    expect(serviceSource).toMatch(/payload\.dealId/);
+  });
+
+  it('should skip journal creation when commission/fee is zero or missing', () => {
+    expect(serviceSource).toMatch(/commissionPence\s*<=\s*0|commissionPence\s*===\s*0/);
+    expect(serviceSource).toMatch(/feePence\s*<=\s*0|feePence\s*===\s*0/);
+  });
+});
+
+describe('SALE_COMPLETED event in dealEventBus', () => {
+  it('should be defined in DEAL_EVENTS constants', () => {
+    expect(dealEventBusSource).toContain("SALE_COMPLETED: 'sale.completed'");
+  });
+});
+
+describe('Server startup wiring', () => {
+  it('should import and call registerBusinessAccountsCronJobs in index.ts', () => {
+    expect(indexSource).toMatch(/registerBusinessAccountsCronJobs/);
+    expect(indexSource).toMatch(/businessAccountsService/);
+  });
+
+  it('should import and call registerBusinessAccountsEventHooks in index.ts', () => {
+    expect(indexSource).toMatch(/registerBusinessAccountsEventHooks/);
+  });
+});
+
+describe('Lazy initialization', () => {
+  it('should use lazy pg-boss init (not connect at module load)', () => {
+    // Should have getBoss function that checks null
+    expect(serviceSource).toMatch(/let boss.*=\s*null/);
+    expect(serviceSource).toMatch(/async function getBoss/);
+  });
+
+  it('should use lazy imports for pool, emailService, and accountingIntegration', () => {
+    expect(serviceSource).toMatch(/let _pool.*=\s*null/);
+    expect(serviceSource).toMatch(/let _emailService.*=\s*null/);
+    expect(serviceSource).toMatch(/let _accountingIntegration.*=\s*null/);
+  });
+});

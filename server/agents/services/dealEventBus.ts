@@ -17,6 +17,7 @@ export const DEAL_EVENTS = {
   LEASE_RENEWAL_DUE: 'lease.renewal_due',
   RENT_REVIEW_DUE: 'rent.review_due',
   SALE_AGREED: 'sale.agreed',
+  SALE_COMPLETED: 'sale.completed',
   SALE_COLLAPSED: 'sale.collapsed',
   STEP_COMPLETED: 'step.completed',
   STEP_FAILED: 'step.failed',
