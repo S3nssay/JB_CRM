@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 09-02 (Portfolio Monitor Service)
-last_updated: "2026-03-26T20:06:16.694Z"
-last_activity: 2026-03-26 — Completed 07-04 (Offers Dashboard & Cost Ledger UI)
+status: executing
+stopped_at: Completed 08-02-PLAN.md
+last_updated: "2026-03-26T20:07:30.683Z"
+last_activity: 2026-03-26 — Completed 08-02 (Taylor Agent + Tools + Cron)
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 37
   completed_plans: 30
-  percent: 96
+  percent: 81
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 7 — Agent Corrections & Cost Ledger
+**Current focus:** Phase 8 — PM Finance Agent (Landlord Statements & Tenant Invoices)
 
 ## Current Position
 
-Phase: 7 of 11 (Agent Corrections & Cost Ledger)
-Plan: 4 of 4 in current phase
-Status: Phase Complete
-Last activity: 2026-03-26 — Completed 07-04 (Offers Dashboard & Cost Ledger UI)
+Phase: 8 of 11 (PM Finance Agent)
+Plan: 2 of 4 in current phase
+Status: In Progress
+Last activity: 2026-03-26 — Completed 08-02 (Taylor Agent + Tools + Cron)
 
-Progress: [█████████░] 96%
+Progress: [████████░░] 81%
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Progress: [█████████░] 96%
 | Phase 07 P03 | 5min | 2 tasks | 3 files |
 | Phase 07 P04 | 9min | 2 tasks | 7 files |
 | Phase 09 P02 | 7min | 2 tasks | 3 files |
+| Phase 08 P02 | 9min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -174,6 +175,8 @@ Recent decisions affecting current work:
 - [Phase 07]: CostLedger uses dual mode prop (property/landlord) rather than separate components
 - [Phase 09]: Used property_certification table for compliance queries (richer schema with reminder tracking)
 - [Phase 09]: Health score formula: 100 base, -20 expired cert, -10 expiring, -5 open ticket, -15 active arrears, -25 vacant
+- [Phase 08]: Lazy imports for all pool/service dependencies in finance tools (consistent with existing agent patterns)
+- [Phase 08]: Finance cron dual-trigger: pg-boss cron for scheduled generation + deal event subscriptions for lifecycle triggers
 
 ### Roadmap Evolution
 
@@ -195,6 +198,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T20:05:26.891Z
-Stopped at: Completed 09-02 (Portfolio Monitor Service)
+Last session: 2026-03-26T20:07:30.658Z
+Stopped at: Completed 08-02-PLAN.md
 Resume file: None
