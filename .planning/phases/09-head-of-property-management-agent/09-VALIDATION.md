@@ -38,22 +38,23 @@ created: 2026-03-26
 
 | Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 09-01-01 | 01 | 1 | HPM-01 | unit (static analysis) | `npx vitest run server/__tests__/headOfPM.test.ts -t "agent definition"` | ❌ W0 | ⬜ pending |
-| 09-01-02 | 01 | 1 | HPM-02 | unit (static analysis) | `npx vitest run server/__tests__/headOfPM.test.ts -t "handoffs"` | ❌ W0 | ⬜ pending |
-| 09-01-03 | 01 | 1 | HPM-03 | unit | `npx vitest run server/__tests__/headOfPM.test.ts -t "portfolio tools"` | ❌ W0 | ⬜ pending |
-| 09-02-01 | 02 | 2 | HPM-04 | unit | `npx vitest run server/__tests__/portfolioMonitor.test.ts -t "compliance check"` | ❌ W0 | ⬜ pending |
-| 09-02-02 | 02 | 2 | HPM-05 | unit | `npx vitest run server/__tests__/headOfPM.test.ts -t "health report"` | ❌ W0 | ⬜ pending |
-| 09-03-01 | 03 | 2 | HPM-06 | unit | `npx vitest run server/__tests__/headOfPM.test.ts -t "API routes"` | ❌ W0 | ⬜ pending |
-| 09-03-02 | 03 | 2 | HPM-07 | unit (static analysis) | `npx vitest run server/__tests__/headOfPM.test.ts -t "supervisor registration"` | ❌ W0 | ⬜ pending |
+| 09-01-01 | 01 | 1 | HPM-01 | unit (static analysis) | `npx vitest run server/__tests__/headOfPM.test.ts -t "agent definition"` | W0 | pending |
+| 09-01-02 | 01 | 1 | HPM-02 | unit (static analysis) | `npx vitest run server/__tests__/headOfPM.test.ts -t "handoffs"` | W0 | pending |
+| 09-01-03 | 01 | 1 | HPM-03 | unit | `npx vitest run server/__tests__/headOfPM.test.ts -t "portfolio tools"` | W0 | pending |
+| 09-02-01 | 02 | 1 | HPM-04 | unit | `npx vitest run server/__tests__/portfolioMonitor.test.ts -t "compliance check"` | W0 | pending |
+| 09-02-02 | 02 | 1 | HPM-05 | unit | `npx vitest run server/__tests__/portfolioMonitor.test.ts -t "health report"` | W0 | pending |
+| 09-03-01 | 03 | 2 | HPM-06 | unit | `npx vitest run server/__tests__/pmOverview.test.ts` | W0 | pending |
+| 09-03-02 | 03 | 2 | HPM-06 | grep (UI integration) | `grep -c "compliance-alerts\|portfolio-health\|agent-activity" client/src/pages/PMTrackingDashboard.tsx` | n/a | pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+*Status: pending / green / red / flaky*
 
 ---
 
 ## Wave 0 Requirements
 
-- [ ] `server/__tests__/headOfPM.test.ts` — stubs for HPM-01, HPM-02, HPM-03, HPM-05, HPM-06, HPM-07
-- [ ] `server/__tests__/portfolioMonitor.test.ts` — stubs for HPM-04 (compliance monitoring)
+- [ ] `server/__tests__/headOfPM.test.ts` -- stubs for HPM-01, HPM-02, HPM-03
+- [ ] `server/__tests__/portfolioMonitor.test.ts` -- stubs for HPM-04, HPM-05
+- [ ] `server/__tests__/pmOverview.test.ts` -- stubs for HPM-06 (response shape tests)
 - No new framework install needed (Vitest already configured)
 
 ---
