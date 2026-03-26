@@ -435,6 +435,72 @@ export async function accountingRecordPurchaseInvoice(
   );
 }
 
+/**
+ * Record sales commission income in the accounting system.
+ * Called when a property sale completes and commission is earned.
+ *
+ * Double entry:
+ *   DR 1100 Accounts Receivable (commissionPence + vatPence)
+ *   CR 4020 Sales Commission Income (commissionPence)
+ *   CR 2100 VAT Output (vatPence = Math.round(commissionPence * 0.2))
+ */
+export async function accountingRecordCommissionIncome(
+  propertyId: number,
+  commissionPence: number,
+  description: string,
+  sourceType?: string,
+  sourceId?: number
+): Promise<number | null> {
+  const vatPence = Math.round(commissionPence * 0.2);
+  const totalReceivable = commissionPence + vatPence;
+
+  return createJournalEntry(
+    description,
+    [
+      { accountCode: '1100', description: `Commission receivable - ${description}`, debitAmount: totalReceivable, creditAmount: 0 },
+      { accountCode: '4020', description: `Sales commission income - ${description}`, debitAmount: 0, creditAmount: commissionPence },
+      { accountCode: '2100', description: `VAT on commission - ${description}`, debitAmount: 0, creditAmount: vatPence },
+    ],
+    undefined,
+    undefined,
+    sourceType,
+    sourceId
+  );
+}
+
+/**
+ * Record letting fee income in the accounting system.
+ * Called when a tenancy is agreed and the letting fee is earned.
+ *
+ * Double entry:
+ *   DR 1100 Accounts Receivable (feePence + vatPence)
+ *   CR 4010 Letting Fee Income (feePence)
+ *   CR 2100 VAT Output (vatPence = Math.round(feePence * 0.2))
+ */
+export async function accountingRecordLettingFee(
+  propertyId: number,
+  feePence: number,
+  description: string,
+  sourceType?: string,
+  sourceId?: number
+): Promise<number | null> {
+  const vatPence = Math.round(feePence * 0.2);
+  const totalReceivable = feePence + vatPence;
+
+  return createJournalEntry(
+    description,
+    [
+      { accountCode: '1100', description: `Letting fee receivable - ${description}`, debitAmount: totalReceivable, creditAmount: 0 },
+      { accountCode: '4010', description: `Letting fee income - ${description}`, debitAmount: 0, creditAmount: feePence },
+      { accountCode: '2100', description: `VAT on letting fee - ${description}`, debitAmount: 0, creditAmount: vatPence },
+    ],
+    undefined,
+    undefined,
+    sourceType,
+    sourceId
+  );
+}
+
 // ==========================================
 // EXPENSE CATEGORY MAPPING
 // ==========================================
