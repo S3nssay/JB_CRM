@@ -148,13 +148,16 @@ Plans:
 
 ### Phase 8: PM Finance Agent — Landlord Statements & Tenant Invoices
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Taylor, a PM Finance AI agent, autonomously generates monthly per-property landlord statements (staff-approved before sending) and tenant rent invoices (7 days before due, auto-sent with dual payment links), handles payment auto-reconciliation, and serves as a conversational agent for finance queries from tenants and landlords via Supervisor routing.
+**Requirements**: FIN-01, FIN-02, FIN-03, FIN-04, FIN-05, FIN-06, FIN-07, FIN-08, FIN-09, FIN-10
 **Depends on:** Phase 7
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 8 to break down)
+- [ ] 08-01-PLAN.md — Schema fix (propertyId on landlordStatements), financeAgentService (statement aggregation, invoice generation, management fee calculation), pdfService (branded PDF generation), Wave 0 test stubs
+- [ ] 08-02-PLAN.md — Taylor agent definition (persona, finance tools), Supervisor registration with finance routing, pg-boss cron jobs (monthly statements, daily invoices), deal event hooks (tenancy.agreed/ending triggers)
+- [ ] 08-03-PLAN.md — Finance API routes (statement approval workflow, invoice listing, manual triggers), auto-reconciliation wiring for Taylor-generated invoices
+- [ ] 08-04-PLAN.md — Pending Statements approval page, Tenant Invoices page, CRM sidebar Finance section, App.tsx routing
 
 ### Phase 9: Head of Property Management Agent
 
