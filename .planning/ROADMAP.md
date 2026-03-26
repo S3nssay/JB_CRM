@@ -171,13 +171,14 @@ Plans:
 
 ### Phase 10: Business Accounts Agent — Company-Wide Financials
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Riley, a Business Accounts AI agent, provides conversational access to company-wide financials (P&L, balance sheet, VAT returns, cash position, aged debtors/creditors, financial periods) for staff, and automates recurring accounting tasks (recurring invoice generation, commission journal entries on deal completion, period close reminders, VAT quarter-end reminders).
+**Requirements**: BIZ-01, BIZ-02, BIZ-03, BIZ-04, BIZ-05, BIZ-06, BIZ-07, BIZ-08, BIZ-09
 **Depends on:** Phase 9
-**Plans:** 0 plans
+**Plans:** 2 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 10 to break down)
+- [ ] 10-01-PLAN.md — Shared accounting queries module, Riley agent definition with 12 financial tools, Supervisor registration with finance routing, unit tests
+- [ ] 10-02-PLAN.md — pg-boss cron automation (recurring invoices, period close reminders, VAT quarter checks), auto-journal-entry creation from deal events (commission income, letting fees)
 
 ### Phase 11: Property Sourcing Agent — Market Intelligence & Owner Outreach
 
