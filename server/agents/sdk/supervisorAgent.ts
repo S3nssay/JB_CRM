@@ -18,6 +18,7 @@ import { salesAgent } from './salesAgent';
 import { lettingsAgent } from './lettingsAgent';
 import { adminAgent } from './adminAgent';
 import { pmAgent } from './pmAgent';
+import { headOfPMAgent } from './headOfPMAgent';
 import { financeAgent } from './financeAgent';
 import { businessAccountsAgent } from './businessAccountsAgent';
 

@@ -73,6 +73,11 @@ app.use((req, res, next) => {
     .then(mod => mod.registerPortfolioMonitorJobs())
     .catch(err => console.error('Failed to register portfolio monitor jobs:', err));
 
+  // Register Taylor's finance cron jobs and deal event subscriptions
+  import('./agents/services/financeCronJobs')
+    .then(mod => mod.registerFinanceCronJobs())
+    .catch(err => log('Finance cron registration failed: ' + err));
+
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });
