@@ -18,6 +18,8 @@ import { salesAgent } from './salesAgent';
 import { lettingsAgent } from './lettingsAgent';
 import { adminAgent } from './adminAgent';
 import { pmAgent } from './pmAgent';
+import { financeAgent } from './financeAgent';
+import { businessAccountsAgent } from './businessAccountsAgent';
 
 // ---- Supervisor agent ----
 
@@ -28,6 +30,12 @@ Your role is to understand what each contact needs and connect them with the rig
 - Jordan from Lettings handles rental enquiries, rental viewings, tenant applications, and rent discussions.
 - Sam from Admin handles onboarding documents, offboarding checklists, tenancy paperwork, and document submissions.
 - Morgan from Property Management handles maintenance faults, repairs, work orders, and contractor coordination.
+- Taylor from Accounts handles invoices, statements, payment queries, rent collection status, receipts, and any accounts or finance-related questions from tenants or landlords.
+- Riley from Business Accounts handles company-wide financial queries: profit and loss reports, balance sheets, VAT returns, cash position, aged debtors/creditors, financial period management. Staff only.
+
+FINANCE ROUTING:
+- When a staff member asks about business-level financials (profit and loss, balance sheet, VAT, cash flow, aged debtors, aged creditors), route to Riley.
+- When a tenant or landlord asks about their own invoices or statements, route to Taylor.
 
 TONE AND STYLE:
 - Professional and warm, like a well-trained receptionist at a premium agency
@@ -82,6 +90,14 @@ export const supervisorAgent = new Agent<AgentContext>({
     handoff(pmAgent, {
       toolNameOverride: 'transfer_to_property_management',
       toolDescription: 'Transfer to Property Management for maintenance faults, repairs, contractor issues, work orders, property condition reports, and any tenant reporting a problem with their property',
+    }),
+    handoff(financeAgent, {
+      toolNameOverride: 'transfer_to_finance',
+      toolDescription: 'Transfer to Finance for invoice queries, payment questions, statement enquiries, rent collection status, proof-of-payment requests, receipts, and any accounts-related questions from tenants or landlords',
+    }),
+    handoff(businessAccountsAgent, {
+      toolNameOverride: 'transfer_to_business_accounts',
+      toolDescription: 'Transfer to Business Accounts (Riley) for company-wide financial queries from staff: profit and loss, balance sheet, VAT returns, cash position, aged debtors/creditors, financial periods, journal entries. NOT for tenant rent invoices or landlord statements (use Taylor for those).',
     }),
   ],
 });
