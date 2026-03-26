@@ -137,3 +137,116 @@ export async function recordPaymentAndReconcile(
 
   return result;
 }
+
+// ============================================================
+// Taylor Invoice Auto-Reconciliation
+// ============================================================
+
+/**
+ * Find an invoice by its invoice number (used by Stripe/GoCardless webhook handlers
+ * to match incoming payments to Taylor-generated invoices).
+ */
+export async function findInvoiceByReference(reference: string): Promise<any | null> {
+  try {
+    const result = await pool.query(
+      `SELECT * FROM invoice WHERE invoice_number = $1 LIMIT 1`,
+      [reference]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error) {
+    console.error('[Reconciliation] Error finding invoice by reference:', error);
+    return null;
+  }
+}
+
+/**
+ * Reconcile an incoming payment against a Taylor-generated invoice.
+ * Called from Stripe/GoCardless webhook handlers when a payment succeeds.
+ *
+ * Steps:
+ *  1. Look up invoice by ID
+ *  2. If already paid, return false
+ *  3. If payment covers the invoice, mark as paid
+ *  4. Create a propertyTransaction income record
+ *  5. Clear any linked arrears
+ *  6. Log the reconciliation
+ *
+ * @returns true if reconciliation succeeded, false if already paid or not found
+ */
+export async function reconcileInvoicePayment(
+  invoiceId: number,
+  paymentAmountPence: number,
+  paymentReference: string,
+  paymentMethod: 'stripe' | 'gocardless' | 'bank_transfer'
+): Promise<boolean> {
+  try {
+    // 1. Look up invoice
+    const invResult = await pool.query(
+      `SELECT * FROM invoice WHERE id = $1`,
+      [invoiceId]
+    );
+    if (invResult.rows.length === 0) {
+      console.warn(`[Reconciliation] Invoice ${invoiceId} not found`);
+      return false;
+    }
+    const invoice = invResult.rows[0];
+
+    // 2. Already paid?
+    if (invoice.status === 'paid') {
+      console.log(`[Reconciliation] Invoice ${invoiceId} already paid, skipping`);
+      return false;
+    }
+
+    // 3. Check payment covers the invoice amount
+    if (paymentAmountPence >= invoice.total_amount) {
+      // Mark invoice as paid
+      await pool.query(
+        `UPDATE invoice SET status = 'paid', paid_date = NOW(), updated_at = NOW() WHERE id = $1`,
+        [invoiceId]
+      );
+
+      // 4. Create property transaction (income record)
+      if (invoice.property_id) {
+        await pool.query(
+          `INSERT INTO property_transaction (property_id, landlord_id, transaction_type, category, description, amount, transaction_date, invoice_id, created_at)
+           VALUES ($1, $2, 'income', 'rent', $3, $4, NOW(), $5, NOW())`,
+          [
+            invoice.property_id,
+            invoice.landlord_id || null,
+            `Payment received - Invoice ${invoice.invoice_number} via ${paymentMethod} (ref: ${paymentReference})`,
+            paymentAmountPence,
+            invoiceId,
+          ]
+        );
+      }
+
+      // 5. Clear linked arrears
+      try {
+        await pool.query(
+          `UPDATE arrears SET status = 'cleared', updated_at = NOW() WHERE invoice_id = $1 AND status = 'active'`,
+          [invoiceId]
+        );
+      } catch (arrearsErr) {
+        console.error('[Reconciliation] Error clearing arrears:', arrearsErr);
+      }
+
+      // 6. Log
+      console.log(
+        `[Reconciliation] Invoice ${invoiceId} (${invoice.invoice_number}) reconciled: ` +
+        `${paymentAmountPence}p via ${paymentMethod}, ref=${paymentReference}`
+      );
+
+      return true;
+    }
+
+    // Payment doesn't cover the full amount -- log but don't mark as paid
+    console.warn(
+      `[Reconciliation] Partial payment for invoice ${invoiceId}: ` +
+      `received ${paymentAmountPence}p, invoice total ${invoice.total_amount}p`
+    );
+    return false;
+  } catch (error) {
+    console.error('[Reconciliation] Error reconciling invoice payment:', error);
+    return false;
+  }
+}

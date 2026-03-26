@@ -2,6 +2,7 @@ import Stripe from 'stripe';
 import { db } from './db';
 import { payments, paymentSchedules } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
+import { findInvoiceByReference, reconcileInvoicePayment } from './reconciliationEngine';
 
 // Initialize Stripe with secret key
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -214,6 +215,21 @@ export async function handleStripeWebhook(event: Stripe.Event): Promise<boolean>
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
         await updatePaymentStatus(paymentIntent.id, 'completed');
         console.log(`Payment ${paymentIntent.id} succeeded`);
+
+        // Auto-reconcile: check if metadata contains an invoice reference
+        // Stripe payment links / checkout sessions should include invoice_number in metadata
+        const invoiceRef = paymentIntent.metadata?.invoice_number;
+        if (invoiceRef) {
+          const invoice = await findInvoiceByReference(invoiceRef);
+          if (invoice) {
+            await reconcileInvoicePayment(
+              invoice.id,
+              paymentIntent.amount, // Stripe amount is in smallest currency unit (pence for GBP)
+              paymentIntent.id,
+              'stripe'
+            );
+          }
+        }
         break;
 
       case 'payment_intent.payment_failed':

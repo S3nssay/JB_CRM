@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { recordPaymentAndReconcile } from './reconciliationEngine';
+import { recordPaymentAndReconcile, findInvoiceByReference, reconcileInvoicePayment } from './reconciliationEngine';
 import crypto from 'crypto';
 
 /**
@@ -309,6 +309,24 @@ async function handlePaymentEvent(event: any): Promise<void> {
       await storage.updateGocardlessPayment(gcPayment.id, {
         paymentId: result.paymentId,
       });
+    }
+  }
+
+  // Auto-reconcile Taylor-generated invoices by reference when no direct invoiceId link exists
+  // This handles cases where GoCardless payments reference an invoice number in their description
+  if (event.action === 'confirmed' && !gcPayment.invoiceId && gcPayment.description) {
+    // Try to match by invoice number pattern (e.g., "INV-202603-0001" in description)
+    const invoiceMatch = gcPayment.description.match(/INV-\d{6}-\d{4}/);
+    if (invoiceMatch) {
+      const invoice = await findInvoiceByReference(invoiceMatch[0]);
+      if (invoice) {
+        await reconcileInvoicePayment(
+          invoice.id,
+          gcPayment.amount,
+          `GoCardless ${gcPaymentId}`,
+          'gocardless'
+        );
+      }
     }
   }
 
