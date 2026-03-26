@@ -277,6 +277,100 @@ export const escalateToHumanTool = tool({
   },
 });
 
+// ---- Record offer tool ----
+
+export const recordOfferTool = tool({
+  name: 'record_offer',
+  description: 'Record a property offer from a buyer or tenant. Captures full offer details and notifies the assigned negotiator.',
+  parameters: z4.object({
+    propertyId: z4.number().describe('Property ID the offer is for'),
+    offerAmount: z4.number().describe('Offer amount in pence'),
+    buyerName: z4.string().describe('Name of the buyer or tenant'),
+    buyerEmail: z4.string().describe('Email of the buyer or tenant'),
+    buyerPhone: z4.string().describe('Phone number of the buyer or tenant'),
+    buyerPosition: z4.enum(['cash', 'mortgage_approved', 'mortgage_required', 'chain']).optional().describe('Buyer position'),
+    isInChain: z4.boolean().optional().describe('Whether the buyer is in a chain'),
+    chainDetails: z4.string().optional().describe('Details of the chain if applicable'),
+    conditions: z4.array(z4.string()).optional().describe('Conditions on the offer'),
+    proposedCompletionDate: z4.string().optional().describe('Proposed completion date (ISO string)'),
+    employmentStatus: z4.string().optional().describe('Tenant employment status (lettings)'),
+    rentalReferences: z4.string().optional().describe('Rental references info (lettings)'),
+    moveInTimeline: z4.string().optional().describe('Proposed move-in timeline (lettings)'),
+  }),
+  execute: async (_context: AgentContext, input: {
+    propertyId: number;
+    offerAmount: number;
+    buyerName: string;
+    buyerEmail: string;
+    buyerPhone: string;
+    buyerPosition?: string;
+    isInChain?: boolean;
+    chainDetails?: string;
+    conditions?: string[];
+    proposedCompletionDate?: string;
+    employmentStatus?: string;
+    rentalReferences?: string;
+    moveInTimeline?: string;
+  }) => {
+    const { pool } = await import('../../db');
+
+    // INSERT into property_offer table
+    const insertResult = await pool.query(
+      `INSERT INTO property_offer (
+        property_id, offer_amount, buyer_name, buyer_email, buyer_phone,
+        buyer_position, is_in_chain, chain_details, conditions,
+        proposed_completion_date, status, offer_source,
+        employment_status, rental_references, move_in_timeline,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending', 'agent', $11, $12, $13, NOW(), NOW())
+      RETURNING id`,
+      [
+        input.propertyId,
+        input.offerAmount,
+        input.buyerName,
+        input.buyerEmail,
+        input.buyerPhone,
+        input.buyerPosition || null,
+        input.isInChain || false,
+        input.chainDetails || null,
+        input.conditions || null,
+        input.proposedCompletionDate ? new Date(input.proposedCompletionDate) : null,
+        input.employmentStatus || null,
+        input.rentalReferences || null,
+        input.moveInTimeline || null,
+      ],
+    );
+
+    // Look up assigned agent and property address
+    const propResult = await pool.query(
+      `SELECT agent_id, address FROM properties WHERE id = $1`,
+      [input.propertyId],
+    );
+
+    const property = propResult.rows[0];
+    const propertyAddress = property?.address || `Property #${input.propertyId}`;
+    let notifyUserId = property?.agent_id;
+
+    // Fall back to first admin user if no agent assigned
+    if (!notifyUserId) {
+      const adminResult = await pool.query(
+        `SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1`,
+      );
+      notifyUserId = adminResult.rows[0]?.id || 1;
+    }
+
+    // INSERT notification
+    const amountFormatted = `£${(input.offerAmount / 100).toLocaleString('en-GB', { minimumFractionDigits: 2 })}`;
+    await pool.query(
+      `INSERT INTO notification (user_id, title, type, link_url, is_read, created_at)
+       VALUES ($1, $2, 'info', '/crm/offers', false, NOW())`,
+      [notifyUserId, `New offer: ${amountFormatted} on ${propertyAddress}`],
+    );
+
+    return `Offer of ${amountFormatted} recorded for ${propertyAddress}. The assigned negotiator has been notified.`;
+  },
+});
+
 // ---- Payment link service (lazy import) ----
 
 let _paymentLinkService: any = null;
