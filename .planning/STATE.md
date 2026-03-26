@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 7 context gathered
-last_updated: "2026-03-24T15:10:02.655Z"
-last_activity: 2026-03-24 — Completed 06-04 (Deal Lifecycle CRM UI)
+status: in_progress
+stopped_at: Completed 07-01 (Agent Corrections & Schema Extensions)
+last_updated: "2026-03-26T14:59:14.392Z"
+last_activity: 2026-03-26 — Completed 07-01 (Agent Corrections & Schema Extensions)
 progress:
   total_phases: 11
   completed_phases: 6
-  total_plans: 24
-  completed_plans: 24
-  percent: 100
+  total_plans: 28
+  completed_plans: 25
+  percent: 89
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 6 — Cross-Agent Collaboration & Deal Lifecycle Automation
+**Current focus:** Phase 7 — Agent Corrections & Cost Ledger
 
 ## Current Position
 
-Phase: 6 of 6 (Cross-Agent Collaboration)
-Plan: 4 of 4 in current phase
-Status: Completed
-Last activity: 2026-03-24 — Completed 06-04 (Deal Lifecycle CRM UI)
+Phase: 7 of 11 (Agent Corrections & Cost Ledger)
+Plan: 1 of 4 in current phase
+Status: In Progress
+Last activity: 2026-03-26 — Completed 07-01 (Agent Corrections & Schema Extensions)
 
-Progress: [██████████] 100%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -80,6 +80,7 @@ Progress: [██████████] 100%
 | Phase 06 P03 | 10min | 2 tasks | 14 files |
 | Phase 06 P02 | 4min | 2 tasks | 4 files |
 | Phase 06 P04 | 5min | 3 tasks | 8 files |
+| Phase 07 P01 | 8min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -159,6 +160,9 @@ Recent decisions affecting current work:
 - [Phase 06-02]: Exported routeHandlers object for direct unit testing without HTTP supertest
 - [Phase 06-02]: SSE heartbeat at 30s interval with dead-connection cleanup on write errors
 - [Phase 06]: SSE EventSource with withCredentials for session-based auth on notification stream
+- [Phase 07-01]: recordOfferTool uses raw SQL pool.query consistent with emitCrossReferralTool pattern
+- [Phase 07-01]: Notification falls back to first admin user when property has no assigned agent
+- [Phase 07-01]: Mocked SDK tool() in tests to avoid zod4 validation errors at import time
 
 ### Roadmap Evolution
 
@@ -180,6 +184,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-24T15:10:02.637Z
-Stopped at: Phase 7 context gathered
-Resume file: .planning/phases/07-agent-corrections-cost-ledger/07-CONTEXT.md
+Last session: 2026-03-26T14:58:14Z
+Stopped at: Completed 07-01 (Agent Corrections & Schema Extensions)
+Resume file: .planning/phases/07-agent-corrections-cost-ledger/07-02-PLAN.md
