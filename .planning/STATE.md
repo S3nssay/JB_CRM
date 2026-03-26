@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 8 planned and verified
-last_updated: "2026-03-26T19:18:51.301Z"
+stopped_at: Completed 09-02 (Portfolio Monitor Service)
+last_updated: "2026-03-26T20:06:16.694Z"
 last_activity: 2026-03-26 — Completed 07-04 (Offers Dashboard & Cost Ledger UI)
 progress:
   total_phases: 11
   completed_phases: 7
   total_plans: 37
-  completed_plans: 28
+  completed_plans: 30
   percent: 96
 ---
 
@@ -84,6 +84,7 @@ Progress: [█████████░] 96%
 | Phase 07 P02 | 8min | 2 tasks | 3 files |
 | Phase 07 P03 | 5min | 2 tasks | 3 files |
 | Phase 07 P04 | 9min | 2 tasks | 7 files |
+| Phase 09 P02 | 7min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -171,6 +172,8 @@ Recent decisions affecting current work:
 - [Phase 07]: Email-only threshold alerts per user decision (not in-CRM notification bell)
 - [Phase 07]: Offers nav link placed in Deals section of sidebar for logical grouping
 - [Phase 07]: CostLedger uses dual mode prop (property/landlord) rather than separate components
+- [Phase 09]: Used property_certification table for compliance queries (richer schema with reminder tracking)
+- [Phase 09]: Health score formula: 100 base, -20 expired cert, -10 expiring, -5 open ticket, -15 active arrears, -25 vacant
 
 ### Roadmap Evolution
 
@@ -192,6 +195,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-26T18:47:11.333Z
-Stopped at: Phase 8 planned and verified
-Resume file: .planning/phases/08-pm-finance-agent-landlord-statements-tenant-invoices/08-01-PLAN.md
+Last session: 2026-03-26T20:05:26.891Z
+Stopped at: Completed 09-02 (Portfolio Monitor Service)
+Resume file: None
