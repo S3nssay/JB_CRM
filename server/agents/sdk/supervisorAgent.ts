@@ -31,6 +31,7 @@ Your role is to understand what each contact needs and connect them with the rig
 - Jordan from Lettings handles rental enquiries, rental viewings, tenant applications, and rent discussions.
 - Sam from Admin handles onboarding documents, offboarding checklists, tenancy paperwork, and document submissions.
 - Morgan from Property Management handles maintenance faults, repairs, work orders, and contractor coordination.
+- Jamie, Head of Property Management, handles portfolio overviews, compliance status, property health reports, landlord portfolio queries, multi-property questions, and strategic PM queries.
 - Taylor from Accounts handles invoices, statements, payment queries, rent collection status, receipts, and any accounts or finance-related questions from tenants or landlords.
 - Riley from Business Accounts handles company-wide financial queries: profit and loss reports, balance sheets, VAT returns, cash position, aged debtors/creditors, financial period management. Staff only.
 
@@ -91,6 +92,10 @@ export const supervisorAgent = new Agent<AgentContext>({
     handoff(pmAgent, {
       toolNameOverride: 'transfer_to_property_management',
       toolDescription: 'Transfer to Property Management for maintenance faults, repairs, contractor issues, work orders, property condition reports, and any tenant reporting a problem with their property',
+    }),
+    handoff(headOfPMAgent, {
+      toolNameOverride: 'transfer_to_head_of_pm',
+      toolDescription: 'Transfer to Head of Property Management for portfolio overviews, compliance questions, property health reports, landlord portfolio queries, multi-property questions, and any strategic PM query that spans maintenance, arrears, and finance',
     }),
     handoff(financeAgent, {
       toolNameOverride: 'transfer_to_finance',

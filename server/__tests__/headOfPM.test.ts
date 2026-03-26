@@ -94,3 +94,79 @@ describe('headOfPMTools.ts -- static analysis', () => {
   it.todo('queryTenancyTimelineTool flags upcoming renewals within 90 days');
   it.todo('lookupLandlordPortfolioTool resolves landlord by phone or email');
 });
+
+// ---- headOfPMAgent static analysis ----
+
+describe('headOfPMAgent.ts -- static analysis', () => {
+  const agentSource = fs.readFileSync(
+    path.resolve(__dirname, '../agents/sdk/headOfPMAgent.ts'),
+    'utf-8',
+  );
+
+  it('exports headOfPMAgent with name "Jamie from Property Management"', () => {
+    expect(agentSource).toContain("export const headOfPMAgent");
+    expect(agentSource).toContain("name: 'Jamie from Property Management'");
+  });
+
+  it('has 8 tools (7 query + escalateToHuman)', () => {
+    // Count tool references in the tools array
+    expect(agentSource).toContain('queryPortfolioOverviewTool');
+    expect(agentSource).toContain('queryPropertyHealthTool');
+    expect(agentSource).toContain('queryComplianceStatusTool');
+    expect(agentSource).toContain('queryMaintenanceActivityTool');
+    expect(agentSource).toContain('queryArrearsOverviewTool');
+    expect(agentSource).toContain('queryTenancyTimelineTool');
+    expect(agentSource).toContain('lookupLandlordPortfolioTool');
+    expect(agentSource).toContain('escalateToHumanTool');
+  });
+
+  it('has 3 active handoffs (maintenance, arrears, admin) -- Taylor deferred to Phase 8', () => {
+    // Active (non-commented) handoffs
+    expect(agentSource).toContain("'delegate_to_maintenance'");
+    expect(agentSource).toContain("'delegate_to_arrears'");
+    expect(agentSource).toContain("'delegate_to_admin'");
+    // Finance handoff is commented out
+    expect(agentSource).toMatch(/\/\/.*delegate_to_finance/);
+  });
+
+  it('instructions contain key persona phrases', () => {
+    expect(agentSource).toContain('Jamie');
+    expect(agentSource).toContain('Head of Property Management');
+    expect(agentSource).toContain('Morgan');
+    expect(agentSource).toContain('Sarah');
+    expect(agentSource).toContain('Sam');
+  });
+
+  it('has commented-out finance handoff for Phase 8', () => {
+    expect(agentSource).toContain('// import { financeAgent }');
+    expect(agentSource).toContain("// Phase 8 -- Taylor handoff deferred until financeAgent exists");
+  });
+});
+
+// ---- supervisorAgent wiring ----
+
+describe('supervisorAgent.ts -- Head of PM wiring', () => {
+  const supervisorSource = fs.readFileSync(
+    path.resolve(__dirname, '../agents/sdk/supervisorAgent.ts'),
+    'utf-8',
+  );
+
+  it('imports headOfPMAgent', () => {
+    expect(supervisorSource).toContain("import { headOfPMAgent } from './headOfPMAgent'");
+  });
+
+  it('has transfer_to_head_of_pm handoff', () => {
+    expect(supervisorSource).toContain("'transfer_to_head_of_pm'");
+    expect(supervisorSource).toContain('headOfPMAgent');
+  });
+
+  it('preserves transfer_to_property_management for Morgan', () => {
+    expect(supervisorSource).toContain("'transfer_to_property_management'");
+    expect(supervisorSource).toContain('pmAgent');
+  });
+
+  it('includes Jamie in SUPERVISOR_INSTRUCTIONS roster', () => {
+    expect(supervisorSource).toContain('Jamie, Head of Property Management');
+    expect(supervisorSource).toContain('portfolio overviews');
+  });
+});
