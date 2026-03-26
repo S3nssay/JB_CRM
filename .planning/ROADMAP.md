@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 **Goal:** Remove negotiation autonomy from Sales (Alex) and Lettings (Jordan) agents, replacing it with professional offer recording. Add offer management UI for staff. Add PM cost ledger tracking maintenance and compliance spend per property and per landlord with configurable threshold alerts.
 **Requirements**: CORR-01, CORR-02, CORR-03, CORR-04, COST-01, COST-02, COST-03, OFFER-UI, COST-UI
 **Depends on:** Phase 6
-**Plans:** 3/4 plans executed
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 07-01-PLAN.md — Schema extensions (lettings offer fields, certification cost, cost thresholds), agent prompt corrections (remove negotiation, add OFFERS section), recordOffer tool
