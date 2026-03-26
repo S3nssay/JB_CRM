@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import {
     ArrowLeft, User, Phone, Mail, Building, FileText, CreditCard, Shield, Briefcase,
     Upload, Download, CheckCircle2, AlertCircle, Loader2, Home, Key, Calendar,
-    MessageSquare, ExternalLink, Users, Plus, Trash2, Edit, Pencil, Save, Send
+    MessageSquare, ExternalLink, Users, Plus, Trash2, Edit, Pencil, Save, Send, PoundSterling
 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import ContactTimeline from "@/components/ContactTimeline";
+import CostLedger from "@/components/CostLedger";
 
 export default function LandlordDetails() {
     const { id } = useParams();
@@ -701,6 +702,13 @@ export default function LandlordDetails() {
                                         <MessageSquare className="h-4 w-4 mr-2" />
                                         Communications
                                     </TabsTrigger>
+                                    <TabsTrigger
+                                        value="costs"
+                                        className="rounded-none border-b-2 border-transparent data-[state=active]:border-[#791E75] data-[state=active]:bg-transparent px-6"
+                                    >
+                                        <PoundSterling className="h-4 w-4 mr-2" />
+                                        Costs
+                                    </TabsTrigger>
                                 </TabsList>
 
                                 {/* Documents Tab */}
@@ -1142,6 +1150,11 @@ export default function LandlordDetails() {
                                         entityType="landlord"
                                         entityId={parseInt(id as string)}
                                     />
+                                </TabsContent>
+
+                                {/* Costs Tab */}
+                                <TabsContent value="costs" className="p-6">
+                                    <CostLedger mode="landlord" entityId={parseInt(id as string)} />
                                 </TabsContent>
                             </Tabs>
                         </CardContent>

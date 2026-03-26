@@ -10,7 +10,7 @@ import {
     ArrowLeft, Building2, User, FileText, PoundSterling,
     Calendar, Shield, CheckCircle2, AlertTriangle, Key,
     Phone, Mail, CreditCard, Home, Pencil, Upload, ExternalLink,
-    Loader2, FileUp, Megaphone
+    Loader2, FileUp, Megaphone, Handshake, PoundSterling as PoundSterlingIcon
 } from 'lucide-react';
 import {
     Dialog,
@@ -26,6 +26,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQueryClient } from '@tanstack/react-query';
 import { useToast } from "@/hooks/use-toast";
+import OffersSection from "@/components/OffersSection";
+import CostLedger from "@/components/CostLedger";
 
 interface ChecklistItem {
     id: number;
@@ -425,9 +427,20 @@ export default function ManagedPropertyCard() {
                         <Building2 className="h-8 w-8 text-primary" />
                         {property?.title || property?.addressLine1 || 'Property Details'}
                     </h1>
-                    <p className="text-muted-foreground mt-1">
-                        {property?.postcode} • {property?.city}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-muted-foreground">
+                            {property?.postcode} • {property?.city}
+                        </p>
+                        {property?.managementStatus === 'dormant' ? (
+                            <Badge variant="secondary" className="text-xs bg-amber-100 text-amber-800 border border-amber-300">
+                                Dormant
+                            </Badge>
+                        ) : property?.managementStatus === 'occupied' ? (
+                            <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 border border-green-300">
+                                Occupied
+                            </Badge>
+                        ) : null}
+                    </div>
                 </div>
                 <div className="flex gap-2">
                     <Button onClick={() => setMarketDialogOpen(true)} variant="default">
@@ -960,12 +973,14 @@ export default function ManagedPropertyCard() {
                         </CardHeader>
                         <CardContent>
                             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-                                <TabsList className="grid grid-cols-5 w-full mb-4">
+                                <TabsList className="grid grid-cols-7 w-full mb-4">
                                     <TabsTrigger value="tenancy-history" className="text-xs">Tenancy History</TabsTrigger>
                                     <TabsTrigger value="financial" className="text-xs">Checklist</TabsTrigger>
                                     <TabsTrigger value="maintenance" className="text-xs">Maintenance</TabsTrigger>
                                     <TabsTrigger value="documents" className="text-xs">Documents</TabsTrigger>
                                     <TabsTrigger value="communication" className="text-xs">History</TabsTrigger>
+                                    <TabsTrigger value="offers" className="text-xs">Offers</TabsTrigger>
+                                    <TabsTrigger value="costs" className="text-xs">Costs</TabsTrigger>
                                 </TabsList>
 
                                 {/* Tenancy History Tab */}
@@ -1204,6 +1219,16 @@ export default function ManagedPropertyCard() {
                                             })}
                                         </>
                                     )}
+                                </TabsContent>
+
+                                {/* Offers Tab */}
+                                <TabsContent value="offers" className="space-y-3">
+                                    <OffersSection propertyId={parseInt(id as string)} />
+                                </TabsContent>
+
+                                {/* Costs Tab */}
+                                <TabsContent value="costs" className="space-y-3">
+                                    <CostLedger mode="property" entityId={parseInt(id as string)} />
                                 </TabsContent>
                             </Tabs>
                         </CardContent>

@@ -125,6 +125,7 @@ import TenancyOnboarding from "@/pages/TenancyOnboarding";
 import PropertyKnowledgeBase from "@/pages/PropertyKnowledgeBase";
 import DealList from "@/pages/DealList";
 import DealTimeline from "@/pages/DealTimeline";
+import OffersManagement from "@/pages/OffersManagement";
 
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
@@ -427,6 +428,9 @@ function Router() {
         {/* Deal Lifecycle Routes */}
         <Route path="/crm/deals/:id">{(params: any) => <CRMLayout><DealTimeline {...params} /></CRMLayout>}</Route>
         <Route path="/crm/deals"><CRMLayout><DealList /></CRMLayout></Route>
+
+        {/* Offers Management */}
+        <Route path="/crm/offers"><CRMLayout><OffersManagement /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
