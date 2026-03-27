@@ -4285,6 +4285,14 @@ export const leadContactHistory = pgTable("lead_contact_history", {
 
   notes: text("notes"),
 
+  // Approval workflow fields (Charlie sourcing outreach)
+  approvalStatus: text("approval_status"), // 'pending', 'approved', 'rejected'
+  approvedById: integer("approved_by_id"),
+  approvedAt: timestamp("approved_at"),
+  rejectionReason: text("rejection_reason"),
+  pdfUrl: text("pdf_url"), // URL for letter PDF if post channel
+  sequenceStep: integer("sequence_step"), // Position in follow-up sequence (0 = initial)
+
   createdAt: timestamp("created_at").notNull().defaultNow()
 });
 

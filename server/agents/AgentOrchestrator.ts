@@ -12,6 +12,7 @@ import { MaintenanceAgent, maintenanceAgent } from './specialists/MaintenanceAge
 import { OfficeAdminAgent, officeAdminAgent } from './specialists/OfficeAdminAgent';
 import { LeadGenSalesAgent, LeadGenRentalsAgent, leadGenSalesAgent, leadGenRentalsAgent } from './specialists/LeadGenAgent';
 import { MarketingAgent, marketingAgent } from './specialists/MarketingAgent';
+import { sourcingAgent } from './specialists/SourcingAgent';
 import {
   AgentType,
   AgentTask,
@@ -64,6 +65,7 @@ class AgentOrchestrator extends EventEmitter {
     this.supervisor.registerAgent(leadGenSalesAgent);
     this.supervisor.registerAgent(leadGenRentalsAgent);
     this.supervisor.registerAgent(marketingAgent);
+    this.supervisor.registerAgent(sourcingAgent);
   }
 
   /**

@@ -21,6 +21,7 @@ import { pmAgent } from './pmAgent';
 import { headOfPMAgent } from './headOfPMAgent';
 import { financeAgent } from './financeAgent';
 import { businessAccountsAgent } from './businessAccountsAgent';
+import { sourcingAgent } from './sourcingAgent';
 
 // ---- Supervisor agent ----
 
@@ -34,6 +35,7 @@ Your role is to understand what each contact needs and connect them with the rig
 - Jamie, Head of Property Management, handles portfolio overviews, compliance status, property health reports, landlord portfolio queries, multi-property questions, and strategic PM queries.
 - Taylor from Accounts handles invoices, statements, payment queries, rent collection status, receipts, and any accounts or finance-related questions from tenants or landlords.
 - Riley from Business Accounts handles company-wide financial queries: profit and loss reports, balance sheets, VAT returns, cash position, aged debtors/creditors, financial period management. Staff only.
+- Charlie from Sourcing handles responses from property owners who received outreach letters or emails, requests for property valuations from sourcing campaigns, and market intelligence queries.
 
 FINANCE ROUTING:
 - When a staff member asks about business-level financials (profit and loss, balance sheet, VAT, cash flow, aged debtors, aged creditors), route to Riley.
@@ -104,6 +106,10 @@ export const supervisorAgent = new Agent<AgentContext>({
     handoff(businessAccountsAgent, {
       toolNameOverride: 'transfer_to_business_accounts',
       toolDescription: 'Transfer to Business Accounts (Riley) for company-wide financial queries from staff: profit and loss, balance sheet, VAT returns, cash position, aged debtors/creditors, financial periods, journal entries. NOT for tenant rent invoices or landlord statements (use Taylor for those).',
+    }),
+    handoff(sourcingAgent, {
+      toolNameOverride: 'transfer_to_sourcing',
+      toolDescription: 'Transfer to Sourcing (Charlie) for property sourcing outreach responses, owner replies to letters/emails, valuation requests from outreach campaigns, and market intelligence queries.',
     }),
   ],
 });
