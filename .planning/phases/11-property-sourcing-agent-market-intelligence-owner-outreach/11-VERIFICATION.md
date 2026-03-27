@@ -38,13 +38,13 @@ human_verification:
 | 1 | Charlie agent registers with both BaseAgent system and Supervisor SDK, handling inbound owner responses via conversational routing | VERIFIED | `server/agents/specialists/SourcingAgent.ts` exports `sourcingAgent`, registered in `AgentOrchestrator.ts` line 68. `server/agents/sdk/sourcingAgent.ts` registered in `supervisorAgent.ts` with `transfer_to_sourcing` handoff at line 111. |
 | 2 | pg-boss cron jobs run daily market scans, weekly propensity scoring, and daily follow-up checks | VERIFIED | `server/agents/services/sourcingCronJobs.ts` schedules `charlie:daily-scan` (0 5 * * *), `charlie:propensity-scoring` (0 3 * * 0), `charlie:check-followups` (0 8 * * *). Registered at startup via `server/index.ts` line 91. |
 | 3 | Staff can view sourcing pipeline with leads flowing through 8 stages | VERIFIED | `SourcingDashboard.tsx` (1382 lines) implements full kanban pipeline. API `GET /sourcing/leads` groups by status stage. Route mounted at `/api/crm` in `server/routes.ts` line 214. |
-| 4 | All outreach requires explicit staff approval before sending — Charlie drafts, staff approve | VERIFIED (wiring) / FAILED (runtime) | `draftOutreach()` creates records with `approvalStatus='pending'`. `sendApprovedEmail()` is only called from `approveOutreach()`. BUT all three service files have incorrect lazy import paths (`../../server/db` instead of `../../db`) that will fail at runtime. |
-| 5 | Source-specific AI-generated outreach uses appropriate tone per lead type | FAILED (runtime) | `buildSourcePrompt()` in `sourcingOutreachService.ts` correctly handles `expired_listing`, `auction`, `land_registry` (including probate detection), `planning_permission`, `competitor_listing`. Logic is correct but runtime import failure blocks execution. |
-| 6 | Follow-up sequences advance automatically (letter -> email 7d -> letter 21d) with each touchpoint requiring staff approval | VERIFIED (logic) / BLOCKED (runtime) | `sourcingFollowUpService.ts` defines `DEFAULT_SEQUENCE` with post/email/post at days 0/7/21. `advanceFollowUpSequence()` logic correct. `calculateNextFollowUpDate()` returns correct offsets. Runtime import of `../../server/db` will fail. |
+| 4 | All outreach requires explicit staff approval before sending — Charlie drafts, staff approve | VERIFIED | `draftOutreach()` creates records with `approvalStatus='pending'`. `sendApprovedEmail()` is only called from `approveOutreach()`. Import paths correct: `../../db`, `../../emailService`, `../../services/pdfService`. |
+| 5 | Source-specific AI-generated outreach uses appropriate tone per lead type | VERIFIED | `buildSourcePrompt()` in `sourcingOutreachService.ts` handles `expired_listing`, `auction`, `land_registry` (including probate detection), `planning_permission`, `competitor_listing` with appropriate tone per source. |
+| 6 | Follow-up sequences advance automatically (letter -> email 7d -> letter 21d) with each touchpoint requiring staff approval | VERIFIED | `sourcingFollowUpService.ts` defines `DEFAULT_SEQUENCE` with post/email/post at days 0/7/21. `advanceFollowUpSequence()` imports `../../db` correctly. |
 | 7 | Staff can create/edit monitoring campaigns targeting specific postcodes, price ranges, property types | VERIFIED | Campaign CRUD API at `server/sourcingRoutes.ts` lines 260-420 handles POST/PUT/DELETE on `lead_monitoring_config`. `SourcingDashboard.tsx` Campaigns tab has react-hook-form + zod dialog with `targetPostcodes`, `priceRangeMin`, `priceRangeMax`, `propertyTypes` fields. |
 | 8 | Performance metrics show leads sourced, outreach sent, response rate, valuations booked broken down by source | VERIFIED | `GET /sourcing/metrics` returns `leadsSourcedThisMonth`, `outreachSent`, `responseRate`, `valuationsBooked`. `GET /sourcing/metrics/by-source` queries `proactive_lead GROUP BY lead_source`. `PerformanceTab` in dashboard renders both table and Recharts BarChart. |
 
-**Score:** 6/8 success criteria verified (criteria 4 and 5 blocked by import path bug; criteria 6 partially blocked)
+**Score:** 8/8 success criteria verified
 
 ---
 
@@ -56,9 +56,9 @@ human_verification:
 | `server/agents/sdk/sourcingAgent.ts` | Charlie SDK agent with 4 tools | VERIFIED | 243 lines. Tools: update_lead_status, record_owner_response, book_valuation, get_lead_context. Instructions mention West London, staff approval required. |
 | `server/agents/services/sourcingCronJobs.ts` | pg-boss cron registration for 3 jobs | VERIFIED | 203 lines. 3 schedules with lazy pg-boss init. Each monitor in individual try/catch. |
 | `server/__tests__/sourcingAgent.test.ts` | Unit tests, min 80 lines | VERIFIED | 189 lines. Static analysis tests for all wiring. |
-| `server/agents/services/sourcingOutreachService.ts` | AI outreach drafting + PDF + email | STUB-LIKE | 358 lines. Logic correct but lazy import paths `../../server/db` resolve to non-existent paths — runtime failure guaranteed. |
-| `server/agents/services/sourcingApprovalService.ts` | Staff approval workflow | STUB-LIKE | 238 lines. Logic correct but same import path bug. |
-| `server/agents/services/sourcingFollowUpService.ts` | Follow-up sequence management | STUB-LIKE | 133 lines. Same import path bug on line 69. |
+| `server/agents/services/sourcingOutreachService.ts` | AI outreach drafting + PDF + email | VERIFIED | 358 lines. Correct lazy imports: `../../db`, `../../lib/openaiClient`, `../../services/pdfService`, `../../emailService`. |
+| `server/agents/services/sourcingApprovalService.ts` | Staff approval workflow | VERIFIED | 238 lines. Correct lazy imports: `../../db`, `../../services/pdfService`. |
+| `server/agents/services/sourcingFollowUpService.ts` | Follow-up sequence management | VERIFIED | 133 lines. Correct lazy import: `../../db`. |
 | `server/services/pdfService.ts` | Extended with generateOutreachLetterPDF | VERIFIED | Exports `generateOutreachLetterPDF` at line 323 with `OutreachLetterData` interface. |
 | `server/__tests__/sourcingOutreach.test.ts` | Tests for outreach, approval, follow-up, min 80 lines | VERIFIED | 312 lines. Static analysis tests. |
 | `server/sourcingRoutes.ts` | REST API for sourcing dashboard | VERIFIED | 552 lines. 15 endpoints: pipeline, approvals (approve/reject/edit), campaigns (CRUD), metrics, metrics/by-source, monitors/:type/run. |
@@ -77,9 +77,9 @@ human_verification:
 | `server/agents/AgentOrchestrator.ts` | `server/agents/specialists/SourcingAgent.ts` | `registerAgent(sourcingAgent)` | WIRED | Line 68: `this.supervisor.registerAgent(sourcingAgent)` |
 | `server/agents/sdk/supervisorAgent.ts` | `server/agents/sdk/sourcingAgent.ts` | `handoff(sourcingAgent)` | WIRED | Line 111: `toolNameOverride: 'transfer_to_sourcing'` |
 | `server/index.ts` | `server/agents/services/sourcingCronJobs.ts` | `registerSourcingCronJobs()` at startup | WIRED | Line 91: `.then(mod => mod.registerSourcingCronJobs())` |
-| `server/agents/services/sourcingOutreachService.ts` | `server/services/pdfService.ts` | lazy import generateOutreachLetterPDF | BROKEN | Import path `../../server/services/pdfService` resolves to non-existent `server/server/services/pdfService` |
-| `server/agents/services/sourcingOutreachService.ts` | `server/emailService.ts` | lazy import emailService | BROKEN | Import path `../../server/emailService` resolves to non-existent `server/server/emailService` |
-| `server/agents/services/sourcingApprovalService.ts` | `server/agents/services/sourcingOutreachService.ts` | `sendApprovedEmail` on approval | WIRED (logic) / BROKEN (deps) | Call at line 114 is correct but parent function fails due to pool import error |
+| `server/agents/services/sourcingOutreachService.ts` | `server/services/pdfService.ts` | lazy import generateOutreachLetterPDF | WIRED | Import path `../../services/pdfService` resolves correctly |
+| `server/agents/services/sourcingOutreachService.ts` | `server/emailService.ts` | lazy import emailService | WIRED | Import path `../../emailService` resolves correctly |
+| `server/agents/services/sourcingApprovalService.ts` | `server/agents/services/sourcingOutreachService.ts` | `sendApprovedEmail` on approval | WIRED | Call at line 114, pool import via `../../db` is correct |
 | `server/routes.ts` | `server/sourcingRoutes.ts` | `app.use('/api/crm', sourcingRouter)` | WIRED | Lines 190 + 214 |
 | `client/src/pages/SourcingDashboard.tsx` | `/api/crm/sourcing/leads` | useQuery in PipelineTab | WIRED | Line 627-633 |
 | `client/src/pages/SourcingDashboard.tsx` | `/api/crm/sourcing/approvals` | useMutation for approve/reject | WIRED | Lines 375, 387 |
@@ -96,10 +96,10 @@ The SRC requirement IDs (SRC-01 through SRC-14) are referenced in ROADMAP.md and
 | SRC-01 (market intelligence monitors) | 11-01 | VERIFIED | sourcingCronJobs.ts schedules daily scan across 6 source types |
 | SRC-02 (stale listing threshold) | 11-01 | VERIFIED | charlie:daily-scan calls runMonitor for 'expired_listings' |
 | SRC-03 (propensity scoring) | 11-01 | VERIFIED | charlie:propensity-scoring cron runs weekly for scoring |
-| SRC-04 (outreach requires staff approval) | 11-02 | BLOCKED | Logic correct; draftOutreach creates pending records. Runtime broken by import paths. |
-| SRC-05 (letter PDF + email channels) | 11-02 | BLOCKED | generateOutreachLetterPDF and emailService wiring logic correct but import paths wrong |
-| SRC-06 (source-specific templates) | 11-02 | BLOCKED | buildSourcePrompt() handles all lead types correctly; blocked by import path bug |
-| SRC-07 (follow-up sequence cadence) | 11-02 | BLOCKED | DEFAULT_SEQUENCE and advanceFollowUpSequence logic correct; sourcingFollowUpService.ts has import path bug |
+| SRC-04 (outreach requires staff approval) | 11-02 | VERIFIED | draftOutreach creates records with approvalStatus='pending'. sendApprovedEmail only callable from approveOutreach. |
+| SRC-05 (letter PDF + email channels) | 11-02 | VERIFIED | generateOutreachLetterPDF extends pdfService. emailService.sendEmail called in sendApprovedEmail. |
+| SRC-06 (source-specific templates) | 11-02 | VERIFIED | buildSourcePrompt() handles all 7 lead source types with appropriate tone. |
+| SRC-07 (follow-up sequence cadence) | 11-02 | VERIFIED | DEFAULT_SEQUENCE defines post/email/post at days 0/7/21. advanceFollowUpSequence advances correctly. |
 | SRC-08 (Charlie agent identity) | 11-01 | VERIFIED | id='sourcing', name='Charlie - The Networker', correct personality and postcodes |
 | SRC-09 (cron jobs register at startup) | 11-01 | VERIFIED | server/index.ts registers all 3 cron jobs |
 | SRC-10 (VALUATION_BOOKED deal event) | 11-01 | VERIFIED | dealEventBus.ts line 26: VALUATION_BOOKED: 'valuation.booked' |
@@ -114,13 +114,7 @@ The SRC requirement IDs (SRC-01 through SRC-14) are referenced in ROADMAP.md and
 
 ## Anti-Patterns Found
 
-| File | Lines | Pattern | Severity | Impact |
-|------|-------|---------|----------|--------|
-| `server/agents/services/sourcingOutreachService.ts` | 113-115, 246-247 | Incorrect relative import paths: `../../server/db` instead of `../../db`; `../../server/emailService` instead of `../../emailService`; `../../server/services/pdfService` instead of `../../services/pdfService` | BLOCKER | All outreach drafting and email sending will throw MODULE_NOT_FOUND at runtime |
-| `server/agents/services/sourcingApprovalService.ts` | 35, 90, 133, 183, 212 | Same incorrect paths: `../../server/db` and `../../server/services/pdfService` | BLOCKER | All approval workflow operations (approve, reject, edit, getPendingApprovals) will fail at runtime |
-| `server/agents/services/sourcingFollowUpService.ts` | 69 | Incorrect path: `../../server/db` | BLOCKER | advanceFollowUpSequence will fail at runtime |
-
-**Root cause:** The executor used `../../server/db` (going up 2 levels from `server/agents/services/` to `server/`, then down into `server/db`) instead of `../../db` (going up 2 levels to `server/`, then referencing `db` directly). The existing `sourcingCronJobs.ts` in the same directory correctly uses `../../db` and `../../proactiveLeadGenService`, establishing the correct pattern. `financeCronJobs.ts` also correctly uses `../../emailService`. The three outreach/approval/follow-up files deviate from this established pattern.
+None — all import paths follow the established pattern from `sourcingCronJobs.ts` (`../../db`, `../../emailService`, etc.).
 
 ---
 
@@ -154,23 +148,11 @@ The SRC requirement IDs (SRC-01 through SRC-14) are referenced in ROADMAP.md and
 
 ## Gaps Summary
 
-**One root-cause bug blocks 4 success criteria.**
-
-`sourcingOutreachService.ts`, `sourcingApprovalService.ts`, and `sourcingFollowUpService.ts` use incorrect lazy import paths with a spurious `server/` segment (e.g., `../../server/db` instead of `../../db`). From the directory `server/agents/services/`, going `../../` navigates to `server/` — appending `server/db` produces `server/server/db` which does not exist. The correct path is `../../db`.
-
-This single bug, repeated across 10 import statements in 3 files, prevents:
-- SRC-04: All staff approval workflow operations (approveOutreach, rejectOutreach, editOutreachDraft, getPendingApprovals)
-- SRC-05: Email sending and PDF letter generation
-- SRC-06: AI outreach drafting (pool query to fetch lead fails first)
-- SRC-07: Follow-up sequence advancement (advanceFollowUpSequence pool query fails)
-
-The existing `sourcingCronJobs.ts` in the same directory correctly uses `../../db` and `../../proactiveLeadGenService`, establishing the correct pattern. The fix is mechanical: replace all `../../server/` with `../../` in the three affected files.
-
-All other infrastructure — agent registration, Supervisor routing, cron scheduling, schema extension, API routes, and dashboard UI — is fully verified and wired correctly.
+**No code gaps.** All 8 success criteria verified. All 14 artifacts verified. All key links wired correctly.
 
 **Documentation gap (non-blocking):** SRC-01 through SRC-14 requirement IDs appear only in ROADMAP.md and plan frontmatter, not in REQUIREMENTS.md. The traceability table should be extended to include Phase 11 requirements.
 
 ---
 
-_Verified: 2026-03-27T12:00:00Z_
+_Verified: 2026-03-27T14:00:00Z_
 _Verifier: Claude (gsd-verifier)_
