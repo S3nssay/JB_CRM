@@ -41,7 +41,7 @@ Declared values (must be multiples of 4):
 
 Exceptions:
 - Kanban column min-width: 280px (established pattern from PropertyPipeline.tsx)
-- Kanban column header padding: 8px vertical, 12px horizontal (py-2 px-3)
+- Kanban column header padding: 8px vertical, 12px horizontal (py-2 px-3) -- 12px matches Tailwind px-3 used in existing PropertyPipeline.tsx column headers
 - Pipeline stats grid gap: 8px (gap-2, matching existing pattern)
 - Kanban card internal spacing: 8px (p-2 for card gaps, p-3 for card content)
 - Filter bar padding: 16px (p-4)
@@ -52,18 +52,18 @@ Exceptions:
 
 | Role | Size | Weight | Line Height | Font Family |
 |------|------|--------|-------------|-------------|
-| Body | 14px | 300 (light) | 1.5 | Avenir Next, Inter |
-| Label | 12px | 500 (medium) | 1.4 | Inter |
+| Label | 12px | 400 (regular) | 1.4 | Inter |
+| Body | 14px | 400 (regular) | 1.5 | Avenir Next, Inter |
 | Heading | 20px | 600 (semibold) | 1.25 | Inter (CRM pages override global Tinos) |
-| Display | 28px | 700 (bold) | 1.2 | Tinos, serif |
+| Display | 28px | 600 (semibold) | 1.2 | Tinos, serif |
 
 Notes (from existing codebase patterns):
 - CRM pipeline pages use `text-xl font-semibold` for page title (h1 in header), NOT global h1 styling
-- Card titles use `font-medium text-sm` (14px, weight 500)
-- Stage labels use `font-medium text-sm` (14px, weight 500) in white on colored backgrounds
-- Stat counts use `text-2xl font-bold` (24px, weight 700)
-- Muted descriptions use `text-sm text-muted-foreground` (14px, weight 300)
-- Badge text uses `text-[10px]` for compact type indicators on cards
+- Card titles use `font-semibold text-sm` (14px, weight 600)
+- Stage labels use `font-semibold text-sm` (14px, weight 600) in white on colored backgrounds
+- Stat counts use `text-xl font-semibold` (20px, weight 600)
+- Muted descriptions use `text-sm text-muted-foreground` (14px, weight 400)
+- Badge text uses `text-xs` (12px, weight 400) for compact type indicators on cards
 
 ---
 
