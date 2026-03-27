@@ -198,10 +198,10 @@ Plans:
   6. Follow-up sequences advance automatically (letter -> email 7d -> letter 21d) with each touchpoint requiring staff approval
   7. Staff can create/edit monitoring campaigns targeting specific postcodes, price ranges, and property types
   8. Performance metrics show leads sourced, outreach sent, response rate, and valuations booked -- broken down by source
-**Plans:** 4 plans
+**Plans:** 1/4 plans executed
 
 Plans:
-- [ ] 11-01-PLAN.md -- Schema extensions (approval fields on lead_contact_history), SourcingAgent classes (BaseAgent + SDK), Supervisor registration, pg-boss cron jobs, deal event bus VALUATION_BOOKED event, server startup wiring
+- [x] 11-01-PLAN.md -- Schema extensions (approval fields on lead_contact_history), SourcingAgent classes (BaseAgent + SDK), Supervisor registration, pg-boss cron jobs, deal event bus VALUATION_BOOKED event, server startup wiring
 - [ ] 11-02-PLAN.md -- Outreach drafting service (AI source-specific templates), letter PDF generation (extend pdfService), email sending via emailService, staff approval workflow, follow-up sequence management
 - [ ] 11-03-PLAN.md -- REST API routes for sourcing dashboard (pipeline leads, approval actions, campaign CRUD, metrics aggregation, manual monitor triggers), route mounting
 - [ ] 11-04-PLAN.md -- SourcingDashboard page (stats row, Pipeline tab with kanban + approval, Campaigns tab with CRUD, Performance tab with source breakdown + funnel chart), CRM sidebar link, App.tsx routing
