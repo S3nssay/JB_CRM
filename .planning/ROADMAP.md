@@ -208,7 +208,7 @@ Plans:
 
 ### Phase 12: Kanban Pipelines & Lead Auto-Matching
 
-**Goal:** Kanban pipelines become the central operating theme of the CRM. Extend the sales property pipeline to start from valuation (Valuation Enquiry → Listed → Completed), build a new lettings property pipeline with the full lettings journey from valuation to move-in, add type filtering to the shared landlord lead pipeline, and create a lead auto-matching engine that flags buyer/renter leads when properties hit "Listed" and auto-sends property details after staff approval.
+**Goal:** Kanban pipelines become the central operating theme of the CRM. Extend the sales property pipeline to start from valuation (Valuation Enquiry -> Listed -> Completed), build a new lettings property pipeline with the full lettings journey from valuation to move-in, add type filtering to the shared landlord lead pipeline, and create a lead auto-matching engine that flags buyer/renter leads when properties hit "Listed" and auto-sends property details after staff approval.
 **Requirements**: KAN-01, KAN-02, KAN-03, KAN-04, KAN-05, KAN-06, KAN-07, KAN-08
 **Depends on:** Phase 11
 **Success Criteria** (what must be TRUE):
@@ -218,7 +218,9 @@ Plans:
   4. When a property reaches "Listed" in either pipeline, matching buyer/renter leads are automatically flagged in the CRM
   5. Staff can approve auto-sending property details to matched leads; after approval, details are sent via email/WhatsApp
   6. Each pipeline has its own dedicated page design with workflow-specific card content and actions
-**Plans:** 0 plans
+**Plans:** 3 plans
 
 Plans:
-(not yet planned)
+- [ ] 12-01-PLAN.md -- Schema extensions (pipeline_stage column, valuation/lettings timestamps, lead_property_match table), lead auto-matching service, backend API endpoints (lettings pipeline, stage updates, match CRUD)
+- [ ] 12-02-PLAN.md -- Extended sales PropertyPipeline (9 stages from Valuation Enquiry to Completed), new LettingsPropertyPipeline page (9 stages from Valuation Enquiry to Move-in Complete)
+- [ ] 12-03-PLAN.md -- Landlord lead pipeline type filter (All/Letting/Selling owners), LeadMatches approval page, CRM sidebar navigation, App.tsx route wiring
