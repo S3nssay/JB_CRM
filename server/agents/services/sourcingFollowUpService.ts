@@ -66,7 +66,7 @@ export function calculateNextFollowUpDate(
  * Creates a new draft outreach for the next step.
  */
 export async function advanceFollowUpSequence(leadId: number): Promise<void> {
-  const { pool } = await import('../../server/db');
+  const { pool } = await import('../../db');
   const { draftOutreach } = await import('./sourcingOutreachService');
 
   // Get current lead state

@@ -110,9 +110,9 @@ export async function draftOutreach(
   leadId: number,
   sequenceStep: number = 0
 ): Promise<OutreachDraftResult> {
-  const { pool } = await import('../../server/db');
-  const { getOpenAIClient } = await import('../../server/lib/openaiClient');
-  const { generateOutreachLetterPDF } = await import('../../server/services/pdfService');
+  const { pool } = await import('../../db');
+  const { getOpenAIClient } = await import('../../lib/openaiClient');
+  const { generateOutreachLetterPDF } = await import('../../services/pdfService');
 
   // 1. Get the lead
   const leadResult = await pool.query(
@@ -243,8 +243,8 @@ ${formatInstruction}`
  * Send an approved email outreach. Only called after staff approval.
  */
 export async function sendApprovedEmail(contactHistoryId: number): Promise<void> {
-  const { pool } = await import('../../server/db');
-  const { emailService } = await import('../../server/emailService');
+  const { pool } = await import('../../db');
+  const { emailService } = await import('../../emailService');
 
   // Get contact history + lead details
   const result = await pool.query(
@@ -317,7 +317,7 @@ export async function sendApprovedEmail(contactHistoryId: number): Promise<void>
  * Mark an approved letter outreach as sent. Staff downloads the PDF and posts it manually.
  */
 export async function sendApprovedLetter(contactHistoryId: number): Promise<void> {
-  const { pool } = await import('../../server/db');
+  const { pool } = await import('../../db');
 
   // Update contact history: status='sent', sentAt=NOW()
   await pool.query(

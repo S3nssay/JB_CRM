@@ -32,7 +32,7 @@ export async function getPendingApprovals(): Promise<Array<{
   daysOnMarket: number | null;
   createdAt: Date;
 }>> {
-  const { pool } = await import('../../server/db');
+  const { pool } = await import('../../db');
 
   const result = await pool.query(
     `SELECT
@@ -87,7 +87,7 @@ export async function approveOutreach(
   contactHistoryId: number,
   approvedById: number
 ): Promise<void> {
-  const { pool } = await import('../../server/db');
+  const { pool } = await import('../../db');
   const { sendApprovedEmail, sendApprovedLetter } = await import('./sourcingOutreachService');
 
   // 1. Update approval fields BEFORE sending
@@ -130,7 +130,7 @@ export async function rejectOutreach(
   rejectedById: number,
   reason?: string
 ): Promise<void> {
-  const { pool } = await import('../../server/db');
+  const { pool } = await import('../../db');
 
   // Update contact history with rejection
   await pool.query(
@@ -180,7 +180,7 @@ export async function editOutreachDraft(
   newContent: string,
   newSubject?: string
 ): Promise<void> {
-  const { pool } = await import('../../server/db');
+  const { pool } = await import('../../db');
 
   // Update content and optionally subject
   const updates: string[] = ['content = $1'];
@@ -209,7 +209,7 @@ export async function editOutreachDraft(
 
   if (result.rows.length > 0 && result.rows[0].contact_method === 'post') {
     const row = result.rows[0];
-    const { generateOutreachLetterPDF } = await import('../../server/services/pdfService');
+    const { generateOutreachLetterPDF } = await import('../../services/pdfService');
 
     const pdfBuffer = await generateOutreachLetterPDF({
       recipientName: row.owner_name || 'Property Owner',
