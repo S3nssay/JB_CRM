@@ -86,6 +86,11 @@ app.use((req, res, next) => {
     })
     .catch(err => log('Business accounts cron registration failed: ' + err));
 
+  // Register Charlie's sourcing cron jobs
+  import('./agents/services/sourcingCronJobs')
+    .then(mod => mod.registerSourcingCronJobs())
+    .catch(err => console.error('Failed to register sourcing cron jobs:', err));
+
   server.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });

@@ -23,6 +23,7 @@ export const DEAL_EVENTS = {
   STEP_FAILED: 'step.failed',
   STEP_TIMED_OUT: 'step.timed_out',
   CROSS_REFERRAL: 'cross.referral',
+  VALUATION_BOOKED: 'valuation.booked',
 } as const;
 
 export type DealEventName = typeof DEAL_EVENTS[keyof typeof DEAL_EVENTS];
