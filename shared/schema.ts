@@ -208,6 +208,37 @@ export const properties = pgTable("property", {
   fallenThroughBy: integer("fallen_through_by"),
   withdrawnBy: integer("withdrawn_by"),
 
+  // Extended pipeline stage (full lifecycle tracking for kanban views)
+  pipelineStage: text("pipeline_stage").default("listed"),
+  // Values: 'valuation_enquiry', 'valuation_booked', 'valuation_completed',
+  //         'instruction_signed', 'listed', 'under_offer', 'sstc', 'exchanged',
+  //         'completed', 'fallen_through', 'withdrawn',
+  //         'viewings', 'holding_deposit', 'tenancy_agreed', 'move_in_complete'
+
+  // Valuation stage timestamps
+  valuationEnquiryAt: timestamp("valuation_enquiry_at"),
+  valuationBookedAt: timestamp("valuation_booked_at"),
+  valuationCompletedAt: timestamp("valuation_completed_at"),
+  instructionSignedAt: timestamp("instruction_signed_at"),
+
+  // Lettings-specific stage timestamps
+  viewingsAt: timestamp("viewings_at"),
+  holdingDepositAt: timestamp("holding_deposit_at"),
+  tenancyAgreedAt: timestamp("tenancy_agreed_at"),
+  moveInCompleteAt: timestamp("move_in_complete_at"),
+
+  // Valuation stage agents
+  valuationEnquiryBy: integer("valuation_enquiry_by"),
+  valuationBookedBy: integer("valuation_booked_by"),
+  valuationCompletedBy: integer("valuation_completed_by"),
+  instructionSignedBy: integer("instruction_signed_by"),
+
+  // Lettings-specific stage agents
+  viewingsBy: integer("viewings_by"),
+  holdingDepositBy: integer("holding_deposit_by"),
+  tenancyAgreedBy: integer("tenancy_agreed_by"),
+  moveInCompleteBy: integer("move_in_complete_by"),
+
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -372,6 +403,14 @@ export const staffProfiles = pgTable("staff_profile", {
   // Status
   isActive: boolean("is_active").default(true),
   onLeave: boolean("on_leave").default(false),
+
+  // Public Website Profile
+  publicDisplayName: text("public_display_name"),
+  publicBio: text("public_bio"),
+  publicPhoto: text("public_photo"),
+  publicJobTitle: text("public_job_title"),
+  publicDisplayOrder: integer("public_display_order"),
+  showOnTeamPage: boolean("show_on_team_page").default(false),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -5572,12 +5611,18 @@ export type InsertComplianceStatus = z.infer<typeof insertComplianceStatusSchema
 export const communications = pgTable("communication", {
   id: serial("id").primaryKey(),
   type: text("type").notNull(), // 'sms', 'email', 'phone', 'note'
+  channel: text("channel"), // more granular: 'email', 'sms', 'whatsapp', 'phone', 'note', 'in_person'
   direction: text("direction").notNull(), // 'inbound', 'outbound'
   content: text("content").notNull(),
+  subject: text("subject"), // for emails
   status: text("status").notNull(), // 'sent', 'received', 'failed', 'draft'
   tenantId: integer("tenant_id").references(() => tenant.id),
   landlordId: integer("landlord_id").references(() => landlords.id),
   propertyId: integer("property_id").references(() => properties.id),
+  maintenanceRequestId: integer("maintenance_request_id").references(() => maintenanceRequests.id),
+  leadId: integer("lead_id").references(() => leads.id),
+  staffUserId: integer("staff_user_id").references(() => users.id),
+  externalMessageId: text("external_message_id"), // Twilio SID, email message ID, etc.
   createdAt: timestamp("created_at").defaultNow(),
   metadata: json("metadata"), // for twilio SID etc
 });
@@ -5734,6 +5779,28 @@ export const leads = pgTable("lead", {
   // Notes
   notes: text("notes"),
 
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// ==========================================
+// LEAD_PROPERTY_MATCHES - Auto-matched leads to properties
+// ==========================================
+// When a property is listed, the system auto-matches it to leads
+// based on budget, bedrooms, area, and property type preferences.
+// Staff can approve matches to send property details to leads.
+// ==========================================
+export const leadPropertyMatches = pgTable("lead_property_match", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  matchScore: integer("match_score").notNull(), // 0-100
+  matchReasons: json("match_reasons"), // { budget: boolean, bedrooms: boolean, area: boolean, propertyType: boolean }
+  status: text("status").notNull().default("pending"), // 'pending', 'approved', 'sent', 'rejected', 'dismissed'
+  approvedBy: integer("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  sentAt: timestamp("sent_at"),
+  sentVia: text("sent_via"), // 'email', 'whatsapp', 'both'
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
