@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 12-01-PLAN.md
-last_updated: "2026-03-27T21:03:20.264Z"
+stopped_at: Completed 12-03-PLAN.md
+last_updated: "2026-03-27T21:09:08.330Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 12
   completed_phases: 11
   total_plans: 46
-  completed_plans: 44
+  completed_plans: 45
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 ## Current Position
 
 Phase: 12 (kanban-pipelines-lead-auto-matching) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-03-27
 
@@ -105,6 +105,7 @@ Progress: [██████████] 100%
 | Phase 11 P04 | 10min | 2 tasks | 3 files |
 | Phase 11 P04 | 14min | 2 tasks | 3 files |
 | Phase 12 P01 | 5min | 2 tasks | 3 files |
+| Phase 12 P03 | 3min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -225,6 +226,7 @@ Recent decisions affecting current work:
 - [Phase 12]: Lazy import for leadMatchingService in PATCH handler (consistent with project convention)
 - [Phase 12]: Pipeline stage dual-write: update both status (legacy) and pipeline_stage (new kanban) for backward compat
 - [Phase 12]: Budget/bedrooms/area/type scoring weights: 40/25/25/10 with threshold >= 50
+- [Phase 12]: Removed client-side inquiry type filtering in favor of server-side via inquiryType query param
 
 ### Roadmap Evolution
 
@@ -246,6 +248,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T21:03:20.243Z
-Stopped at: Completed 12-01-PLAN.md
+Last session: 2026-03-27T21:09:08.314Z
+Stopped at: Completed 12-03-PLAN.md
 Resume file: None
