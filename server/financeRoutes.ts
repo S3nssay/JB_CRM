@@ -586,18 +586,6 @@ financeRouter.get('/statements/:id', requireAgent, async (req: any, res) => {
   }
 });
 
-financeRouter.put('/statements/:id/approve', requireAgent, async (req: any, res) => {
-  try {
-    const id = parseInt(req.params.id);
-    const updated = await storage.updateStatement(id, { status: 'approved' });
-    if (!updated) return res.status(404).json({ error: 'Statement not found' });
-    res.json(updated);
-  } catch (error) {
-    console.error('Error approving statement:', error);
-    res.status(500).json({ error: 'Failed to approve statement' });
-  }
-});
-
 financeRouter.put('/statements/:id/mark-paid', requireAgent, async (req: any, res) => {
   try {
     const id = parseInt(req.params.id);

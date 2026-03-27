@@ -76,7 +76,7 @@ export default function TenantInvoices() {
 
   // Generate invoices mutation
   const generateMutation = useMutation({
-    mutationFn: () => apiRequest('/api/crm/finance/invoices/generate', 'POST'),
+    mutationFn: () => apiRequest('/api/crm/finance/invoices/generate-monthly', 'POST'),
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/crm/finance/invoices'] });
       toast({
