@@ -218,9 +218,9 @@ Plans:
   4. When a property reaches "Listed" in either pipeline, matching buyer/renter leads are automatically flagged in the CRM
   5. Staff can approve auto-sending property details to matched leads; after approval, details are sent via email/WhatsApp
   6. Each pipeline has its own dedicated page design with workflow-specific card content and actions
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 12-01-PLAN.md -- Schema extensions (pipeline_stage column, valuation/lettings timestamps, lead_property_match table), lead auto-matching service, backend API endpoints (lettings pipeline, stage updates, match CRUD)
-- [ ] 12-02-PLAN.md -- Extended sales PropertyPipeline (9 stages from Valuation Enquiry to Completed), new LettingsPropertyPipeline page (9 stages from Valuation Enquiry to Move-in Complete)
+- [x] 12-02-PLAN.md -- Extended sales PropertyPipeline (9 stages from Valuation Enquiry to Completed), new LettingsPropertyPipeline page (9 stages from Valuation Enquiry to Move-in Complete)
 - [x] 12-03-PLAN.md -- Landlord lead pipeline type filter (All/Letting/Selling owners), LeadMatches approval page, CRM sidebar navigation, App.tsx route wiring
