@@ -115,6 +115,13 @@ None - no external service configuration required.
 - PDF generation tested and integrated into existing pdfService
 - All services use lazy imports for safe module loading
 
+## Self-Check: PASSED
+
+- All 5 files exist on disk
+- Commit 6c11844 (Task 1) verified in git log
+- Commit f5b01ee (Task 2) verified in git log
+- 49/49 tests pass
+
 ---
 *Phase: 11-property-sourcing-agent-market-intelligence-owner-outreach*
 *Completed: 2026-03-27*
