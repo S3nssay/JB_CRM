@@ -703,6 +703,260 @@ crmRouter.post('/communications/send-email', requireAgent, async (req, res) => {
 });
 
 // ==========================================
+// UNIFIED COMMUNICATION ROUTES
+// ==========================================
+
+import { unifiedCommunicationService } from './services/unifiedCommunicationService.js';
+
+// Get communication history for any entity
+crmRouter.get('/communications/:entityType/:entityId', requireAgent, async (req: any, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { channel, limit, offset } = req.query;
+
+    const validTypes = ['tenant', 'landlord', 'lead', 'property', 'maintenance'];
+    if (!validTypes.includes(entityType)) {
+      return res.status(400).json({ error: 'Invalid entity type' });
+    }
+
+    const history = await unifiedCommunicationService.getHistory(
+      entityType,
+      parseInt(entityId),
+      {
+        channel: channel as string || undefined,
+        limit: limit ? parseInt(limit as string) : 50,
+        offset: offset ? parseInt(offset as string) : 0,
+      }
+    );
+
+    res.json(history);
+  } catch (error: any) {
+    console.error('Error fetching communication history:', error);
+    res.status(500).json({ error: 'Failed to fetch communication history' });
+  }
+});
+
+// Send message via any channel
+crmRouter.post('/communications/send', requireAgent, async (req: any, res) => {
+  try {
+    const { channel, to, content, subject, cc, contentHtml, entityType, entityId, contactName, templateName } = req.body;
+
+    if (!channel || !to || !content || !entityType || !entityId) {
+      return res.status(400).json({ error: 'Missing required fields: channel, to, content, entityType, entityId' });
+    }
+
+    const result = await unifiedCommunicationService.send({
+      channel,
+      to,
+      content,
+      subject,
+      cc,
+      contentHtml,
+      templateName,
+      entityType,
+      entityId: parseInt(entityId),
+      contactName,
+      staffUserId: req.user.id,
+    });
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error sending communication:', error);
+    res.status(500).json({ error: 'Failed to send communication' });
+  }
+});
+
+// Log manual communication (note, in-person, manual call log)
+crmRouter.post('/communications/log', requireAgent, async (req: any, res) => {
+  try {
+    const { channel, direction, content, subject, entityType, entityId, contactName, externalMessageId, metadata } = req.body;
+
+    if (!channel || !direction || !content || !entityType || !entityId) {
+      return res.status(400).json({ error: 'Missing required fields: channel, direction, content, entityType, entityId' });
+    }
+
+    const result = await unifiedCommunicationService.logManual({
+      channel,
+      direction,
+      content,
+      subject,
+      entityType,
+      entityId: parseInt(entityId),
+      contactName,
+      staffUserId: req.user.id,
+      externalMessageId,
+      metadata,
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error logging communication:', error);
+    res.status(500).json({ error: 'Failed to log communication' });
+  }
+});
+
+// Initiate call + auto-log (wraps existing /calls/initiate logic)
+crmRouter.post('/communications/call', requireAgent, async (req: any, res) => {
+  try {
+    const { to, entityType, entityId, contactName, agentPhone } = req.body;
+
+    if (!to || !entityType || !entityId) {
+      return res.status(400).json({ error: 'Missing required fields: to, entityType, entityId' });
+    }
+
+    // Use agent's phone from their profile, or the provided one
+    const callerPhone = agentPhone || req.user.phone;
+    if (!callerPhone) {
+      return res.status(400).json({ error: 'No agent phone number configured. Please set your phone number in your profile.' });
+    }
+
+    // Initiate the Twilio bridge call
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const twilioNumber = process.env.TWILIO_PHONE_NUMBER;
+
+    if (!accountSid || !authToken || !twilioNumber) {
+      return res.status(500).json({ error: 'Twilio not configured' });
+    }
+
+    const twilio = (await import('twilio')).default;
+    const client = twilio(accountSid, authToken);
+
+    const baseUrl = process.env.BASE_URL || `https://${req.headers.host}`;
+    const call = await client.calls.create({
+      to: callerPhone,
+      from: twilioNumber,
+      url: `${baseUrl}/api/crm/calls/bridge?to=${encodeURIComponent(to)}`,
+      statusCallback: `${baseUrl}/api/crm/calls/status`,
+      statusCallbackEvent: ['completed', 'failed', 'busy', 'no-answer'],
+    });
+
+    // Auto-log the call
+    await unifiedCommunicationService.logManual({
+      channel: 'phone',
+      direction: 'outbound',
+      content: `Outbound call to ${contactName || to}`,
+      entityType,
+      entityId: parseInt(entityId),
+      contactName,
+      staffUserId: req.user.id,
+      externalMessageId: call.sid,
+    });
+
+    res.json({ success: true, callSid: call.sid, mode: 'phone' });
+  } catch (error: any) {
+    console.error('Error initiating call:', error);
+    res.status(500).json({ error: 'Failed to initiate call' });
+  }
+});
+
+// Lookup contact by phone number (for caller ID popup)
+crmRouter.get('/communications/lookup-phone/:phone', requireAgent, async (req: any, res) => {
+  try {
+    const { phone } = req.params;
+    const result = await unifiedCommunicationService.lookupContactByPhone(decodeURIComponent(phone));
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error looking up phone:', error);
+    res.status(500).json({ error: 'Failed to lookup phone number' });
+  }
+});
+
+// ==========================================
+
+// SSE Notification Stream - real-time events (inbound calls, messages, etc.)
+import { notificationService } from './services/notificationService.js';
+
+crmRouter.get('/notifications/stream', requireAgent, (req: any, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no', // Disable Nginx buffering
+  });
+
+  const userId = req.user.id;
+  notificationService.addClient(userId, res);
+
+  // Send initial connection confirmation
+  res.write(`data: ${JSON.stringify({ type: 'connected', userId })}\n\n`);
+
+  // Clean up on disconnect
+  req.on('close', () => {
+    notificationService.removeClient(userId);
+  });
+});
+
+// Get recent call log from voice_call_records
+crmRouter.get('/call-log', requireAgent, async (req: any, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 50;
+    const result = await pool.query(
+      `SELECT id, direction, caller_phone, agent_phone, started_at, duration, status,
+              ai_summary, recording_url, extracted_name
+       FROM voice_call_record
+       ORDER BY started_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    res.json(result.rows.map((r: any) => ({
+      id: r.id,
+      direction: r.direction,
+      callerPhone: r.caller_phone,
+      agentPhone: r.agent_phone,
+      startedAt: r.started_at,
+      duration: r.duration,
+      status: r.status,
+      aiSummary: r.ai_summary,
+      recordingUrl: r.recording_url,
+      extractedName: r.extracted_name,
+    })));
+  } catch (error) {
+    console.error('Error fetching call log:', error);
+    res.status(500).json({ error: 'Failed to fetch call log' });
+  }
+});
+
+// Get staff phone numbers for call routing config
+crmRouter.get('/staff-phones', requireAgent, async (req: any, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.full_name, u.phone, u.role, sp.department
+       FROM "user" u
+       LEFT JOIN staff_profile sp ON sp.user_id = u.id
+       WHERE u.role IN ('admin', 'agent')
+       AND u.is_active = true
+       ORDER BY u.full_name`
+    );
+    res.json(result.rows.map((r: any) => ({
+      id: r.id,
+      fullName: r.full_name,
+      phone: r.phone,
+      department: r.department,
+      role: r.role,
+    })));
+  } catch (error) {
+    console.error('Error fetching staff phones:', error);
+    res.status(500).json({ error: 'Failed to fetch staff phones' });
+  }
+});
+
+// Update staff phone number
+crmRouter.put('/staff/:id/phone', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { phone } = req.body;
+    await pool.query('UPDATE "user" SET phone = $1 WHERE id = $2', [phone || null, parseInt(id)]);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating staff phone:', error);
+    res.status(500).json({ error: 'Failed to update phone' });
+  }
+});
 
 // Upload a single property image
 crmRouter.post('/upload/property-image', requireAgent, uploadPropertyImage.single('image'), async (req: any, res) => {
@@ -2540,31 +2794,42 @@ crmRouter.delete('/landlord-leads/:id', requireAgent, async (req, res) => {
 });
 
 
-// Property Pipeline - get all listed properties grouped by status
+// Property Pipeline - get all sales properties grouped by pipeline stage
 crmRouter.get('/property-pipeline', requireAgent, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT p.id, p.title, p.address, p.address_line1, p.postcode, p.price,
              p.bedrooms, p.bathrooms, p.property_type, p.is_rental, p.is_residential,
-             p.status, p.is_listed, p.is_marketed, p.created_at, p.updated_at,
+             p.status, p.pipeline_stage, p.is_listed, p.is_marketed, p.created_at, p.updated_at,
              p.images,
              p.listed_at, p.under_offer_at, p.sstc_at, p.exchanged_at,
              p.completed_at, p.fallen_through_at, p.withdrawn_at,
              p.valuation_date, p.valuation_amount, p.valuation_report_url,
+             p.valuation_enquiry_at, p.valuation_booked_at, p.valuation_completed_at, p.instruction_signed_at,
              p.listed_by, p.under_offer_by, p.sstc_by, p.exchanged_by,
              p.completed_by, p.fallen_through_by, p.withdrawn_by,
+             p.valuation_enquiry_by, p.valuation_booked_by, p.valuation_completed_by, p.instruction_signed_by,
              u_listed.full_name as listed_by_name,
              u_offer.full_name as under_offer_by_name,
              u_sstc.full_name as sstc_by_name,
              u_exchanged.full_name as exchanged_by_name,
-             u_completed.full_name as completed_by_name
+             u_completed.full_name as completed_by_name,
+             u_val_enq.full_name as valuation_enquiry_by_name,
+             u_val_book.full_name as valuation_booked_by_name,
+             u_val_comp.full_name as valuation_completed_by_name,
+             u_instr.full_name as instruction_signed_by_name
       FROM property p
       LEFT JOIN "user" u_listed ON p.listed_by = u_listed.id
       LEFT JOIN "user" u_offer ON p.under_offer_by = u_offer.id
       LEFT JOIN "user" u_sstc ON p.sstc_by = u_sstc.id
       LEFT JOIN "user" u_exchanged ON p.exchanged_by = u_exchanged.id
       LEFT JOIN "user" u_completed ON p.completed_by = u_completed.id
-      WHERE p.is_listed = true
+      LEFT JOIN "user" u_val_enq ON p.valuation_enquiry_by = u_val_enq.id
+      LEFT JOIN "user" u_val_book ON p.valuation_booked_by = u_val_book.id
+      LEFT JOIN "user" u_val_comp ON p.valuation_completed_by = u_val_comp.id
+      LEFT JOIN "user" u_instr ON p.instruction_signed_by = u_instr.id
+      WHERE (p.is_listed = true OR p.pipeline_stage IN ('valuation_enquiry', 'valuation_booked', 'valuation_completed', 'instruction_signed'))
+        AND p.is_rental = false
       ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC
     `);
     res.json(result.rows);
@@ -2574,20 +2839,81 @@ crmRouter.get('/property-pipeline', requireAgent, async (req, res) => {
   }
 });
 
-// Update property status (for pipeline stage moves)
+// Lettings Pipeline - get all rental properties grouped by pipeline stage
+crmRouter.get('/lettings-pipeline', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT p.id, p.title, p.address, p.address_line1, p.postcode, p.price, p.rent_amount,
+             p.bedrooms, p.bathrooms, p.property_type, p.is_rental, p.is_residential,
+             p.status, p.pipeline_stage, p.is_listed, p.is_marketed, p.created_at, p.updated_at,
+             p.images,
+             p.listed_at, p.under_offer_at,
+             p.completed_at, p.fallen_through_at, p.withdrawn_at,
+             p.valuation_date, p.valuation_amount, p.valuation_report_url,
+             p.valuation_enquiry_at, p.valuation_booked_at, p.valuation_completed_at, p.instruction_signed_at,
+             p.viewings_at, p.holding_deposit_at, p.tenancy_agreed_at, p.move_in_complete_at,
+             p.listed_by, p.under_offer_by,
+             p.completed_by, p.fallen_through_by, p.withdrawn_by,
+             p.valuation_enquiry_by, p.valuation_booked_by, p.valuation_completed_by, p.instruction_signed_by,
+             p.viewings_by, p.holding_deposit_by, p.tenancy_agreed_by, p.move_in_complete_by,
+             u_listed.full_name as listed_by_name,
+             u_offer.full_name as under_offer_by_name,
+             u_completed.full_name as completed_by_name,
+             u_val_enq.full_name as valuation_enquiry_by_name,
+             u_val_book.full_name as valuation_booked_by_name,
+             u_val_comp.full_name as valuation_completed_by_name,
+             u_instr.full_name as instruction_signed_by_name,
+             u_viewings.full_name as viewings_by_name,
+             u_holding.full_name as holding_deposit_by_name,
+             u_tenancy.full_name as tenancy_agreed_by_name,
+             u_movein.full_name as move_in_complete_by_name
+      FROM property p
+      LEFT JOIN "user" u_listed ON p.listed_by = u_listed.id
+      LEFT JOIN "user" u_offer ON p.under_offer_by = u_offer.id
+      LEFT JOIN "user" u_completed ON p.completed_by = u_completed.id
+      LEFT JOIN "user" u_val_enq ON p.valuation_enquiry_by = u_val_enq.id
+      LEFT JOIN "user" u_val_book ON p.valuation_booked_by = u_val_book.id
+      LEFT JOIN "user" u_val_comp ON p.valuation_completed_by = u_val_comp.id
+      LEFT JOIN "user" u_instr ON p.instruction_signed_by = u_instr.id
+      LEFT JOIN "user" u_viewings ON p.viewings_by = u_viewings.id
+      LEFT JOIN "user" u_holding ON p.holding_deposit_by = u_holding.id
+      LEFT JOIN "user" u_tenancy ON p.tenancy_agreed_by = u_tenancy.id
+      LEFT JOIN "user" u_movein ON p.move_in_complete_by = u_movein.id
+      WHERE (p.is_listed = true OR p.pipeline_stage IN ('valuation_enquiry', 'valuation_booked', 'valuation_completed', 'instruction_signed'))
+        AND p.is_rental = true
+      ORDER BY p.updated_at DESC NULLS LAST, p.created_at DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching lettings pipeline:', error);
+    res.status(500).json({ error: 'Failed to fetch lettings pipeline' });
+  }
+});
+
+// Update property pipeline stage (for pipeline stage moves)
 crmRouter.patch('/property-pipeline/:id/status', requireAgent, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { status } = req.body;
+    const stage = req.body.stage || req.body.status; // support both for backward compat
     const agentId = (req as any).user?.id || null;
-    const validStatuses = ['active', 'under_offer', 'sstc', 'exchanged', 'completed', 'sold', 'let', 'fallen_through', 'withdrawn'];
-    if (!validStatuses.includes(status)) {
+    const validStatuses = [
+      'valuation_enquiry', 'valuation_booked', 'valuation_completed', 'instruction_signed',
+      'active', 'listed', 'under_offer', 'sstc', 'exchanged', 'completed', 'sold', 'let',
+      'fallen_through', 'withdrawn',
+      'viewings', 'holding_deposit', 'tenancy_agreed', 'move_in_complete'
+    ];
+    if (!validStatuses.includes(stage)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    // Map status to date/agent column names
+    // Map pipeline stage to timestamp/agent column names
     const statusDateMap: Record<string, { dateCol: string; agentCol: string }> = {
+      'valuation_enquiry': { dateCol: 'valuation_enquiry_at', agentCol: 'valuation_enquiry_by' },
+      'valuation_booked': { dateCol: 'valuation_booked_at', agentCol: 'valuation_booked_by' },
+      'valuation_completed': { dateCol: 'valuation_completed_at', agentCol: 'valuation_completed_by' },
+      'instruction_signed': { dateCol: 'instruction_signed_at', agentCol: 'instruction_signed_by' },
       'active': { dateCol: 'listed_at', agentCol: 'listed_by' },
+      'listed': { dateCol: 'listed_at', agentCol: 'listed_by' },
       'under_offer': { dateCol: 'under_offer_at', agentCol: 'under_offer_by' },
       'sstc': { dateCol: 'sstc_at', agentCol: 'sstc_by' },
       'exchanged': { dateCol: 'exchanged_at', agentCol: 'exchanged_by' },
@@ -2596,20 +2922,180 @@ crmRouter.patch('/property-pipeline/:id/status', requireAgent, async (req, res) 
       'let': { dateCol: 'completed_at', agentCol: 'completed_by' },
       'fallen_through': { dateCol: 'fallen_through_at', agentCol: 'fallen_through_by' },
       'withdrawn': { dateCol: 'withdrawn_at', agentCol: 'withdrawn_by' },
+      'viewings': { dateCol: 'viewings_at', agentCol: 'viewings_by' },
+      'holding_deposit': { dateCol: 'holding_deposit_at', agentCol: 'holding_deposit_by' },
+      'tenancy_agreed': { dateCol: 'tenancy_agreed_at', agentCol: 'tenancy_agreed_by' },
+      'move_in_complete': { dateCol: 'move_in_complete_at', agentCol: 'move_in_complete_by' },
     };
 
-    const mapping = statusDateMap[status];
+    // Map pipeline stage to legacy status for backward compat
+    const stageToStatus: Record<string, string> = {
+      'valuation_enquiry': 'active',
+      'valuation_booked': 'active',
+      'valuation_completed': 'active',
+      'instruction_signed': 'active',
+      'active': 'active',
+      'listed': 'active',
+      'under_offer': 'under_offer',
+      'sstc': 'sstc',
+      'exchanged': 'exchanged',
+      'completed': 'completed',
+      'sold': 'completed',
+      'let': 'completed',
+      'fallen_through': 'fallen_through',
+      'withdrawn': 'withdrawn',
+      'viewings': 'active',
+      'holding_deposit': 'active',
+      'tenancy_agreed': 'active',
+      'move_in_complete': 'completed',
+    };
+
+    const mapping = statusDateMap[stage];
+    const legacyStatus = stageToStatus[stage] || 'active';
+    const setIsListed = (stage === 'listed' || stage === 'active') ? ', is_listed = true' : '';
+
     const result = await pool.query(
-      `UPDATE property SET status = $1, ${mapping.dateCol} = NOW(), ${mapping.agentCol} = $3, updated_at = NOW() WHERE id = $2 RETURNING *`,
-      [status, id, agentId]
+      `UPDATE property SET status = $1, pipeline_stage = $4, ${mapping.dateCol} = NOW(), ${mapping.agentCol} = $3${setIsListed}, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [legacyStatus, id, agentId, stage]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Property not found' });
     }
-    res.json(result.rows[0]);
+
+    // Auto-match trigger: when stage becomes 'listed', find matching leads
+    let matchCount = 0;
+    if (stage === 'listed') {
+      try {
+        const { createMatchesForProperty } = await import('./leadMatchingService');
+        matchCount = await createMatchesForProperty(id, pool);
+      } catch (matchErr) {
+        console.error('Lead auto-matching failed (non-blocking):', matchErr);
+      }
+    }
+
+    res.json({ ...result.rows[0], matchCount });
   } catch (error) {
     console.error('Error updating property status:', error);
     res.status(500).json({ error: 'Failed to update property status' });
+  }
+});
+
+// ==========================================
+// LEAD MATCH MANAGEMENT ENDPOINTS
+// ==========================================
+
+// Get all lead-property matches with optional filtering
+crmRouter.get('/lead-matches', requireAgent, async (req, res) => {
+  try {
+    const { status, propertyId } = req.query;
+    let query = `
+      SELECT lpm.id, lpm.lead_id, lpm.property_id, lpm.match_score, lpm.match_reasons,
+             lpm.status, lpm.approved_by, lpm.approved_at, lpm.sent_at, lpm.sent_via,
+             lpm.created_at, lpm.updated_at,
+             l.full_name as lead_name, l.email as lead_email, l.phone as lead_phone,
+             l.lead_type, l.min_budget, l.max_budget, l.preferred_bedrooms,
+             p.title as property_title, p.address as property_address, p.postcode as property_postcode,
+             p.price as property_price, p.rent_amount as property_rent_amount,
+             p.bedrooms as property_bedrooms, p.property_type, p.images as property_images,
+             p.is_rental as property_is_rental
+      FROM lead_property_match lpm
+      JOIN lead l ON lpm.lead_id = l.id
+      JOIN property p ON lpm.property_id = p.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    if (status) {
+      query += ` AND lpm.status = $${paramIndex++}`;
+      params.push(status);
+    }
+    if (propertyId) {
+      query += ` AND lpm.property_id = $${paramIndex++}`;
+      params.push(parseInt(propertyId as string));
+    }
+
+    query += ' ORDER BY lpm.created_at DESC';
+
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching lead matches:', error);
+    res.status(500).json({ error: 'Failed to fetch lead matches' });
+  }
+});
+
+// Get lead match stats (counts by status)
+crmRouter.get('/lead-matches/stats', requireAgent, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT status, COUNT(*)::int as count FROM lead_property_match GROUP BY status`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching lead match stats:', error);
+    res.status(500).json({ error: 'Failed to fetch lead match stats' });
+  }
+});
+
+// Approve a lead match (sends property details email to lead)
+crmRouter.patch('/lead-matches/:id/approve', requireAgent, async (req, res) => {
+  try {
+    const matchId = parseInt(req.params.id);
+    const userId = (req as any).user?.id || null;
+    const { approveMatch } = await import('./leadMatchingService');
+    await approveMatch(matchId, userId, pool);
+
+    const result = await pool.query('SELECT * FROM lead_property_match WHERE id = $1', [matchId]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error approving lead match:', error);
+    res.status(500).json({ error: 'Failed to approve lead match' });
+  }
+});
+
+// Dismiss a lead match
+crmRouter.patch('/lead-matches/:id/dismiss', requireAgent, async (req, res) => {
+  try {
+    const matchId = parseInt(req.params.id);
+    const { dismissMatch } = await import('./leadMatchingService');
+    await dismissMatch(matchId, pool);
+
+    const result = await pool.query('SELECT * FROM lead_property_match WHERE id = $1', [matchId]);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error dismissing lead match:', error);
+    res.status(500).json({ error: 'Failed to dismiss lead match' });
+  }
+});
+
+// Bulk approve lead matches
+crmRouter.post('/lead-matches/bulk-approve', requireAgent, async (req, res) => {
+  try {
+    const { matchIds } = req.body;
+    if (!Array.isArray(matchIds) || matchIds.length === 0) {
+      return res.status(400).json({ error: 'matchIds must be a non-empty array' });
+    }
+
+    const userId = (req as any).user?.id || null;
+    const { approveMatch } = await import('./leadMatchingService');
+    let approved = 0;
+    let failed = 0;
+
+    for (const matchId of matchIds) {
+      try {
+        await approveMatch(matchId, userId, pool);
+        approved++;
+      } catch (err) {
+        console.error(`Failed to approve match ${matchId}:`, err);
+        failed++;
+      }
+    }
+
+    res.json({ approved, failed });
+  } catch (error) {
+    console.error('Error bulk approving lead matches:', error);
+    res.status(500).json({ error: 'Failed to bulk approve lead matches' });
   }
 });
 
