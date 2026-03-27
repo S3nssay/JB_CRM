@@ -1,0 +1,148 @@
+
+
+
+JOHN BARCLAY
+ESTATE & MANAGEMENT
+Complete Platform Architecture
+Product Requirements Document
+For Antigravity AI Development
+
+
+Version: 3.0
+Last Updated: December 23, 2025
+Document Status: Final
+Platform Type: Full-Stack Real Estate Management Platform
+Domain: johnbarclay.uk
+
+TABLE OF CONTENTS
+
+1. Executive Summary
+John Barclay Estate & Management is a comprehensive luxury real estate platform serving West London's premium property market. This document defines the complete technical architecture required to support all business operations including property sales, lettings, property management, compliance tracking, and stakeholder portals.
+1.1 Platform Scope
+The platform combines six core functional areas:
+Public Website: Scroll-based animated landing page with GSAP animations, property search, and AI chatbot
+Property Listings: Residential & commercial sales and lettings with advanced search and AI-powered natural language queries
+CRM System: Complete agent dashboard for property management, lead tracking, workflow automation, and multi-portal publishing
+Property Management: Managed properties with full landlord/tenant lifecycle, maintenance ticketing, and compliance tracking
+Document & Compliance Management: KYC verification, property compliance certificates, contract management with automated expiry alerts
+Stakeholder Portals: Dedicated portals for tenants, landlords, and buyers with self-service capabilities
+1.2 Key Stakeholders
+1.3 Coverage Areas
+The platform serves 14 London postcodes across West and North West London: Bayswater (W2), Harlesden (NW10), Kensal Green (NW10), Kensal Rise (NW10), Kilburn (NW6), Ladbroke Grove (W10), Maida Vale (W9), North Kensington (W10), Queen's Park (NW6), Westbourne Park (W2), Willesden (NW10), Paddington, Notting Hill, St. John's Wood
+
+2. Complete Data Architecture
+This section defines all database entities required to support the complete business operations. The architecture is designed for PostgreSQL with Drizzle ORM.
+2.1 Entity Relationship Overview
+The database comprises 45+ interconnected tables organised into the following domains:
+
+2.2 Contacts & KYC Schema
+The contacts system is the foundation for all stakeholder management. A unified contacts table stores all individuals and companies, with type-specific data in related tables.
+2.2.1 Contacts Table
+Primary table for all contact types: tenants, landlords, buyers, renters, contractors.
+
+2.2.2 KYC Document Types
+Supported document types for KYC verification across all contact categories:
+2.2.3 Company Details Table
+Extended details for corporate landlords and buyers (UK and overseas companies):
+2.2.4 Beneficial Owners Table
+Stores Ultimate Beneficial Owners (UBOs) for companies (25%+ ownership) and trustees:
+
+2.3 Properties Schema
+The properties system handles all property listings across residential sales, residential lettings, commercial sales, and commercial lettings.
+2.3.1 Properties Table - Core Fields
+2.3.2 Property Types
+
+2.4 Managed Properties Schema
+For properties under John Barclay's property management service, additional data structures track compliance, tenants, and maintenance.
+2.4.1 Managed Properties Table
+2.4.2 Property Compliance Documents
+Tracks all compliance certificates for managed properties with automated expiry alerts:
+
+2.5 Tenancy Management Schema
+Complete tenancy lifecycle from agreement to renewal or termination.
+2.5.1 Tenancy Agreements Table
+2.5.2 Joint Tenants Table
+Supports multiple tenants on a single tenancy agreement with rent share tracking.
+
+2.6 Sales Process Schema
+Complete sales lifecycle from offer to completion with full progression tracking.
+2.6.1 Sales Offers Table
+2.6.2 Sales Progression Stages
+
+2.7 Maintenance & Contractors Schema
+Maintenance ticketing system with AI-powered triage and contractor management.
+2.7.1 Maintenance Tickets - Key Fields
+2.7.2 Contractors Table - Key Fields
+
+3. Tenant Portal Specification
+The tenant portal provides self-service capabilities for tenants with authenticated access to their tenancy information.
+3.1 Portal Features
+3.2 Authentication & Access
+Login via email/password with optional 2FA
+Password reset via email verification
+Session timeout after 30 minutes of inactivity
+Access automatically disabled when tenancy ends
+Tenants can only see their own data (property, tenancy, maintenance)
+
+4. Automated Compliance Alerts
+The system automatically monitors all compliance documents and KYC records for expiry, generating alerts at predefined intervals.
+4.1 Alert Schedule
+4.2 Alert Delivery Methods
+Email notifications via SendGrid with document details and renewal instructions
+SMS notifications for urgent/emergency alerts via Twilio
+In-app notifications in CRM dashboard
+Daily digest email summarising all expiring documents
+Compliance dashboard showing status across all properties
+
+5. Lead Conversion Analytics
+The platform tracks all contact lifecycle changes to provide conversion analytics.
+5.1 Tracked Metrics
+5.2 Interested Renter → Tenant Workflow
+Interested Renter registers interest / submits enquiry
+Agent conducts viewing
+Renter submits application with KYC documents
+References and Right to Rent checks completed
+Application approved by landlord
+Tenancy agreement signed
+Contact converted from 'renter' to 'tenant' category
+Tenant portal access enabled
+
+6. API Endpoints Summary
+6.1 Contacts & KYC
+6.2 Properties & Managed Properties
+6.3 Tenancy & Sales
+6.4 Tenant Portal
+
+7. Technology Stack
+7.1 Frontend
+7.2 Backend
+7.3 External Services
+
+8. Implementation Priorities
+8.1 Phase 1 - Core Data Architecture
+Implement complete contacts schema with KYC document handling
+Build company details and beneficial owners tables
+Create contact status history for conversion tracking
+Implement managed properties with compliance document tracking
+Set up automated compliance alert system
+8.2 Phase 2 - Sales & Lettings Process
+Implement sales offers with proof of funds verification
+Build sales progression tracking with all stages
+Create tenancy agreement system with joint tenant support
+Implement interested renter to tenant conversion workflow
+8.3 Phase 3 - Tenant Portal
+Build tenant authentication and access control
+Implement dashboard with tenancy overview
+Create maintenance request submission and tracking
+Add document viewing and download functionality
+Implement renewal request and notice submission
+8.4 Phase 4 - Analytics & Reporting
+Build lead conversion analytics dashboard
+Implement time-based tracking for all conversion stages
+Create agent performance reporting
+Build compliance status dashboard
+
+
+— End of Document —
+John Barclay Estate & Management Platform PRD v3.0
+December 23, 2025

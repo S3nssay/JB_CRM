@@ -1,0 +1,54 @@
+modules = ["nodejs-20", "web", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-25_05"
+packages = ["git-lfs"]
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
+run = ["node", "dist/index.js"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[agent]
+integrations = ["javascript_sendgrid:1.0.0", "javascript_openai:1.0.0", "javascript_openai_ai_integrations:1.0.0"]
+expertMode = true
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "https://klejkooiqsziifttiqws.supabase.co"
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsZWprb29pcXN6aWlmdHRpcXdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1ODUwNTIsImV4cCI6MjA3OTE2MTA1Mn0.GhE6b1NzC_nQzdcU45sL0f63MQLZG_ZTUhfRgGml6EI"
+SUPABASE_DATABASE_URL = "postgresql://postgres.klejkooiqsziifttiqws:JohnBarclayEstate%26Management@aws-1-eu-central-2.pooler.supabase.com:6543/postgres?sslmode=require"
+SUPABASE_DB_PASSWORD = "JohnBarclayEstate&Management"
+USE_SUPABASE = "false"

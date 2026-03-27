@@ -563,7 +563,7 @@ export default function CRMDashboard() {
               </div>
 
               {/* Stats Grid - Managed Properties */}
-              <div className="mb-8">
+              <div className="mb-8 bg-purple-100/70 border border-purple-200 rounded-xl p-5">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <Shield className="h-5 w-5 text-purple-600" />
                   Managed Portfolio
@@ -616,7 +616,7 @@ export default function CRMDashboard() {
               </div>
 
               {/* Stats Grid - Residential Listings */}
-              <div className="mb-8">
+              <div className="mb-8 bg-emerald-100/70 border border-emerald-200 rounded-xl p-5">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <Home className="h-5 w-5 text-emerald-600" />
                   Residential Listings
@@ -653,7 +653,7 @@ export default function CRMDashboard() {
               </div>
 
               {/* Stats Grid - Commercial Listings */}
-              <div className="mb-8">
+              <div className="mb-8 bg-indigo-100/70 border border-indigo-200 rounded-xl p-5">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <Building className="h-5 w-5 text-indigo-600" />
                   Commercial Listings

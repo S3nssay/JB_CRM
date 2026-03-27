@@ -1,0 +1,236 @@
+{
+  "title": "HF-11",
+  "headings": [
+    {
+      "tag": "H2",
+      "text": "REGISTER YOUR INTEREST IN HF-11.",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "Power‍",
+      "fontSize": "105.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "ORIGIN",
+      "fontSize": "105.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "BEAUTY",
+      "fontSize": "105.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "ASYLUM",
+      "fontSize": "105.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "OBSESSION",
+      "fontSize": "105.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "STRENGTH",
+      "fontSize": "105.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H1",
+      "text": "HF",
+      "fontSize": "345.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(255, 255, 255)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H1",
+      "text": "11",
+      "fontSize": "345.6px",
+      "fontFamily": "Helveticaneue, sans-serif",
+      "color": "rgb(255, 255, 255)",
+      "fontWeight": "400"
+    },
+    {
+      "tag": "H2",
+      "text": "Less is more, more is less.",
+      "fontSize": "39.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(255, 255, 255)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H1",
+      "text": "11",
+      "fontSize": "345.6px",
+      "fontFamily": "Helveticaneue, sans-serif",
+      "color": "rgb(255, 255, 255)",
+      "fontWeight": "400"
+    },
+    {
+      "tag": "H2",
+      "text": "REGISTER YOUR INTEREST IN HF-11.",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "oilstainlab",
+      "fontSize": "39.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(255, 255, 255)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "About",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "maniacs",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "Mission",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "TimeMachine",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "When the past overtakes the future. Half-11 Prototype.",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "maniacs",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "Mission",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "TimeMachine",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    },
+    {
+      "tag": "H2",
+      "text": "When the past overtakes the future. Half-11 Prototype.",
+      "fontSize": "93.6px",
+      "fontFamily": "\"Mori Extra Bold\", sans-serif",
+      "color": "rgb(32, 32, 32)",
+      "fontWeight": "800"
+    }
+  ],
+  "sections": [
+    {
+      "index": 0,
+      "className": "section full-height z-index",
+      "id": "car-sound",
+      "backgroundColor": "rgb(0, 0, 0)",
+      "height": "1080px",
+      "hasBackground": false
+    },
+    {
+      "index": 1,
+      "className": "scroll-sticky-parent small",
+      "id": "half-11",
+      "backgroundColor": "rgba(0, 0, 0, 0)",
+      "height": "1512px",
+      "hasBackground": false
+    },
+    {
+      "index": 2,
+      "className": "section full-height grey",
+      "id": "car-tour",
+      "backgroundColor": "rgb(212, 214, 213)",
+      "height": "1080px",
+      "hasBackground": false
+    },
+    {
+      "index": 3,
+      "className": "section-grey",
+      "id": "",
+      "backgroundColor": "rgb(212, 214, 213)",
+      "height": "8085px",
+      "hasBackground": false
+    },
+    {
+      "index": 4,
+      "className": "section bg-grey hide",
+      "id": "",
+      "backgroundColor": "rgb(235, 235, 237)",
+      "height": "8085px",
+      "hasBackground": false
+    },
+    {
+      "index": 5,
+      "className": "section bg-grey overflow-h",
+      "id": "",
+      "backgroundColor": "rgb(235, 235, 237)",
+      "height": "1506px",
+      "hasBackground": false
+    }
+  ],
+  "colorScheme": [],
+  "fonts": [],
+  "bodyFont": "\"Mori Book\", sans-serif",
+  "bodyColor": "rgb(32, 32, 32)",
+  "bodyBackground": "rgb(0, 0, 0)"
+}

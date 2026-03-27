@@ -1,0 +1,52 @@
+~/workspace$ ^C
+~/workspace$ # Add MP4 files to gitignore
+echo "*.mp4" >> .gitignore
+echo "attached_assets/*.mp4" >> .gitignore
+echo "client/src/assets/*.mp4" >> .gitignore
+
+# Remove MP4 files from Git tracking (keeps them locally)
+git rm --cached attached_assets/*.mp4
+git rm --cached client/src/assets/*.mp4
+
+# Commit the changes
+git add .gitignore
+git commit -m "Remove large video files from Git tracking"
+
+# Push to GitHub
+git push -u origin main --force
+rm 'attached_assets/JB__closeup-shot-a-Aslam-in-a-tailored-suit-sits-at-a-de__41215_1757416756668.mp4'
+rm 'attached_assets/John_Barclay_1757521267161.mp4'
+rm 'attached_assets/John_Barclay_1759449508298.mp4'
+rm 'attached_assets/Video_Transition_Homes_to_Flats.mp4'
+rm 'attached_assets/Zia Afzal's Video - Sep 11, 2025-VEED_1759449632440.mp4'
+rm 'attached_assets/freepik__wideangle-tracking-shot-a-bustling-street-filled-w__20697_1757332731402.mp4'
+rm 'attached_assets/zia-afzal-video.mp4'
+rm 'client/src/assets/Video_Transition_Homes_to_Flats.mp4'
+rm 'client/src/assets/john-barclay-hero-video.mp4'
+rm 'client/src/assets/john-barclay-hero.mp4'
+rm 'client/src/assets/zia-afzal-hero-video.mp4'
+rm 'client/src/assets/zia-afzal-video.mp4'
+[main 3aaa7a7] Remove large video files from Git tracking
+ 13 files changed, 3 insertions(+), 37 deletions(-)
+ delete mode 100644 attached_assets/JB__closeup-shot-a-Aslam-in-a-tailored-suit-sits-at-a-de__41215_1757416756668.mp4
+ delete mode 100644 attached_assets/John_Barclay_1757521267161.mp4
+ delete mode 100644 attached_assets/John_Barclay_1759449508298.mp4
+ delete mode 100644 attached_assets/Video_Transition_Homes_to_Flats.mp4
+ delete mode 100644 attached_assets/Zia Afzal's Video - Sep 11, 2025-VEED_1759449632440.mp4
+ delete mode 100644 attached_assets/freepik__wideangle-tracking-shot-a-bustling-street-filled-w__20697_1757332731402.mp4
+ delete mode 100644 attached_assets/zia-afzal-video.mp4
+ delete mode 100644 client/src/assets/Video_Transition_Homes_to_Flats.mp4
+ delete mode 100644 client/src/assets/john-barclay-hero-video.mp4
+ delete mode 100644 client/src/assets/john-barclay-hero.mp4
+ delete mode 100644 client/src/assets/zia-afzal-hero-video.mp4
+ delete mode 100644 client/src/assets/zia-afzal-video.mp4
+Git LFS upload failed:   0% (0/6), 0 B | 0 B/s                                                                                             
+  (missing) attached_assets/Zia Afzal's Video - Sep 11, 2025-VEED_1759449632440.mp4 (d00ff0a2d0595a0ea7ad1e3654aab4206cd04e04dcfe50762563e3f1e2bb6a39)
+  (missing) client/src/assets/john-barclay-hero.mp4 (22018ea18a54370bfa2c0da8f40900dd8c0d4c0f3e48a593f63dd76658e1f920)
+  (missing) attached_assets/freepik__wideangle-tracking-shot-a-bustling-street-filled-w__20697_1757332731402.mp4 (d7ace9eb39cbfeeae146b74df351e2a804a690a9a9eaea72200448f898f76179)
+  (missing) attached_assets/JB__closeup-shot-a-Aslam-in-a-tailored-suit-sits-at-a-de__41215_1757416756668.mp4 (8c42ebe96644f94c8773dbf604a462693903ffd2b527543d7139b2514ed8e8c3)
+  (missing) public/Video_Transition_Homes_to_Flats.mp4 (57b9ece9e56f421107201791b546d414302bec44d8684d4dd7223016fc7b7dc5)
+  (missing) attached_assets/John_Barclay_1757521267161.mp4 (2050682678461d980ee69306c794ee9aca01273d0b8db4208c7ec49bd3ab5339)
+hint: Your push was rejected due to missing or corrupt local objects.
+hint: You can disable this check with: `git config lfs.allowincompletepush true`
+error: failed to push some refs to 'https://github.com/S3nssay/JohnBarclayCRM.git'

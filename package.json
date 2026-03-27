@@ -17,7 +17,6 @@
     "@jridgewell/trace-mapping": "^0.3.25",
     "@neondatabase/serverless": "^0.10.4",
     "@openai/agents": "^0.7.2",
-    "@vapi-ai/server-sdk": "^0.11.0",
     "@radix-ui/react-accordion": "^1.2.1",
     "@radix-ui/react-alert-dialog": "^1.1.2",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
@@ -115,6 +114,7 @@
     "ws": "^8.18.0",
     "xlsx": "^0.18.5",
     "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.24.1",
     "zod-validation-error": "^3.4.0",
     "zod4": "npm:zod@^4.3.6"
   },

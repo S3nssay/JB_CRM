@@ -1,0 +1,313 @@
+~/workspace$ # Backup current remote
+git remote rename origin old-origin
+
+# Remove the corrupted .git folder
+rm -rf .git
+
+# Start completely fresh
+git init
+git add .
+git commit -m "Initial commit - John Barclay CRM with all features"
+
+# Add the GitHub remote
+git remote add origin https://github.com/S3nssay/JohnBarclayCRM.git
+
+# Set up Git LFS for videos
+git lfs install
+git lfs track "*.mp4"
+git add .gitattributes
+git commit -m "Add Git LFS tracking for videos"
+
+# Push to GitHub
+git push -u origin main --force
+Initialized empty Git repository in /home/runner/workspace/.git/
+[main (root-commit) 44d4be5] Initial commit - John Barclay CRM with all features
+ 273 files changed, 65240 insertions(+)
+ create mode 100644 .claude/settings.local.json
+ create mode 100644 .env.example
+ create mode 100644 .gitattributes
+ create mode 100644 .gitignore
+ create mode 100644 .replit
+ create mode 100644 IMPLEMENTATION_AUDIT.md
+ create mode 100644 PRD.md
+ create mode 100644 SUPABASE_MIGRATION.md
+ create mode 100644 WHATSAPP_PRODUCTION_SETUP.md
+ create mode 100644 WHATSAPP_SETUP.md
+ create mode 100644 analyze_oilstainlab.js
+ create mode 100644 attached_assets/928ad97e0c3a0ffa557b3c3178fff8ce_1757340534475.webp
+ create mode 100644 attached_assets/Dutch-and-Dutch-Area-Guide-Ladbroke-Grove_15 (1)_1757340289428.jpg
+ create mode 100644 attached_assets/JB__closeup-shot-a-Aslam-in-a-tailored-suit-sits-at-a-de__41215_1757416756668.mp4
+ create mode 100644 attached_assets/John_Barclay_1757521267161.mp4
+ create mode 100644 attached_assets/John_Barclay_1759449508298.mp4
+ create mode 100644 "attached_assets/Notting Hill\342\200\231s Colourful Houses_1757339662487.webp"
+ create mode 100644 "attached_assets/Notting Hill\342\200\231s Colourful Houses_1757359448062.webp"
+ create mode 100644 attached_assets/Pasted--history-breakpoints-visible-true-aspectRatio-1-userDownsample-1-layerType-effect--1757255012681_1757255012682.txt
+ create mode 100644 attached_assets/Pasted--history-breakpoints-visible-true-aspectRatio-1-userDownsample-1-layerType-effect--1757337555200_1757337555201.txt
+ create mode 100644 attached_assets/Pasted-1-How-quickly-can-I-get-an-offer-on-my-home-We-provide-a-free-instant-online-valuation-to-give-yo-1743866962153.txt
+ create mode 100644 attached_assets/Pasted-1-How-quickly-can-I-get-an-offer-on-my-home-We-provide-a-free-instant-online-valuation-to-give-yo-1743866974192.txt
+ create mode 100644 attached_assets/Pasted-Document-Version-1-0-Date-November-2024-Product-Owner-John-Barclay-Estate-Management-Target--1763500874130_1763500874131.txt
+ create mode 100644 attached_assets/Pasted-Document-Version-1-0-Date-November-2024-Product-Owner-John-Barclay-Estate-Management-Target--1763503842711_1763503842712.txt
+ create mode 100644 attached_assets/Pasted-Document-Version-1-0-Date-November-2024-Product-Owner-John-Barclay-Estate-Management-Target--1763504030254_1763504030255.txt
+ create mode 100644 attached_assets/Video_Transition_Homes_to_Flats.mp4
+ create mode 100644 attached_assets/Zia Afzal's Video - Sep 11, 2025-VEED_1759449632440.mp4
+ create mode 100644 attached_assets/bayswater-w2_1757301217432.html
+ create mode 100644 attached_assets/commercial-background.webp
+ create mode 100644 attached_assets/commercial-right-image.webp
+ create mode 100644 attached_assets/freepik__wideangle-tracking-shot-a-bustling-street-filled-w__20697_1757332731402.mp4
+ create mode 100644 attached_assets/harlesden-nw10_1757301217434.html
+ create mode 100644 attached_assets/images (1)_1757333365629.jpeg
+ create mode 100644 attached_assets/images (18)_1757340668805.jpeg
+ create mode 100644 attached_assets/index_1757301217435.html
+ create mode 100644 attached_assets/kensal-green-nw10_1757301217435.html
+ create mode 100644 attached_assets/kensal-rise-nw10_1757301217436.html
+ create mode 100644 attached_assets/kilburn-nw6_1757301217437.html
+ create mode 100644 attached_assets/ladbroke-grove-w10_1757301217437.html
+ create mode 100644 attached_assets/lettings-background.webp
+ create mode 100644 attached_assets/london_borough_property_snapshot_2025_1757301217438.csv
+ create mode 100644 attached_assets/maida-vale-w9_1757301217439.html
+ create mode 100644 attached_assets/north-kensington-w10-nk_1757301217440.html
+ create mode 100644 attached_assets/north-kensington-w10_1757301217440.html
+ create mode 100644 attached_assets/notting-hill-11_1757371676682.jpg
+ create mode 100644 attached_assets/notting-hill-17_1757340594302.jpg
+ create mode 100644 attached_assets/notting-hill-2930x2198-c-center_1757340635929.webp
+ create mode 100644 attached_assets/notting-hill7_1757332799186.jpg
+ create mode 100644 attached_assets/property_data.xlsx
+ create mode 100644 attached_assets/queens-park-nw6_1757301217441.html
+ create mode 100644 attached_assets/rentals-left-image.jpg
+ create mode 100644 attached_assets/sales-background.jpeg
+ create mode 100644 attached_assets/sales-left-image.jpeg
+ create mode 100644 attached_assets/westbourne-park-w10-w11_1757301217441.html
+ create mode 100644 attached_assets/willesden-nw10-nw2_1757301217442.html
+ create mode 100644 attached_assets/zia-afzal-video.mp4
+ create mode 100644 capture_content.js
+ create mode 100644 check-area-pages.js
+ create mode 100644 check-background-visibility.js
+ create mode 100644 check-hero.js
+ create mode 100644 check-website-loading.js
+ create mode 100644 check-website.js
+ create mode 100644 check-widths.js
+ create mode 100644 claude_desktop_config.json
+ create mode 100644 client/index.html
+ create mode 100644 client/src/App.tsx
+ create mode 100644 client/src/assets/Video_Transition_Homes_to_Flats.mp4
+ create mode 100644 client/src/assets/commercial-background.webp
+ create mode 100644 client/src/assets/commercial-left-image.jpeg
+ create mode 100644 client/src/assets/commercial-right-image.webp
+ create mode 100644 client/src/assets/john-barclay-hero-video.mp4
+ create mode 100644 client/src/assets/john-barclay-hero.mp4
+ create mode 100644 client/src/assets/lettings-background.webp
+ create mode 100644 client/src/assets/rentals-left-image.jpg
+ create mode 100644 client/src/assets/sales-background.jpeg
+ create mode 100644 client/src/assets/sales-left-image.jpeg
+ create mode 100644 client/src/assets/zia-afzal-hero-video.mp4
+ create mode 100644 client/src/assets/zia-afzal-video.mp4
+ create mode 100644 client/src/components/AIChat.tsx
+ create mode 100644 client/src/components/Benefits.tsx
+ create mode 100644 client/src/components/CTASection.tsx
+ create mode 100644 client/src/components/ContactSection.tsx
+ create mode 100644 client/src/components/CostComparison.tsx
+ create mode 100644 client/src/components/FAQ.tsx
+ create mode 100644 client/src/components/FeaturedProperties.tsx
+ create mode 100644 client/src/components/Footer.tsx
+ create mode 100644 client/src/components/Header.tsx
+ create mode 100644 client/src/components/Hero.tsx
+ create mode 100644 client/src/components/HowItWorks.tsx
+ create mode 100644 client/src/components/NaturalLanguageSearch.tsx
+ create mode 100644 client/src/components/PropertyChatInterface.tsx
+ create mode 100644 client/src/components/PropertyDataCard.tsx
+ create mode 100644 client/src/components/PropertyListingCard.tsx
+ create mode 100644 client/src/components/PropertySearch.tsx
+ create mode 100644 client/src/components/PropertySearchResults.tsx
+ create mode 100644 client/src/components/ScrollToTop.tsx
+ create mode 100644 client/src/components/SimpleHpiForm.tsx
+ create mode 100644 client/src/components/SinglePageValuationForm.tsx
+ create mode 100644 client/src/components/Testimonials.tsx
+ create mode 100644 client/src/components/TrustIndicators.tsx
+ create mode 100644 client/src/components/UserNav.tsx
+ create mode 100644 client/src/components/ValuationForm.tsx
+ create mode 100644 client/src/components/ui/accordion.tsx
+ create mode 100644 client/src/components/ui/alert-dialog.tsx
+ create mode 100644 client/src/components/ui/alert.tsx
+ create mode 100644 client/src/components/ui/aspect-ratio.tsx
+ create mode 100644 client/src/components/ui/avatar.tsx
+ create mode 100644 client/src/components/ui/badge.tsx
+ create mode 100644 client/src/components/ui/breadcrumb.tsx
+ create mode 100644 client/src/components/ui/button.tsx
+ create mode 100644 client/src/components/ui/calendar.tsx
+ create mode 100644 client/src/components/ui/card.tsx
+ create mode 100644 client/src/components/ui/carousel.tsx
+ create mode 100644 client/src/components/ui/chart.tsx
+ create mode 100644 client/src/components/ui/checkbox.tsx
+ create mode 100644 client/src/components/ui/collapsible.tsx
+ create mode 100644 client/src/components/ui/command.tsx
+ create mode 100644 client/src/components/ui/context-menu.tsx
+ create mode 100644 client/src/components/ui/dialog.tsx
+ create mode 100644 client/src/components/ui/drawer.tsx
+ create mode 100644 client/src/components/ui/dropdown-menu.tsx
+ create mode 100644 client/src/components/ui/form.tsx
+ create mode 100644 client/src/components/ui/hover-card.tsx
+ create mode 100644 client/src/components/ui/input-otp.tsx
+ create mode 100644 client/src/components/ui/input.tsx
+ create mode 100644 client/src/components/ui/label.tsx
+ create mode 100644 client/src/components/ui/menubar.tsx
+ create mode 100644 client/src/components/ui/navigation-menu.tsx
+ create mode 100644 client/src/components/ui/pagination.tsx
+ create mode 100644 client/src/components/ui/popover.tsx
+ create mode 100644 client/src/components/ui/progress.tsx
+ create mode 100644 client/src/components/ui/radio-group.tsx
+ create mode 100644 client/src/components/ui/resizable.tsx
+ create mode 100644 client/src/components/ui/scroll-area.tsx
+ create mode 100644 client/src/components/ui/select.tsx
+ create mode 100644 client/src/components/ui/separator.tsx
+ create mode 100644 client/src/components/ui/sheet.tsx
+ create mode 100644 client/src/components/ui/sidebar.tsx
+ create mode 100644 client/src/components/ui/skeleton.tsx
+ create mode 100644 client/src/components/ui/slider.tsx
+ create mode 100644 client/src/components/ui/switch.tsx
+ create mode 100644 client/src/components/ui/table.tsx
+ create mode 100644 client/src/components/ui/tabs.tsx
+ create mode 100644 client/src/components/ui/textarea.tsx
+ create mode 100644 client/src/components/ui/toast.tsx
+ create mode 100644 client/src/components/ui/toaster.tsx
+ create mode 100644 client/src/components/ui/toggle-group.tsx
+ create mode 100644 client/src/components/ui/toggle.tsx
+ create mode 100644 client/src/components/ui/tooltip.tsx
+ create mode 100644 client/src/hooks/use-auth.tsx
+ create mode 100644 client/src/hooks/use-mobile.tsx
+ create mode 100644 client/src/hooks/use-toast.ts
+ create mode 100644 client/src/index.css
+ create mode 100644 client/src/lib/addressService.ts
+ create mode 100644 client/src/lib/protected-route.tsx
+ create mode 100644 client/src/lib/queryClient.ts
+ create mode 100644 client/src/lib/utils.ts
+ create mode 100644 client/src/main.tsx
+ create mode 100644 client/src/pages/AreaPage.tsx
+ create mode 100644 client/src/pages/AreaPageTemplate.tsx
+ create mode 100644 client/src/pages/CRMDashboard.tsx
+ create mode 100644 client/src/pages/CRMLogin.tsx
+ create mode 100644 client/src/pages/CommercialLettingsPage.tsx
+ create mode 100644 client/src/pages/CommercialPage.tsx
+ create mode 100644 client/src/pages/CommercialSalesPage.tsx
+ create mode 100644 client/src/pages/EstateAgentHome.tsx
+ create mode 100644 client/src/pages/EstateAgentHome.tsx.tmp.10992.1757975619547
+ create mode 100644 client/src/pages/Home.tsx
+ create mode 100644 client/src/pages/InvestmentOpportunitiesPage.tsx
+ create mode 100644 client/src/pages/Login.tsx
+ create mode 100644 client/src/pages/PortfolioManagementPage.tsx
+ create mode 100644 client/src/pages/PremiumAreaTemplate.tsx
+ create mode 100644 client/src/pages/PropertyCreate.tsx
+ create mode 100644 client/src/pages/PropertyDetailPage.tsx
+ create mode 100644 client/src/pages/PropertyListingsPage.tsx
+ create mode 100644 client/src/pages/PropertyManagement.tsx
+ create mode 100644 client/src/pages/PropertyOwnership.tsx
+ create mode 100644 client/src/pages/RegisterRentalPage.tsx
+ create mode 100644 client/src/pages/RentalsPage.tsx
+ create mode 100644 client/src/pages/SalesPage.tsx
+ create mode 100644 client/src/pages/SinglePage.tsx
+ create mode 100644 client/src/pages/TenantPortal.tsx
+ create mode 100644 client/src/pages/TestDashboardPage.tsx
+ create mode 100644 client/src/pages/TestEmailPage.tsx
+ create mode 100644 client/src/pages/TestSmsPage.tsx
+ create mode 100644 client/src/pages/UserDashboard.tsx
+ create mode 100644 client/src/pages/UserManagement.tsx
+ create mode 100644 client/src/pages/ValuationPage.tsx
+ create mode 100644 client/src/pages/ValuationResult.tsx
+ create mode 100644 client/src/pages/VoiceAgentDashboard.tsx
+ create mode 100644 client/src/pages/WorkflowManagement.tsx
+ create mode 100644 client/src/pages/areas/BayswaterPage.tsx
+ create mode 100644 client/src/pages/areas/HarlesdenPage.tsx
+ create mode 100644 client/src/pages/areas/KensalGreenPage.tsx
+ create mode 100644 client/src/pages/areas/KensalRisePage.tsx
+ create mode 100644 client/src/pages/areas/KilburnPage.tsx
+ create mode 100644 client/src/pages/areas/LabdrokeGrovePage.tsx
+ create mode 100644 client/src/pages/areas/MaidaValePage.tsx
+ create mode 100644 client/src/pages/areas/NorthKensingtonPage.tsx
+ create mode 100644 client/src/pages/areas/QueensParkPage.tsx
+ create mode 100644 client/src/pages/areas/WestbourneParkPage.tsx
+ create mode 100644 client/src/pages/areas/WillesdenPage.tsx
+ create mode 100644 client/src/pages/auth-page.tsx
+ create mode 100644 client/src/pages/dashboard.tsx
+ create mode 100644 client/src/pages/not-found.tsx
+ create mode 100644 client/src/services/aiPropertySearchService.ts
+ create mode 100644 client/src/services/propertyData.ts
+ create mode 100644 client/src/services/propertyDataService.ts
+ create mode 100644 client/src/services/propertyListingsService.ts
+ create mode 100644 comprehensive-verification.js
+ create mode 100644 debug-issues.js
+ create mode 100644 detailed-investigate.js
+ create mode 100644 detailed_analysis.js
+ create mode 100644 drizzle.config.ts
+ create mode 100644 final-ui-verification.js
+ create mode 100644 final-verification-report.md
+ create mode 100644 final-verification.js
+ create mode 100644 inspect-logo-cropping.js
+ create mode 100644 inspect-logo-sizing.js
+ create mode 100644 investigate-scroll-issues.js
+ create mode 100644 investigate-specific-issues.js
+ create mode 100644 investigate-text-cutoff.js
+ create mode 100644 investigate-ui-issues.js
+ create mode 100644 investigate.js
+ create mode 100644 memory.md
+ create mode 100644 migrations/0000_handy_the_captain.sql
+ create mode 100644 migrations/meta/0000_snapshot.json
+ create mode 100644 migrations/meta/_journal.json
+ create mode 100644 oilstainlab_detailed/detailed_analysis.json
+ create mode 100644 oilstainlab_screenshots/page_analysis.json
+ create mode 100644 package-lock.json
+ create mode 100644 package.json
+ create mode 100644 playwright-verification.js
+ create mode 100644 position-verification.js
+ create mode 100644 postcss.config.js
+ create mode 100644 public/Video_Transition_Homes_to_Flats.mp4
+ create mode 100644 public/_redirects
+ create mode 100644 replit.md
+ create mode 100644 scripts/insert_properties_only.sql
+ create mode 100644 scripts/insert_sample_data.sql
+ create mode 100644 scripts/runPropertiesSql.js
+ create mode 100644 scripts/seedDatabase.ts
+ create mode 100644 server/aiPropertyParser.ts
+ create mode 100644 server/aiPropertySearch.ts
+ create mode 100644 server/auth.ts
+ create mode 100644 server/crmRoutes.ts
+ create mode 100644 server/db.ts
+ create mode 100644 server/docusignService.ts
+ create mode 100644 server/index.ts
+ create mode 100644 server/migrate.ts
+ create mode 100644 server/openai.ts
+ create mode 100644 server/propertyManagementService.ts
+ create mode 100644 server/routes.ts
+ create mode 100644 server/smsService.ts
+ create mode 100644 server/storage.ts
+ create mode 100644 server/test-config.ts
+ create mode 100644 server/ukPropertyData.ts
+ create mode 100644 server/ukPropertyDataNew.ts
+ create mode 100644 server/vite.ts
+ create mode 100644 server/voiceAgentService.ts
+ create mode 100644 server/whatsappService.ts
+ create mode 100644 server/workflowAutomation.ts
+ create mode 100644 shared/schema.ts
+ create mode 100644 shared/supabase.ts
+ create mode 100644 tailwind.config.ts
+ create mode 100644 test-email.html
+ create mode 100644 test-results/.last-run.json
+ create mode 100644 theme.json
+ create mode 100644 tsconfig.json
+ create mode 100644 verify-contact-animations.js
+ create mode 100644 verify-logo-fix.js
+ create mode 100644 visual-analysis.js
+ create mode 100644 vite.config.ts
+Updated Git hooks.
+Git LFS initialized.
+"*.mp4" already supported
+On branch main
+nothing to commit, working tree clean
+Git LFS upload failed:   0% (0/6), 0 B | 0 B/s                                                                                             
+  (missing) attached_assets/John_Barclay_1757521267161.mp4 (2050682678461d980ee69306c794ee9aca01273d0b8db4208c7ec49bd3ab5339)
+  (missing) attached_assets/Zia Afzal's Video - Sep 11, 2025-VEED_1759449632440.mp4 (d00ff0a2d0595a0ea7ad1e3654aab4206cd04e04dcfe50762563e3f1e2bb6a39)
+  (missing) client/src/assets/john-barclay-hero.mp4 (22018ea18a54370bfa2c0da8f40900dd8c0d4c0f3e48a593f63dd76658e1f920)
+  (missing) attached_assets/freepik__wideangle-tracking-shot-a-bustling-street-filled-w__20697_1757332731402.mp4 (d7ace9eb39cbfeeae146b74df351e2a804a690a9a9eaea72200448f898f76179)
+  (missing) attached_assets/JB__closeup-shot-a-Aslam-in-a-tailored-suit-sits-at-a-de__41215_1757416756668.mp4 (8c42ebe96644f94c8773dbf604a462693903ffd2b527543d7139b2514ed8e8c3)
+  (missing) attached_assets/Video_Transition_Homes_to_Flats.mp4 (57b9ece9e56f421107201791b546d414302bec44d8684d4dd7223016fc7b7dc5)
+hint: Your push was rejected due to missing or corrupt local objects.
+hint: You can disable this check with: `git config lfs.allowincompletepush true`
+error: failed to push some refs to 'https://github.com/S3nssay/JohnBarclayCRM.git'

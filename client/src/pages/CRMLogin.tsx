@@ -47,7 +47,7 @@ export default function CRMLogin() {
       // Small delay before redirect to ensure state is properly set
       // This helps prevent rendering issues during page transition
       setTimeout(() => {
-        setLocation('/crm/dashboard');
+        setLocation('/crm/my-desk');
       }, 100);
     } catch (error) {
       toast({

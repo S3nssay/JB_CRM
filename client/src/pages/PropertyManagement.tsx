@@ -768,9 +768,16 @@ export default function PropertyManagement() {
                               </span>
 
                               {/* Property type with bedrooms */}
-                              <span className="text-xs text-muted-foreground" data-testid={`text-property-type-${property.id}`}>
-                                {property.bedrooms ? `${property.bedrooms} bed` : ''} {property.propertyType}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs text-muted-foreground" data-testid={`text-property-type-${property.id}`}>
+                                  {property.bedrooms ? `${property.bedrooms} bed` : ''} {property.propertyType}
+                                </span>
+                                {property.managementStatus === 'dormant' && (
+                                  <Badge variant="secondary" className="text-[9px] px-1 py-0 bg-amber-100 text-amber-800 border border-amber-300">
+                                    Dormant
+                                  </Badge>
+                                )}
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -1067,7 +1074,7 @@ export default function PropertyManagement() {
                     <CardHeader>
                       <div className="flex justify-between items-start">
                         <CardTitle className="text-base">
-                          {cert.certificationType.replace(/_/g, ' ').toUpperCase()}
+                          {(cert.certificationType || 'Unknown').replace(/_/g, ' ').toUpperCase()}
                         </CardTitle>
                         <CertificationStatusBadge
                           status={cert.status}

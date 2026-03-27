@@ -847,7 +847,7 @@ export default function TenantManagement() {
                   const currentIdx = wizardSteps.findIndex(s => s.key === wizardStep);
                   setWizardStep(wizardSteps[currentIdx + 1].key);
                 }}
-                disabled={wizardStep === 'details' && !formData.fullName}
+                disabled={wizardStep === 'details' && (!formData.fullName || !formData.mobile)}
               >
                 Next
                 <ArrowRight className="h-4 w-4 ml-2" />

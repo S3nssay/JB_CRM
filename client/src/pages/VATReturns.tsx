@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/table';
 import {
   ChevronDown, ChevronRight, FileText, CalendarClock, CheckCircle2,
-  PoundSterling, Loader2, AlertCircle,
+  PoundSterling, Loader2, AlertCircle, Calculator,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
@@ -26,7 +26,7 @@ interface VATReturn {
   box7_total_purchases_ex_vat: number;
   box8_total_supplies_ex_vat: number;
   box9_total_acquisitions_ex_vat: number;
-  status: 'draft' | 'submitted' | 'paid';
+  status: 'draft' | 'calculated' | 'submitted' | 'paid';
   submitted_at: string | null;
   notes: string | null;
 }
@@ -55,6 +55,10 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   draft: {
     label: 'Draft',
     className: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  },
+  calculated: {
+    label: 'Calculated',
+    className: 'bg-purple-100 text-purple-800 border-purple-300',
   },
   submitted: {
     label: 'Submitted',
@@ -94,7 +98,7 @@ function BoxRow({ boxNumber, label, value }: { boxNumber: number; label: string;
 function ExpandedReturn({ vatReturn }: { vatReturn: VATReturn }) {
   return (
     <TableRow>
-      <TableCell colSpan={5} className="p-0">
+      <TableCell colSpan={6} className="p-0">
         <div className="bg-gray-50 border-t border-b mx-4 my-2 rounded-lg overflow-hidden">
           <div className="bg-white rounded-lg border">
             <div className="px-4 py-3 border-b bg-gray-50">
@@ -150,7 +154,9 @@ function ExpandedReturn({ vatReturn }: { vatReturn: VATReturn }) {
 
 export default function VATReturns() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [calculatingId, setCalculatingId] = useState<number | null>(null);
 
   const { data: vatReturns = [], isLoading, error } = useQuery<VATReturn[]>({
     queryKey: ['/api/crm/accounting/vat-returns'],
@@ -158,6 +164,20 @@ export default function VATReturns() {
 
   const toggleExpand = (id: number) => {
     setExpandedId(expandedId === id ? null : id);
+  };
+
+  const handleAutoCalculate = async (id: number, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCalculatingId(id);
+    try {
+      await apiRequest('POST', `/api/crm/accounting/vat-returns/${id}/calculate`);
+      toast({ title: 'VAT return calculated', description: 'Boxes 1-9 have been auto-calculated from posted journal entries.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/crm/accounting/vat-returns'] });
+    } catch (err) {
+      toast({ title: 'Calculation failed', description: (err as Error).message, variant: 'destructive' });
+    } finally {
+      setCalculatingId(null);
+    }
   };
 
   // Calculate summary values
@@ -319,6 +339,7 @@ export default function VATReturns() {
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Net VAT Due (Box 5)</TableHead>
                   <TableHead>Date Submitted</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -349,6 +370,24 @@ export default function VATReturns() {
                       </TableCell>
                       <TableCell className="text-gray-500">
                         {formatDate(vr.submitted_at)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(vr.status === 'draft' || vr.status === 'calculated') && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5 text-xs"
+                            disabled={calculatingId === vr.id}
+                            onClick={(e) => handleAutoCalculate(vr.id, e)}
+                          >
+                            {calculatingId === vr.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <Calculator className="h-3 w-3" />
+                            )}
+                            {calculatingId === vr.id ? 'Calculating...' : 'Auto-Calculate'}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                     {expandedId === vr.id && (

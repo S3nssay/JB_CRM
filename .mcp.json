@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "@playwright/mcp@latest"
+      ]
+    },
+    "seedance": {
+      "command": "python",
+      "args": [
+        "-m",
+        "mcp_seedance"
+      ],
+      "env": {
+        "SEEDANCE_API_KEY": ""
+      }
+    },
+    "kie-ai": {
+      "command": "npx",
+      "args": [
+        "@felores/kie-ai-mcp-server"
+      ]
+    }
+  }
+}

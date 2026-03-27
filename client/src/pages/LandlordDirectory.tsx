@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
   Search, ChevronRight, ChevronDown, User, Home, Users,
-  Receipt, TicketCheck, Building, Phone, Mail, Loader2
+  Receipt, TicketCheck, Building, Phone, Mail, Loader2,
+  FileText, MessageCircle
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,6 +38,7 @@ interface DirectoryProperty {
   rentPeriod: string | null;
   price: number | null;
   isManaged: boolean | null;
+  managementStatus: string | null; // 'occupied', 'dormant', 'void'
   tenants: DirectoryTenant[];
 }
 
@@ -57,6 +59,7 @@ export default function LandlordDirectory() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'dormant' | 'occupied'>('all');
   const [expandedLandlords, setExpandedLandlords] = useState<Set<number>>(new Set());
   const [expandedProperties, setExpandedProperties] = useState<Set<number>>(new Set());
 
@@ -98,37 +101,84 @@ export default function LandlordDirectory() {
     setLocation(`/crm/invoices?${entityType}Id=${entityId}&action=create`);
   };
 
-  const handleRaiseTicket = (e: React.MouseEvent, entityType: 'landlord' | 'tenant', entityId: number) => {
+  const handleRaiseTicket = (e: React.MouseEvent, entityType: 'landlord' | 'tenant' | 'property', entityId: number) => {
     e.stopPropagation();
     setLocation(`/crm/support-tickets?${entityType}Id=${entityId}&action=create`);
   };
 
-  // Filter directory based on search
-  const filteredDirectory = directory.filter((landlord) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    // Search landlord name, email, company
-    if (landlord.name?.toLowerCase().includes(term)) return true;
-    if (landlord.email?.toLowerCase().includes(term)) return true;
-    if (landlord.companyName?.toLowerCase().includes(term)) return true;
-    // Search properties
-    for (const prop of landlord.properties) {
-      if (prop.addressLine1?.toLowerCase().includes(term)) return true;
-      if (prop.postcode?.toLowerCase().includes(term)) return true;
-      // Search tenants
-      for (const tenant of prop.tenants) {
-        if (tenant.name?.toLowerCase().includes(term)) return true;
-        if (tenant.email?.toLowerCase().includes(term)) return true;
-      }
+  const handleGenerateStatement = (e: React.MouseEvent, landlordId: number) => {
+    e.stopPropagation();
+    setLocation(`/crm/landlords/${landlordId}?tab=statements&action=generate`);
+  };
+
+  const handleEmailLandlord = (e: React.MouseEvent, landlordId: number, email: string | null) => {
+    e.stopPropagation();
+    if (email) {
+      setLocation(`/crm/landlords/${landlordId}?tab=communications&action=email`);
+    } else {
+      toast({ title: 'No email address', description: 'This landlord has no email address on file.', variant: 'destructive' });
     }
-    return false;
-  });
+  };
+
+  const handleCallLandlord = (e: React.MouseEvent, phone: string | null) => {
+    e.stopPropagation();
+    if (phone) {
+      window.open(`tel:${phone}`, '_self');
+    } else {
+      toast({ title: 'No phone number', description: 'This landlord has no phone number on file.', variant: 'destructive' });
+    }
+  };
+
+  const handleWhatsAppLandlord = (e: React.MouseEvent, phone: string | null) => {
+    e.stopPropagation();
+    if (phone) {
+      const cleaned = phone.replace(/\s+/g, '').replace(/^0/, '44');
+      window.open(`https://wa.me/${cleaned}`, '_blank');
+    } else {
+      toast({ title: 'No phone number', description: 'This landlord has no phone number on file.', variant: 'destructive' });
+    }
+  };
+
+  // Filter directory based on search and status filter
+  const filteredDirectory = directory
+    .map((landlord) => {
+      // If filtering by management status, filter properties within each landlord
+      if (statusFilter !== 'all') {
+        const filteredProps = landlord.properties.filter(p => p.managementStatus === statusFilter);
+        if (filteredProps.length === 0) return null;
+        return { ...landlord, properties: filteredProps };
+      }
+      return landlord;
+    })
+    .filter((landlord): landlord is DirectoryLandlord => {
+      if (!landlord) return false;
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      // Search landlord name, email, company
+      if (landlord.name?.toLowerCase().includes(term)) return true;
+      if (landlord.email?.toLowerCase().includes(term)) return true;
+      if (landlord.companyName?.toLowerCase().includes(term)) return true;
+      // Search properties
+      for (const prop of landlord.properties) {
+        if (prop.addressLine1?.toLowerCase().includes(term)) return true;
+        if (prop.postcode?.toLowerCase().includes(term)) return true;
+        // Search tenants
+        for (const tenant of prop.tenants) {
+          if (tenant.name?.toLowerCase().includes(term)) return true;
+          if (tenant.email?.toLowerCase().includes(term)) return true;
+        }
+      }
+      return false;
+    });
 
   // Stats
   const totalLandlords = directory.length;
   const totalProperties = directory.reduce((sum, l) => sum + l.properties.length, 0);
   const totalTenants = directory.reduce(
     (sum, l) => sum + l.properties.reduce((s, p) => s + p.tenants.length, 0), 0
+  );
+  const totalDormant = directory.reduce(
+    (sum, l) => sum + l.properties.filter(p => p.managementStatus === 'dormant').length, 0
   );
 
   const expandAll = () => {
@@ -172,7 +222,7 @@ export default function LandlordDirectory() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-4 pb-3 px-4">
             <div className="flex items-center gap-3">
@@ -212,7 +262,40 @@ export default function LandlordDirectory() {
             </div>
           </CardContent>
         </Card>
+        <Card
+          className={`cursor-pointer transition-all ${statusFilter === 'dormant' ? 'ring-2 ring-amber-400 bg-amber-50' : 'hover:bg-amber-50/50'}`}
+          onClick={() => setStatusFilter(statusFilter === 'dormant' ? 'all' : 'dormant')}
+        >
+          <CardContent className="pt-4 pb-3 px-4">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-amber-100 flex items-center justify-center">
+                <Home className="h-4 w-4 text-amber-700" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-amber-800">{totalDormant}</p>
+                <p className="text-xs text-gray-500">Dormant</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Active Filter Indicator */}
+      {statusFilter !== 'all' && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+          <span className="text-sm text-amber-800 font-medium">
+            Showing {statusFilter === 'dormant' ? 'dormant (vacant)' : 'occupied'} properties only
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-xs text-amber-700 hover:text-amber-900"
+            onClick={() => setStatusFilter('all')}
+          >
+            Clear filter
+          </Button>
+        </div>
+      )}
 
       {/* Search */}
       <div className="relative">
@@ -304,21 +387,38 @@ export default function LandlordDirectory() {
                         variant="outline"
                         size="sm"
                         className="h-7 text-xs px-2"
-                        onClick={(e) => handleRaiseInvoice(e, 'landlord', landlord.id)}
-                        title="Raise Invoice"
+                        onClick={(e) => handleGenerateStatement(e, landlord.id)}
+                        title="Generate Statement"
                       >
-                        <Receipt className="h-3 w-3 mr-1" />
-                        Invoice
+                        <FileText className="h-3 w-3 mr-1" />
+                        Statement
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-7 text-xs px-2"
-                        onClick={(e) => handleRaiseTicket(e, 'landlord', landlord.id)}
-                        title="Raise Ticket"
+                        className="h-7 w-7 px-0"
+                        onClick={(e) => handleEmailLandlord(e, landlord.id, landlord.email)}
+                        title="Email"
                       >
-                        <TicketCheck className="h-3 w-3 mr-1" />
-                        Ticket
+                        <Mail className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 px-0"
+                        onClick={(e) => handleCallLandlord(e, landlord.mobile || landlord.phone)}
+                        title="Call"
+                      >
+                        <Phone className="h-3 w-3" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 px-0"
+                        onClick={(e) => handleWhatsAppLandlord(e, landlord.mobile || landlord.phone)}
+                        title="WhatsApp"
+                      >
+                        <MessageCircle className="h-3 w-3" />
                       </Button>
                     </div>
                   </div>
@@ -361,15 +461,24 @@ export default function LandlordDirectory() {
                                   >
                                     {property.addressLine1}{property.postcode ? `, ${property.postcode}` : ''}
                                   </span>
-                                  <Badge
-                                    variant="secondary"
-                                    className={`text-[10px] px-1.5 py-0 flex-shrink-0 ${
-                                      property.status === 'active' ? 'bg-green-100 text-green-800' :
-                                      property.status === 'let' ? 'bg-blue-100 text-blue-800' : ''
-                                    }`}
-                                  >
-                                    {property.status}
-                                  </Badge>
+                                  {property.isManaged && property.managementStatus === 'dormant' ? (
+                                    <Badge
+                                      variant="secondary"
+                                      className="text-[10px] px-1.5 py-0 flex-shrink-0 bg-amber-100 text-amber-800 border border-amber-300"
+                                    >
+                                      Dormant
+                                    </Badge>
+                                  ) : (
+                                    <Badge
+                                      variant="secondary"
+                                      className={`text-[10px] px-1.5 py-0 flex-shrink-0 ${
+                                        property.status === 'active' ? 'bg-green-100 text-green-800' :
+                                        property.status === 'let' ? 'bg-blue-100 text-blue-800' : ''
+                                      }`}
+                                    >
+                                      {property.managementStatus === 'occupied' ? 'Occupied' : property.status}
+                                    </Badge>
+                                  )}
                                   {property.propertyType && (
                                     <span className="text-xs text-gray-400 flex-shrink-0">
                                       {property.propertyType}
@@ -384,6 +493,18 @@ export default function LandlordDirectory() {
                                     {property.tenants.length} {property.tenants.length === 1 ? 'tenant' : 'tenants'}
                                   </span>
                                 </div>
+                              </div>
+                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 text-[11px] px-2"
+                                  onClick={(e) => handleRaiseTicket(e, 'property', property.id)}
+                                  title="Raise Ticket"
+                                >
+                                  <TicketCheck className="h-2.5 w-2.5 mr-1" />
+                                  Ticket
+                                </Button>
                               </div>
                             </div>
 

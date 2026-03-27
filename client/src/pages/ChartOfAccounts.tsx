@@ -27,9 +27,9 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface Account {
   id: number;
-  code: string;
-  name: string;
-  type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  account_code: string;
+  account_name: string;
+  account_type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
   parent_account_id: number | null;
   is_system_account: boolean;
   is_active: boolean;
@@ -52,7 +52,7 @@ interface AccountFormData {
   is_active: boolean;
 }
 
-const ACCOUNT_TYPE_GROUPS: { key: Account['type']; label: string }[] = [
+const ACCOUNT_TYPE_GROUPS: { key: Account['account_type']; label: string }[] = [
   { key: 'asset', label: 'Assets' },
   { key: 'liability', label: 'Liabilities' },
   { key: 'equity', label: 'Equity' },
@@ -131,11 +131,11 @@ export default function ChartOfAccounts() {
   const filteredAccounts = useMemo(() => {
     return accounts.filter((account) => {
       if (!showInactive && !account.is_active) return false;
-      if (typeFilter !== 'all' && account.type !== typeFilter) return false;
+      if (typeFilter !== 'all' && account.account_type !== typeFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesName = account.name.toLowerCase().includes(q);
-        const matchesCode = account.code.toLowerCase().includes(q);
+        const matchesName = account.account_name.toLowerCase().includes(q);
+        const matchesCode = account.account_code.toLowerCase().includes(q);
         if (!matchesName && !matchesCode) return false;
       }
       return true;
@@ -148,8 +148,8 @@ export default function ChartOfAccounts() {
       groups[group.key] = [];
     }
     for (const account of filteredAccounts) {
-      if (groups[account.type]) {
-        groups[account.type].push(account);
+      if (groups[account.account_type]) {
+        groups[account.account_type].push(account);
       }
     }
     // Sort each group by sort_order then code
@@ -158,7 +158,7 @@ export default function ChartOfAccounts() {
         const orderA = a.sort_order ?? 9999;
         const orderB = b.sort_order ?? 9999;
         if (orderA !== orderB) return orderA - orderB;
-        return a.code.localeCompare(b.code);
+        return a.account_code.localeCompare(b.account_code);
       });
     }
     return groups;
@@ -182,9 +182,9 @@ export default function ChartOfAccounts() {
   function openEditDialog(account: Account) {
     setEditingAccount(account);
     setForm({
-      account_code: account.code,
-      account_name: account.name,
-      account_type: account.type,
+      account_code: account.account_code,
+      account_name: account.account_name,
+      account_type: account.account_type,
       parent_account_id: account.parent_account_id ? String(account.parent_account_id) : '',
       description: account.description ?? '',
       normal_balance: account.normal_balance,
@@ -243,7 +243,7 @@ export default function ChartOfAccounts() {
   const parentOptions = useMemo(() => {
     return accounts
       .filter((a) => a.is_active && (!editingAccount || a.id !== editingAccount.id))
-      .sort((a, b) => a.code.localeCompare(b.code));
+      .sort((a, b) => a.account_code.localeCompare(b.account_code));
   }, [accounts, editingAccount]);
 
   // Total count for the header
@@ -399,11 +399,11 @@ export default function ChartOfAccounts() {
                             {groupAccounts.map((account) => (
                               <TableRow key={account.id} className={!account.is_active ? 'opacity-50' : ''}>
                                 <TableCell className="pl-6 font-mono text-sm font-medium">
-                                  {account.code}
+                                  {account.account_code}
                                 </TableCell>
                                 <TableCell>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-medium text-gray-900">{account.name}</span>
+                                    <span className="font-medium text-gray-900">{account.account_name}</span>
                                     {account.is_system_account && (
                                       <Lock className="h-3.5 w-3.5 text-gray-400" />
                                     )}
@@ -416,7 +416,7 @@ export default function ChartOfAccounts() {
                                 </TableCell>
                                 <TableCell>
                                   <span className="text-sm text-gray-600 capitalize">
-                                    {account.type}
+                                    {account.account_type}
                                   </span>
                                 </TableCell>
                                 <TableCell>
@@ -550,7 +550,7 @@ export default function ChartOfAccounts() {
                   <SelectItem value="none">None (top-level account)</SelectItem>
                   {parentOptions.map((a) => (
                     <SelectItem key={a.id} value={String(a.id)}>
-                      {a.code} - {a.name}
+                      {a.account_code} - {a.account_name}
                     </SelectItem>
                   ))}
                 </SelectContent>

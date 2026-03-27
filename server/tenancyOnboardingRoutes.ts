@@ -28,7 +28,7 @@ tenancyOnboardingRouter.get("/tenancy-onboarding", requireAgent, async (req, res
       FROM tenancy_onboarding o
       LEFT JOIN tenant t ON t.id = o.tenant_id
       LEFT JOIN property p ON p.id = o.property_id
-      LEFT JOIN landlords l ON l.id = o.landlord_id
+      LEFT JOIN landlord l ON l.id = o.landlord_id
       LEFT JOIN "user" u ON u.id = o.assigned_agent_id
     `;
     const params: any[] = [];
@@ -63,7 +63,7 @@ tenancyOnboardingRouter.get("/tenancy-onboarding/:id", requireAgent, async (req,
       FROM tenancy_onboarding o
       LEFT JOIN tenant t ON t.id = o.tenant_id
       LEFT JOIN property p ON p.id = o.property_id
-      LEFT JOIN landlords l ON l.id = o.landlord_id
+      LEFT JOIN landlord l ON l.id = o.landlord_id
       LEFT JOIN "user" u ON u.id = o.assigned_agent_id
       WHERE o.id = $1
     `, [id]);
@@ -163,7 +163,7 @@ tenancyOnboardingRouter.post("/tenancy-onboarding", requireAgent, async (req, re
       FROM tenancy_onboarding o
       LEFT JOIN tenant t ON t.id = o.tenant_id
       LEFT JOIN property p ON p.id = o.property_id
-      LEFT JOIN landlords l ON l.id = o.landlord_id
+      LEFT JOIN landlord l ON l.id = o.landlord_id
       WHERE o.id = $1
     `, [onboarding.id]);
 
@@ -277,7 +277,7 @@ tenancyOnboardingRouter.patch("/tenancy-onboarding/:id/steps/:stepId", requireAg
       FROM tenancy_onboarding o
       LEFT JOIN tenant t ON t.id = o.tenant_id
       LEFT JOIN property p ON p.id = o.property_id
-      LEFT JOIN landlords l ON l.id = o.landlord_id
+      LEFT JOIN landlord l ON l.id = o.landlord_id
       WHERE o.id = $1
     `, [id]);
 
@@ -528,7 +528,7 @@ async function sendOnboardingNotification(onboardingId: number, stepType: string
       FROM tenancy_onboarding o
       LEFT JOIN tenant t ON t.id = o.tenant_id
       LEFT JOIN property p ON p.id = o.property_id
-      LEFT JOIN landlords l ON l.id = o.landlord_id
+      LEFT JOIN landlord l ON l.id = o.landlord_id
       LEFT JOIN "user" u ON u.id = o.assigned_agent_id
       WHERE o.id = $1
     `, [onboardingId]);

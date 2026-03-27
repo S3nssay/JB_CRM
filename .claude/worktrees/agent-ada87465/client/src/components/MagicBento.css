@@ -1,0 +1,66 @@
+.magic-bento-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.magic-bento-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: radial-gradient(
+    circle at var(--glow-x, 50%) var(--glow-y, 50%),
+    rgba(var(--glow-color, 212, 160, 79), calc(var(--glow-intensity, 0) * 0.8)) 0%,
+    rgba(var(--glow-color, 212, 160, 79), calc(var(--glow-intensity, 0) * 0.4)) 25%,
+    rgba(var(--glow-color, 212, 160, 79), calc(var(--glow-intensity, 0) * 0.1)) 50%,
+    transparent 70%
+  );
+  -webkit-mask: 
+    linear-gradient(#fff 0 0) content-box, 
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.magic-bento-card--border-glow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at var(--glow-x, 50%) var(--glow-y, 50%),
+    rgba(var(--glow-color, 212, 160, 79), calc(var(--glow-intensity, 0) * 0.15)) 0%,
+    rgba(var(--glow-color, 212, 160, 79), calc(var(--glow-intensity, 0) * 0.08)) 30%,
+    transparent 60%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.particle-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.bento-section {
+  position: relative;
+}
+
+.card-grid {
+  display: grid;
+  gap: 1rem;
+}

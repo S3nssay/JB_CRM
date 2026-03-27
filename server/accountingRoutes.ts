@@ -1364,3 +1364,454 @@ accountingRouter.post('/accounting/recurring-templates/:id/run', requireAgent, a
     client.release();
   }
 });
+
+// ==========================================
+// REPORTS: AGED DEBTORS
+// ==========================================
+
+accountingRouter.get('/accounting/reports/aged-debtors', requireAgent, async (req: any, res: any) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        invoice_number,
+        invoice_date,
+        due_date,
+        customer_name,
+        COALESCE(customer_type, 'other') as customer_type,
+        total_amount,
+        amount_paid,
+        (total_amount - amount_paid) as outstanding,
+        GREATEST(0, EXTRACT(DAY FROM NOW() - due_date)::integer) as days_overdue
+      FROM business_invoices
+      WHERE status NOT IN ('draft', 'void', 'paid')
+        AND total_amount > amount_paid
+      ORDER BY due_date ASC
+    `);
+
+    const entries = result.rows;
+
+    const current: any[] = [];
+    const days_1_30: any[] = [];
+    const days_31_60: any[] = [];
+    const days_61_90: any[] = [];
+    const over_90: any[] = [];
+    let total_outstanding = 0;
+
+    for (const entry of entries) {
+      total_outstanding += parseInt(entry.outstanding) || 0;
+      const daysOverdue = parseInt(entry.days_overdue) || 0;
+
+      const row = {
+        id: entry.id,
+        invoice_number: entry.invoice_number,
+        invoice_date: entry.invoice_date,
+        due_date: entry.due_date,
+        customer_name: entry.customer_name,
+        customer_type: entry.customer_type,
+        total_amount: parseInt(entry.total_amount) || 0,
+        amount_paid: parseInt(entry.amount_paid) || 0,
+        outstanding: parseInt(entry.outstanding) || 0,
+        days_overdue: daysOverdue,
+      };
+
+      if (daysOverdue <= 0) current.push(row);
+      else if (daysOverdue <= 30) days_1_30.push(row);
+      else if (daysOverdue <= 60) days_31_60.push(row);
+      else if (daysOverdue <= 90) days_61_90.push(row);
+      else over_90.push(row);
+    }
+
+    res.json({ current, days_1_30, days_31_60, days_61_90, over_90, total_outstanding });
+  } catch (error) {
+    console.error('Error fetching aged debtors:', error);
+    res.status(500).json({ error: 'Failed to fetch aged debtors report' });
+  }
+});
+
+// ==========================================
+// REPORTS: AGED CREDITORS
+// ==========================================
+
+accountingRouter.get('/accounting/reports/aged-creditors', requireAgent, async (req: any, res: any) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        id,
+        invoice_number,
+        invoice_date,
+        due_date,
+        supplier_name,
+        COALESCE(supplier_type, 'other') as supplier_type,
+        total_amount,
+        amount_paid,
+        (total_amount - amount_paid) as outstanding,
+        GREATEST(0, EXTRACT(DAY FROM NOW() - due_date)::integer) as days_overdue
+      FROM purchase_invoices
+      WHERE status NOT IN ('draft', 'void', 'paid')
+        AND total_amount > amount_paid
+      ORDER BY due_date ASC
+    `);
+
+    const entries = result.rows;
+
+    const current: any[] = [];
+    const days_1_30: any[] = [];
+    const days_31_60: any[] = [];
+    const days_61_90: any[] = [];
+    const over_90: any[] = [];
+    let total_outstanding = 0;
+
+    for (const entry of entries) {
+      total_outstanding += parseInt(entry.outstanding) || 0;
+      const daysOverdue = parseInt(entry.days_overdue) || 0;
+
+      const row = {
+        id: entry.id,
+        invoice_number: entry.invoice_number,
+        invoice_date: entry.invoice_date,
+        due_date: entry.due_date,
+        supplier_name: entry.supplier_name,
+        supplier_type: entry.supplier_type,
+        total_amount: parseInt(entry.total_amount) || 0,
+        amount_paid: parseInt(entry.amount_paid) || 0,
+        outstanding: parseInt(entry.outstanding) || 0,
+        days_overdue: daysOverdue,
+      };
+
+      if (daysOverdue <= 0) current.push(row);
+      else if (daysOverdue <= 30) days_1_30.push(row);
+      else if (daysOverdue <= 60) days_31_60.push(row);
+      else if (daysOverdue <= 90) days_61_90.push(row);
+      else over_90.push(row);
+    }
+
+    res.json({ current, days_1_30, days_31_60, days_61_90, over_90, total_outstanding });
+  } catch (error) {
+    console.error('Error fetching aged creditors:', error);
+    res.status(500).json({ error: 'Failed to fetch aged creditors report' });
+  }
+});
+
+// ==========================================
+// REPORTS: TAX REPORT
+// ==========================================
+
+accountingRouter.get('/accounting/reports/tax', requireAgent, async (req: any, res: any) => {
+  try {
+    const { from_date, to_date } = req.query;
+
+    if (!from_date || !to_date) {
+      return res.status(400).json({ error: 'from_date and to_date are required' });
+    }
+
+    // Get tax amounts grouped by tax rate, split by output (revenue) vs input (expense)
+    const result = await pool.query(`
+      SELECT
+        tr.name as tax_rate_name,
+        tr.rate as tax_rate,
+        COALESCE(SUM(CASE WHEN coa.account_type = 'revenue' THEN jel.tax_amount ELSE 0 END), 0) as output_vat,
+        COALESCE(SUM(CASE WHEN coa.account_type = 'expense' THEN jel.tax_amount ELSE 0 END), 0) as input_vat
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      JOIN tax_rates tr ON jel.tax_rate_id = tr.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1
+        AND je.entry_date <= $2
+        AND jel.tax_rate_id IS NOT NULL
+        AND jel.tax_amount > 0
+      GROUP BY tr.id, tr.name, tr.rate
+      ORDER BY tr.rate ASC
+    `, [from_date, to_date]);
+
+    const rates = result.rows.map(r => ({
+      tax_rate_name: r.tax_rate_name,
+      tax_rate: r.tax_rate,
+      output_vat: parseInt(r.output_vat) || 0,
+      input_vat: parseInt(r.input_vat) || 0,
+    }));
+
+    const total_output_vat = rates.reduce((sum, r) => sum + r.output_vat, 0);
+    const total_input_vat = rates.reduce((sum, r) => sum + r.input_vat, 0);
+    const net_vat_due = total_output_vat - total_input_vat;
+
+    res.json({ rates, total_output_vat, total_input_vat, net_vat_due });
+  } catch (error) {
+    console.error('Error fetching tax report:', error);
+    res.status(500).json({ error: 'Failed to fetch tax report' });
+  }
+});
+
+// ==========================================
+// VAT RETURNS: AUTO-CALCULATE
+// ==========================================
+
+accountingRouter.post('/accounting/vat-returns/:id/calculate', requireAgent, async (req: any, res: any) => {
+  const { id } = req.params;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Get the VAT return to find the period range
+    const vrResult = await client.query('SELECT * FROM vat_returns WHERE id = $1', [id]);
+    if (vrResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'VAT return not found' });
+    }
+    const vr = vrResult.rows[0];
+
+    if (vr.status === 'submitted' || vr.status === 'paid') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Cannot recalculate a submitted or paid VAT return' });
+    }
+
+    const periodStart = vr.period_start;
+    const periodEnd = vr.period_end;
+
+    // Box 1: VAT due on sales - sum tax_amount on revenue account lines
+    const box1Result = await client.query(`
+      SELECT COALESCE(SUM(jel.tax_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1 AND je.entry_date <= $2
+        AND coa.account_type = 'revenue'
+        AND jel.tax_amount > 0
+    `, [periodStart, periodEnd]);
+    const box1 = parseInt(box1Result.rows[0].total) || 0;
+
+    // Box 2: VAT due on acquisitions (EU - typically 0 post-Brexit)
+    const box2 = 0;
+
+    // Box 3: Total VAT due
+    const box3 = box1 + box2;
+
+    // Box 4: VAT reclaimed on inputs - sum tax_amount on expense account lines
+    const box4Result = await client.query(`
+      SELECT COALESCE(SUM(jel.tax_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1 AND je.entry_date <= $2
+        AND coa.account_type = 'expense'
+        AND jel.tax_amount > 0
+    `, [periodStart, periodEnd]);
+    const box4 = parseInt(box4Result.rows[0].total) || 0;
+
+    // Box 5: Net VAT
+    const box5 = box3 - box4;
+
+    // Box 6: Total sales ex VAT - net amount on revenue lines (credit - debit)
+    const box6Result = await client.query(`
+      SELECT COALESCE(SUM(jel.credit_amount - jel.debit_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1 AND je.entry_date <= $2
+        AND coa.account_type = 'revenue'
+    `, [periodStart, periodEnd]);
+    const box6 = Math.abs(parseInt(box6Result.rows[0].total) || 0);
+
+    // Box 7: Total purchases ex VAT - net amount on expense lines (debit - credit)
+    const box7Result = await client.query(`
+      SELECT COALESCE(SUM(jel.debit_amount - jel.credit_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1 AND je.entry_date <= $2
+        AND coa.account_type = 'expense'
+    `, [periodStart, periodEnd]);
+    const box7 = Math.abs(parseInt(box7Result.rows[0].total) || 0);
+
+    // Box 8 & 9: EU supplies/acquisitions (0 post-Brexit)
+    const box8 = 0;
+    const box9 = 0;
+
+    // Update the VAT return with calculated values
+    await client.query(`
+      UPDATE vat_returns SET
+        box1_vat_due_sales = $2,
+        box2_vat_due_acquisitions = $3,
+        box3_total_vat_due = $4,
+        box4_vat_reclaimed_input = $5,
+        box5_net_vat_due = $6,
+        box6_total_sales_ex_vat = $7,
+        box7_total_purchases_ex_vat = $8,
+        box8_total_supplies_ex_vat = $9,
+        box9_total_acquisitions_ex_vat = $10,
+        status = 'calculated',
+        updated_at = NOW()
+      WHERE id = $1
+    `, [id, box1, box2, box3, box4, box5, box6, box7, box8, box9]);
+
+    await client.query('COMMIT');
+
+    // Return the updated VAT return
+    const updated = await pool.query('SELECT * FROM vat_returns WHERE id = $1', [id]);
+    res.json(updated.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error calculating VAT return:', error);
+    res.status(500).json({ error: 'Failed to calculate VAT return' });
+  } finally {
+    client.release();
+  }
+});
+
+// ==========================================
+// ACCOUNTING DASHBOARD
+// ==========================================
+
+accountingRouter.get('/accounting/dashboard', requireAgent, async (req: any, res: any) => {
+  try {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
+
+    // Revenue this month (credit totals on revenue accounts from posted journal entries)
+    const revenueThisMonth = await pool.query(`
+      SELECT COALESCE(SUM(jel.credit_amount - jel.debit_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1
+        AND coa.account_type = 'revenue'
+    `, [thisMonthStart]);
+
+    // Revenue last month
+    const revenueLastMonth = await pool.query(`
+      SELECT COALESCE(SUM(jel.credit_amount - jel.debit_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1 AND je.entry_date <= $2
+        AND coa.account_type = 'revenue'
+    `, [lastMonthStart, lastMonthEnd]);
+
+    // Expenses this month (debit totals on expense accounts)
+    const expensesThisMonth = await pool.query(`
+      SELECT COALESCE(SUM(jel.debit_amount - jel.credit_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1
+        AND coa.account_type = 'expense'
+    `, [thisMonthStart]);
+
+    // Expenses last month
+    const expensesLastMonth = await pool.query(`
+      SELECT COALESCE(SUM(jel.debit_amount - jel.credit_amount), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND je.entry_date >= $1 AND je.entry_date <= $2
+        AND coa.account_type = 'expense'
+    `, [lastMonthStart, lastMonthEnd]);
+
+    // Cash balance (sum of asset accounts with account_code starting with '1' - bank/cash accounts)
+    const cashBalance = await pool.query(`
+      SELECT COALESCE(SUM(
+        CASE WHEN coa.normal_balance = 'debit'
+          THEN (jel.debit_amount - jel.credit_amount)
+          ELSE (jel.credit_amount - jel.debit_amount)
+        END
+      ), 0) as total
+      FROM journal_entry_lines jel
+      JOIN journal_entries je ON jel.journal_entry_id = je.id
+      JOIN chart_of_accounts coa ON jel.account_id = coa.id
+      WHERE je.status = 'posted'
+        AND coa.account_type = 'asset'
+        AND coa.account_code LIKE '10%'
+    `);
+
+    // Outstanding receivables (unpaid sales invoices)
+    const receivables = await pool.query(`
+      SELECT COALESCE(SUM(total_amount - amount_paid), 0) as total
+      FROM business_invoices
+      WHERE status NOT IN ('draft', 'void', 'paid')
+        AND total_amount > amount_paid
+    `);
+
+    // Outstanding payables (unpaid purchase invoices)
+    const payables = await pool.query(`
+      SELECT COALESCE(SUM(total_amount - amount_paid), 0) as total
+      FROM purchase_invoices
+      WHERE status NOT IN ('draft', 'void', 'paid')
+        AND total_amount > amount_paid
+    `);
+
+    // Overdue invoices count
+    const overdueCount = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM business_invoices
+      WHERE status NOT IN ('draft', 'void', 'paid')
+        AND total_amount > amount_paid
+        AND due_date < NOW()
+    `);
+
+    // Pending approvals (purchase invoices awaiting approval)
+    const pendingApprovals = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM purchase_invoices
+      WHERE status = 'awaiting_approval'
+    `);
+
+    // Recent transactions (last 10 posted journal entries)
+    const recentTransactions = await pool.query(`
+      SELECT
+        je.id,
+        je.entry_number,
+        je.entry_date,
+        je.description,
+        je.source_type,
+        je.status,
+        COALESCE(SUM(jel.debit_amount), 0) as total_amount
+      FROM journal_entries je
+      LEFT JOIN journal_entry_lines jel ON je.id = jel.journal_entry_id
+      WHERE je.status = 'posted'
+      GROUP BY je.id, je.entry_number, je.entry_date, je.description, je.source_type, je.status
+      ORDER BY je.entry_date DESC, je.id DESC
+      LIMIT 10
+    `);
+
+    const revThisMonth = parseInt(revenueThisMonth.rows[0].total) || 0;
+    const revLastMonth = parseInt(revenueLastMonth.rows[0].total) || 0;
+    const expThisMonth = parseInt(expensesThisMonth.rows[0].total) || 0;
+    const expLastMonth = parseInt(expensesLastMonth.rows[0].total) || 0;
+
+    res.json({
+      revenue_this_month: revThisMonth,
+      revenue_last_month: revLastMonth,
+      expenses_this_month: expThisMonth,
+      expenses_last_month: expLastMonth,
+      net_profit_this_month: revThisMonth - expThisMonth,
+      cash_balance: parseInt(cashBalance.rows[0].total) || 0,
+      outstanding_receivables: parseInt(receivables.rows[0].total) || 0,
+      outstanding_payables: parseInt(payables.rows[0].total) || 0,
+      overdue_invoices_count: parseInt(overdueCount.rows[0].count) || 0,
+      pending_approvals_count: parseInt(pendingApprovals.rows[0].count) || 0,
+      recent_transactions: recentTransactions.rows.map(t => ({
+        id: t.id,
+        entry_number: t.entry_number,
+        entry_date: t.entry_date,
+        description: t.description,
+        source_type: t.source_type,
+        status: t.status,
+        total_amount: parseInt(t.total_amount) || 0,
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching accounting dashboard:', error);
+    res.status(500).json({ error: 'Failed to fetch dashboard data' });
+  }
+});
