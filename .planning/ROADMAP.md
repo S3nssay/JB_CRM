@@ -138,7 +138,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 **Goal:** Remove negotiation autonomy from Sales (Alex) and Lettings (Jordan) agents, replacing it with professional offer recording. Add offer management UI for staff. Add PM cost ledger tracking maintenance and compliance spend per property and per landlord with configurable threshold alerts.
 **Requirements**: CORR-01, CORR-02, CORR-03, CORR-04, COST-01, COST-02, COST-03, OFFER-UI, COST-UI
 **Depends on:** Phase 6
-**Plans:** 4/4 plans complete
+**Plans:** 6 plans (4 complete + 2 gap closure)
 
 Plans:
 - [ ] 07-01-PLAN.md — Schema extensions (lettings offer fields, certification cost, cost thresholds), agent prompt corrections (remove negotiation, add OFFERS section), recordOffer tool
@@ -151,13 +151,15 @@ Plans:
 **Goal:** Taylor, a PM Finance AI agent, autonomously generates monthly per-property landlord statements (staff-approved before sending) and tenant rent invoices (7 days before due, auto-sent with dual payment links), handles payment auto-reconciliation, and serves as a conversational agent for finance queries from tenants and landlords via Supervisor routing.
 **Requirements**: FIN-01, FIN-02, FIN-03, FIN-04, FIN-05, FIN-06, FIN-07, FIN-08, FIN-09, FIN-10
 **Depends on:** Phase 7
-**Plans:** 4/4 plans complete
+**Plans:** 6 plans (4 complete + 2 gap closure)
 
 Plans:
 - [ ] 08-01-PLAN.md — Schema fix (propertyId on landlordStatements), financeAgentService (statement aggregation, invoice generation, management fee calculation), pdfService (branded PDF generation), Wave 0 test stubs
 - [ ] 08-02-PLAN.md — Taylor agent definition (persona, finance tools), Supervisor registration with finance routing, pg-boss cron jobs (monthly statements, daily invoices), deal event hooks (tenancy.agreed/ending triggers)
 - [ ] 08-03-PLAN.md — Finance API routes (statement approval workflow, invoice listing, manual triggers), auto-reconciliation wiring for Taylor-generated invoices
 - [ ] 08-04-PLAN.md — Pending Statements approval page, Tenant Invoices page, CRM sidebar Finance section, App.tsx routing
+- [ ] 08-05-PLAN.md — Gap closure: missing lifecycle trigger functions (generateFirstInvoiceForTenancy, generateFinalStatement), fix TenantInvoices endpoint, remove duplicate approve route
+- [ ] 08-06-PLAN.md — Gap closure: add FIN-01..FIN-10 and Phase 6-10 requirement definitions to REQUIREMENTS.md
 
 ### Phase 9: Head of Property Management Agent
 
