@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
-stopped_at: Completed 11-04-PLAN.md
-last_updated: "2026-03-27T11:29:13.331Z"
+status: executing
+stopped_at: Completed 12-01-PLAN.md
+last_updated: "2026-03-27T21:03:20.264Z"
 last_activity: 2026-03-27
 progress:
-  total_phases: 11
+  total_phases: 12
   completed_phases: 11
-  total_plans: 43
-  completed_plans: 43
+  total_plans: 46
+  completed_plans: 44
   percent: 100
 ---
 
@@ -21,13 +21,13 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-19)
 
 **Core value:** AI agents handle real inbound communications autonomously — answering questions, booking viewings, managing maintenance, chasing arrears — so the human team focuses on high-value work.
-**Current focus:** Phase 11 — property-sourcing-agent-market-intelligence-owner-outreach
+**Current focus:** Phase 12 — kanban-pipelines-lead-auto-matching
 
 ## Current Position
 
-Phase: 11
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 12 (kanban-pipelines-lead-auto-matching) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-03-27
 
 Progress: [██████████] 100%
@@ -104,6 +104,7 @@ Progress: [██████████] 100%
 | Phase 11 P02 | 8min | 2 tasks | 5 files |
 | Phase 11 P04 | 10min | 2 tasks | 3 files |
 | Phase 11 P04 | 14min | 2 tasks | 3 files |
+| Phase 12 P01 | 5min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -221,6 +222,9 @@ Recent decisions affecting current work:
 - [Phase 11]: Default follow-up sequence: letter(day 0) -> email(day 7) -> letter(day 21)
 - [Phase 11]: All sub-components in single SourcingDashboard file for cohesion
 - [Phase 11]: UI stage names mapped to API status values with approval-based split for contacted leads
+- [Phase 12]: Lazy import for leadMatchingService in PATCH handler (consistent with project convention)
+- [Phase 12]: Pipeline stage dual-write: update both status (legacy) and pipeline_stage (new kanban) for backward compat
+- [Phase 12]: Budget/bedrooms/area/type scoring weights: 40/25/25/10 with threshold >= 50
 
 ### Roadmap Evolution
 
@@ -242,6 +246,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T11:14:17.896Z
-Stopped at: Completed 11-04-PLAN.md
+Last session: 2026-03-27T21:03:20.243Z
+Stopped at: Completed 12-01-PLAN.md
 Resume file: None
