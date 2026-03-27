@@ -74,17 +74,23 @@ export default function LandlordLeadPipeline() {
   const [selectedInquiryType, setSelectedInquiryType] = useState<string>('all');
 
   const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['/api/crm/landlord-leads'],
+    queryKey: ['/api/crm/landlord-leads', selectedInquiryType],
     queryFn: async () => {
-      const response = await fetch('/api/crm/landlord-leads', { credentials: 'include' });
+      const params = new URLSearchParams();
+      if (selectedInquiryType !== 'all') {
+        params.set('inquiryType', selectedInquiryType);
+      }
+      const url = `/api/crm/landlord-leads${params.toString() ? '?' + params.toString() : ''}`;
+      const response = await fetch(url, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch landlord leads');
       return response.json();
     }
   });
 
   const { data: pipeline = {} } = useQuery({
-    queryKey: ['/api/crm/landlord-leads/pipeline'],
+    queryKey: ['/api/crm/landlord-leads/pipeline', selectedInquiryType],
     queryFn: async () => {
+      // Pipeline counts always show full counts regardless of type filter
       const response = await fetch('/api/crm/landlord-leads/pipeline', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch pipeline');
       return response.json();
@@ -137,8 +143,7 @@ export default function LandlordLeadPipeline() {
       lead.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.postcode?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       lead.property_address?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = selectedInquiryType === 'all' || lead.inquiry_type === selectedInquiryType;
-    return matchesSearch && matchesType;
+    return matchesSearch;
   });
 
   const leadsByStage: Record<WorkflowStage, LandlordLead[]> = {
@@ -212,12 +217,11 @@ export default function LandlordLeadPipeline() {
                 </div>
               </div>
               <Select value={selectedInquiryType} onValueChange={setSelectedInquiryType}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Inquiry Type" /></SelectTrigger>
+                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Owner Type" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="valuation">Valuation</SelectItem>
-                  <SelectItem value="selling">Selling</SelectItem>
-                  <SelectItem value="letting">Letting</SelectItem>
+                  <SelectItem value="all">All Owners</SelectItem>
+                  <SelectItem value="letting">Letting Owners</SelectItem>
+                  <SelectItem value="selling">Selling Owners</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -254,7 +258,11 @@ export default function LandlordLeadPipeline() {
                   </div>
                   <div className="bg-gray-100 rounded-b-lg p-2 min-h-[400px] space-y-2">
                     {stageLeads.length === 0 ? (
-                      <div className="text-center text-sm text-gray-400 py-8">No leads in this stage</div>
+                      <div className="text-center text-sm text-gray-400 py-8">
+                        {selectedInquiryType !== 'all'
+                          ? `No ${selectedInquiryType} leads found. Try changing the filter or check the other owner type.`
+                          : 'No leads in this stage'}
+                      </div>
                     ) : (
                       stageLeads.map((lead) => {
                         const stageConfig = WORKFLOW_STAGES.find(s => s.id === stage.id);
