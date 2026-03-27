@@ -184,10 +184,22 @@ Plans:
 
 ### Phase 11: Property Sourcing Agent — Market Intelligence & Owner Outreach
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Charlie ("The Networker"), a property sourcing AI agent, proactively monitors market intelligence sources (Land Registry, stale listings, auctions, planning apps, competitor expirations), scores leads by propensity to instruct, drafts source-specific outreach (letters + emails) for staff approval, manages multi-touch follow-up sequences, handles inbound owner responses via Supervisor routing, and provides a CRM dashboard for pipeline management, outreach approvals, campaign configuration, and performance metrics.
+**Requirements**: SRC-01, SRC-02, SRC-03, SRC-04, SRC-05, SRC-06, SRC-07, SRC-08, SRC-09, SRC-10, SRC-11, SRC-12, SRC-13, SRC-14
 **Depends on:** Phase 10
-**Plans:** 0 plans
+**Success Criteria** (what must be TRUE):
+  1. Charlie agent registers with both BaseAgent system and Supervisor SDK, handling inbound owner responses ("I got your letter") via conversational routing
+  2. pg-boss cron jobs run daily market scans, weekly propensity scoring, and daily follow-up checks -- replacing all setInterval scheduling
+  3. Staff can view a sourcing pipeline with leads flowing through stages (new -> scored -> draft ready -> awaiting approval -> sent -> responded -> valuation booked -> instructed)
+  4. All outreach (letter + email) requires explicit staff approval before sending -- Charlie drafts, staff approve
+  5. Source-specific AI-generated outreach uses appropriate tone per lead type (sensitive for probate, competitive for stale listings, welcoming for new purchases)
+  6. Follow-up sequences advance automatically (letter -> email 7d -> letter 21d) with each touchpoint requiring staff approval
+  7. Staff can create/edit monitoring campaigns targeting specific postcodes, price ranges, and property types
+  8. Performance metrics show leads sourced, outreach sent, response rate, and valuations booked -- broken down by source
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd:plan-phase 11 to break down)
+- [ ] 11-01-PLAN.md -- Schema extensions (approval fields on lead_contact_history), SourcingAgent classes (BaseAgent + SDK), Supervisor registration, pg-boss cron jobs, deal event bus VALUATION_BOOKED event, server startup wiring
+- [ ] 11-02-PLAN.md -- Outreach drafting service (AI source-specific templates), letter PDF generation (extend pdfService), email sending via emailService, staff approval workflow, follow-up sequence management
+- [ ] 11-03-PLAN.md -- REST API routes for sourcing dashboard (pipeline leads, approval actions, campaign CRUD, metrics aggregation, manual monitor triggers), route mounting
+- [ ] 11-04-PLAN.md -- SourcingDashboard page (stats row, Pipeline tab with kanban + approval, Campaigns tab with CRUD, Performance tab with source breakdown + funnel chart), CRM sidebar link, App.tsx routing
