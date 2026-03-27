@@ -16,7 +16,7 @@ import {
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
-  FolderTree, Percent, Banknote, Handshake
+  FolderTree, Percent, Banknote, Handshake, Target
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -433,6 +433,14 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/sales-progression') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/sales-progression')}>
                   <Gavel className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/sales-progression') ? 'text-white' : 'text-gray-400'}`} />
                   Sales Progression
+                </button>
+              </div>
+
+              {/* Property Sourcing */}
+              <div className="mt-1">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/sourcing-dashboard') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/sourcing-dashboard')}>
+                  <Target className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/sourcing-dashboard') ? 'text-white' : 'text-gray-400'}`} />
+                  Property Sourcing
                 </button>
               </div>
 
