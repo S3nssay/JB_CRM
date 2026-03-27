@@ -10,23 +10,29 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import {
   ArrowLeft, MapPin, PoundSterling, Home, Loader2, Search,
   Building2, ArrowRight, Trash2, Bed, Bath, Tag, CheckCircle,
-  FileText, XCircle, AlertTriangle, Handshake, EyeOff, Clock, User
+  FileText, XCircle, AlertTriangle, Handshake, EyeOff, Clock, User,
+  Calendar, MoreVertical
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 
-// UK industry standard sales pipeline stages
+// UK industry standard sales pipeline stages — 9 active stages
 const PIPELINE_STAGES = [
-  { id: 'active', label: 'Available', color: 'bg-blue-500', icon: Home, description: 'On market, active marketing', dateKey: 'listed_at', agentKey: 'listed_by_name' },
+  { id: 'valuation_enquiry', label: 'Valuation Enquiry', color: 'bg-slate-500', icon: Clock, description: 'Initial valuation request received', dateKey: 'valuation_enquiry_at', agentKey: 'valuation_enquiry_by_name' },
+  { id: 'valuation_booked', label: 'Valuation Booked', color: 'bg-indigo-500', icon: Calendar, description: 'Valuation appointment scheduled', dateKey: 'valuation_booked_at', agentKey: 'valuation_booked_by_name' },
+  { id: 'valuation_completed', label: 'Valuation Completed', color: 'bg-amber-500', icon: CheckCircle, description: 'Valuation carried out, report pending', dateKey: 'valuation_completed_at', agentKey: 'valuation_completed_by_name' },
+  { id: 'instruction_signed', label: 'Instruction Signed', color: 'bg-cyan-500', icon: FileText, description: 'Vendor has signed agency agreement', dateKey: 'instruction_signed_at', agentKey: 'instruction_signed_by_name' },
+  { id: 'listed', label: 'Listed', color: 'bg-blue-500', icon: Home, description: 'On market, active marketing', dateKey: 'listed_at', agentKey: 'listed_by_name' },
   { id: 'under_offer', label: 'Under Offer', color: 'bg-orange-500', icon: Tag, description: 'Offer accepted, qualifying buyer', dateKey: 'under_offer_at', agentKey: 'under_offer_by_name' },
   { id: 'sstc', label: 'SSTC', color: 'bg-purple-500', icon: FileText, description: 'Sold Subject to Contract', dateKey: 'sstc_at', agentKey: 'sstc_by_name' },
   { id: 'exchanged', label: 'Exchanged', color: 'bg-emerald-500', icon: Handshake, description: 'Contracts exchanged, legally binding', dateKey: 'exchanged_at', agentKey: 'exchanged_by_name' },
-  { id: 'completed', label: 'Completed', color: 'bg-green-600', icon: CheckCircle, description: 'Sale/Let completed', dateKey: 'completed_at', agentKey: 'completed_by_name' },
-  { id: 'fallen_through', label: 'Fallen Through', color: 'bg-red-500', icon: AlertTriangle, description: 'Sale collapsed before exchange', dateKey: 'fallen_through_at', agentKey: '' },
-  { id: 'withdrawn', label: 'Withdrawn', color: 'bg-gray-500', icon: XCircle, description: 'Taken off market', dateKey: 'withdrawn_at', agentKey: '' },
+  { id: 'completed', label: 'Completed', color: 'bg-green-600', icon: CheckCircle, description: 'Sale completed', dateKey: 'completed_at', agentKey: 'completed_by_name' },
 ] as const;
 
-type PipelineStatus = typeof PIPELINE_STAGES[number]['id'];
+const TERMINAL_STAGES = [
+  { id: 'fallen_through', label: 'Fallen Through', color: 'bg-red-500', icon: AlertTriangle, dateKey: 'fallen_through_at' },
+  { id: 'withdrawn', label: 'Withdrawn', color: 'bg-gray-500', icon: XCircle, dateKey: 'withdrawn_at' },
+] as const;
 
 interface PipelineProperty {
   id: number;
@@ -41,12 +47,17 @@ interface PipelineProperty {
   is_rental: boolean;
   is_residential: boolean;
   status: string;
+  pipeline_stage: string;
   is_listed: boolean;
   is_marketed: boolean;
   created_at: string;
   updated_at: string;
   images: string[] | null;
   // Workflow dates
+  valuation_enquiry_at: string | null;
+  valuation_booked_at: string | null;
+  valuation_completed_at: string | null;
+  instruction_signed_at: string | null;
   listed_at: string | null;
   under_offer_at: string | null;
   sstc_at: string | null;
@@ -57,6 +68,10 @@ interface PipelineProperty {
   valuation_date: string | null;
   valuation_amount: number | null;
   // Agent names
+  valuation_enquiry_by_name: string | null;
+  valuation_booked_by_name: string | null;
+  valuation_completed_by_name: string | null;
+  instruction_signed_by_name: string | null;
   listed_by_name: string | null;
   under_offer_by_name: string | null;
   sstc_by_name: string | null;
@@ -66,7 +81,11 @@ interface PipelineProperty {
 
 // All pipeline stage date/agent pairs for timeline display
 const TIMELINE_STAGES = [
-  { id: 'active', label: 'Listed', dateKey: 'listed_at', agentKey: 'listed_by_name' },
+  { id: 'valuation_enquiry', label: 'Val. Enquiry', dateKey: 'valuation_enquiry_at', agentKey: 'valuation_enquiry_by_name' },
+  { id: 'valuation_booked', label: 'Val. Booked', dateKey: 'valuation_booked_at', agentKey: 'valuation_booked_by_name' },
+  { id: 'valuation_completed', label: 'Val. Completed', dateKey: 'valuation_completed_at', agentKey: 'valuation_completed_by_name' },
+  { id: 'instruction_signed', label: 'Instruction', dateKey: 'instruction_signed_at', agentKey: 'instruction_signed_by_name' },
+  { id: 'listed', label: 'Listed', dateKey: 'listed_at', agentKey: 'listed_by_name' },
   { id: 'under_offer', label: 'Under Offer', dateKey: 'under_offer_at', agentKey: 'under_offer_by_name' },
   { id: 'sstc', label: 'SSTC', dateKey: 'sstc_at', agentKey: 'sstc_by_name' },
   { id: 'exchanged', label: 'Exchanged', dateKey: 'exchanged_at', agentKey: 'exchanged_by_name' },
@@ -78,8 +97,8 @@ export default function PropertyPipeline() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
-  const [listingTypeFilter, setListingTypeFilter] = useState<string>('all');
   const [marketedFilter, setMarketedFilter] = useState<string>('all');
+  const [showTerminal, setShowTerminal] = useState(false);
 
   const { data: properties = [], isLoading } = useQuery({
     queryKey: ['/api/crm/property-pipeline'],
@@ -101,9 +120,13 @@ export default function PropertyPipeline() {
       if (!response.ok) throw new Error('Failed to update status');
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/crm/property-pipeline'] });
-      toast({ title: 'Status updated', description: 'Property has been moved.' });
+      if (data?.matchCount > 0) {
+        toast({ title: 'Status updated', description: `Property moved. ${data.matchCount} lead${data.matchCount > 1 ? 's' : ''} matched!` });
+      } else {
+        toast({ title: 'Status updated', description: 'Property has been moved.' });
+      }
     },
     onError: () => {
       toast({ title: 'Error', description: 'Failed to update status', variant: 'destructive' });
@@ -136,49 +159,49 @@ export default function PropertyPipeline() {
     try { return format(new Date(dateStr), 'dd MMM yyyy HH:mm'); } catch { return null; }
   };
 
-  const formatDateShort = (dateStr: string | null) => {
-    if (!dateStr) return null;
-    try { return format(new Date(dateStr), 'dd MMM yy'); } catch { return null; }
-  };
-
-  // Filter properties
+  // Filter properties — sales only (no listing type filter needed)
   const filteredProperties = properties.filter((p: PipelineProperty) => {
     const matchesSearch = !searchQuery ||
       p.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.address?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.postcode?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesType = listingTypeFilter === 'all' ||
-      (listingTypeFilter === 'sale' && !p.is_rental) ||
-      (listingTypeFilter === 'rental' && p.is_rental);
     const matchesMarketed = marketedFilter === 'all' ||
       (marketedFilter === 'marketed' && p.is_marketed !== false) ||
       (marketedFilter === 'not_marketed' && p.is_marketed === false);
-    return matchesSearch && matchesType && matchesMarketed;
+    return matchesSearch && matchesMarketed;
   });
 
-  // Group properties by status — normalize variations
+  // Group properties by pipeline_stage — normalize variations
   const propertiesByStatus: Record<string, PipelineProperty[]> = {};
   PIPELINE_STAGES.forEach(s => { propertiesByStatus[s.id] = []; });
+  // Also track terminal counts
+  const terminalProperties: Record<string, PipelineProperty[]> = { fallen_through: [], withdrawn: [] };
 
   filteredProperties.forEach((p: PipelineProperty) => {
-    let status = (p.status || 'active').toLowerCase();
-    if (['available', 'new', ''].includes(status)) status = 'active';
-    if (status === 'sold' || status === 'let') status = 'completed';
-    if (status === 'exchange') status = 'exchanged';
-    if (propertiesByStatus[status]) {
-      propertiesByStatus[status].push(p);
+    let stage = (p.pipeline_stage || p.status || 'listed').toLowerCase();
+    // Map legacy status values
+    if (['available', 'new', 'active'].includes(stage)) stage = 'listed';
+    if (stage === 'sold' || stage === 'let') stage = 'completed';
+    if (stage === 'exchange') stage = 'exchanged';
+    // Terminal stages go to separate tracking
+    if (stage === 'fallen_through' || stage === 'withdrawn') {
+      terminalProperties[stage].push(p);
+    } else if (propertiesByStatus[stage]) {
+      propertiesByStatus[stage].push(p);
     } else {
-      propertiesByStatus['active'].push(p);
+      propertiesByStatus['listed'].push(p);
     }
   });
 
-  // Next stage logic
-  const progressionPath = ['active', 'under_offer', 'sstc', 'exchanged', 'completed'];
-  const getNextStatus = (currentStatus: string): string | null => {
-    let status = (currentStatus || 'active').toLowerCase();
-    if (['available', 'new', ''].includes(status)) status = 'active';
-    if (status === 'exchange') status = 'exchanged';
-    const idx = progressionPath.indexOf(status);
+  const terminalCount = terminalProperties.fallen_through.length + terminalProperties.withdrawn.length;
+
+  // Next stage logic — full 9-stage progression
+  const progressionPath = ['valuation_enquiry', 'valuation_booked', 'valuation_completed', 'instruction_signed', 'listed', 'under_offer', 'sstc', 'exchanged', 'completed'];
+  const getNextStatus = (currentStage: string): string | null => {
+    let stage = (currentStage || 'listed').toLowerCase();
+    if (['available', 'new', 'active'].includes(stage)) stage = 'listed';
+    if (stage === 'exchange') stage = 'exchanged';
+    const idx = progressionPath.indexOf(stage);
     if (idx === -1 || idx >= progressionPath.length - 1) return null;
     return progressionPath[idx + 1];
   };
@@ -220,8 +243,8 @@ export default function PropertyPipeline() {
               <Link href="/crm"><Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button></Link>
               <Building2 className="h-8 w-8 text-[#791E75]" />
               <div>
-                <h1 className="text-xl font-semibold">Property Pipeline</h1>
-                <p className="text-sm text-muted-foreground">Track properties from listing to completion</p>
+                <h1 className="text-xl font-semibold">Sales Property Pipeline</h1>
+                <p className="text-sm text-muted-foreground">Track properties from valuation enquiry to completion</p>
               </div>
             </div>
           </div>
@@ -239,14 +262,6 @@ export default function PropertyPipeline() {
                   <Input placeholder="Search by title, address, postcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
                 </div>
               </div>
-              <Select value={listingTypeFilter} onValueChange={setListingTypeFilter}>
-                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Listing Type" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Types</SelectItem>
-                  <SelectItem value="sale">Sales</SelectItem>
-                  <SelectItem value="rental">Lettings</SelectItem>
-                </SelectContent>
-              </Select>
               <Select value={marketedFilter} onValueChange={setMarketedFilter}>
                 <SelectTrigger className="w-[180px]"><SelectValue placeholder="Marketing" /></SelectTrigger>
                 <SelectContent>
@@ -260,7 +275,7 @@ export default function PropertyPipeline() {
         </Card>
 
         {/* Pipeline Stats */}
-        <div className="grid grid-cols-7 gap-2 mb-6">
+        <div className="grid grid-cols-9 gap-2 mb-4">
           {PIPELINE_STAGES.map((stage) => {
             const StageIcon = stage.icon;
             const count = propertiesByStatus[stage.id]?.length || 0;
@@ -269,13 +284,62 @@ export default function PropertyPipeline() {
                 <div className={`absolute top-0 left-0 right-0 h-1 ${stage.color}`} />
                 <CardContent className="p-3 text-center">
                   <StageIcon className="h-5 w-5 mx-auto mb-1 text-gray-600" />
-                  <div className="text-2xl font-bold">{count}</div>
+                  <div className="text-xl font-semibold">{count}</div>
                   <div className="text-xs text-muted-foreground truncate">{stage.label}</div>
                 </CardContent>
               </Card>
             );
           })}
         </div>
+
+        {/* Terminal stages summary */}
+        {terminalCount > 0 && (
+          <div className="mb-6 flex items-center gap-3">
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" onClick={() => setShowTerminal(!showTerminal)}>
+              <AlertTriangle className="h-3 w-3 mr-1 text-red-500" />
+              {terminalProperties.fallen_through.length} fallen through
+              <span className="mx-1">/</span>
+              <XCircle className="h-3 w-3 mr-1 text-gray-500" />
+              {terminalProperties.withdrawn.length} withdrawn
+              <span className="ml-1 text-muted-foreground">{showTerminal ? '(hide)' : '(show)'}</span>
+            </Button>
+          </div>
+        )}
+
+        {/* Terminal properties list */}
+        {showTerminal && terminalCount > 0 && (
+          <div className="mb-6 grid grid-cols-2 gap-4">
+            {TERMINAL_STAGES.map(ts => {
+              const TIcon = ts.icon;
+              const props = terminalProperties[ts.id] || [];
+              if (props.length === 0) return null;
+              return (
+                <div key={ts.id}>
+                  <div className={`flex items-center gap-2 px-3 py-2 rounded-t-lg ${ts.color} text-white`}>
+                    <TIcon className="h-4 w-4" />
+                    <span className="font-medium text-sm">{ts.label}</span>
+                    <Badge variant="secondary" className="ml-auto bg-white/20 text-white">{props.length}</Badge>
+                  </div>
+                  <div className="bg-gray-100 rounded-b-lg p-2 space-y-2">
+                    {props.map(property => (
+                      <Card key={property.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setLocation(`/crm/properties/${property.id}/edit`)}>
+                        <CardContent className="p-3 flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-sm">{property.title || 'Untitled'}</div>
+                            <div className="text-xs text-muted-foreground">{property.address_line1 || property.address} {property.postcode}</div>
+                          </div>
+                          <Button size="sm" variant="outline" className="text-xs h-7 text-blue-600 hover:bg-blue-50" onClick={(e) => { e.stopPropagation(); updateStatusMutation.mutate({ id: property.id, status: 'listed' }); }}>
+                            <Home className="h-3 w-3 mr-1" /> Re-list
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         {/* Kanban Board */}
         <TooltipProvider>
@@ -287,7 +351,7 @@ export default function PropertyPipeline() {
                 <div key={stage.id} className="min-w-[280px] flex-shrink-0">
                   <div className={`flex items-center gap-2 px-3 py-2 rounded-t-lg ${stage.color} text-white`}>
                     <StageIcon className="h-4 w-4" />
-                    <span className="font-medium text-sm">{stage.label}</span>
+                    <span className="font-semibold text-sm">{stage.label}</span>
                     <Badge variant="secondary" className="ml-auto bg-white/20 text-white">{stageProperties.length}</Badge>
                   </div>
                   <div className="bg-gray-100 rounded-b-lg p-2 min-h-[400px] space-y-2">
@@ -295,19 +359,18 @@ export default function PropertyPipeline() {
                       <div className="text-center text-sm text-gray-400 py-8">No properties</div>
                     ) : (
                       stageProperties.map((property) => {
-                        const nextStatus = getNextStatus(property.status);
+                        const currentStage = (property.pipeline_stage || property.status || 'listed').toLowerCase();
+                        const nextStatus = getNextStatus(currentStage);
                         const nextLabel = nextStatus ? PIPELINE_STAGES.find(s => s.id === nextStatus)?.label : null;
                         const stageInfo = getStageInfo(property, stage.id);
                         const timeline = getTimeline(property);
+                        const isTerminalCandidate = !['completed', 'fallen_through', 'withdrawn'].includes(stage.id);
                         return (
                           <Card key={property.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setLocation(`/crm/properties/${property.id}/edit`)}>
                             <CardContent className="p-3 space-y-2">
-                              {/* Title + type badge */}
+                              {/* Title */}
                               <div className="flex items-start justify-between gap-1">
-                                <div className="font-medium text-sm truncate flex-1">{property.title || 'Untitled'}</div>
-                                <Badge variant="outline" className={`text-[10px] shrink-0 ${property.is_rental ? 'border-purple-300 text-purple-700 bg-purple-50' : 'border-amber-300 text-amber-700 bg-amber-50'}`}>
-                                  {property.is_rental ? 'Rent' : 'Sale'}
-                                </Badge>
+                                <div className="font-semibold text-sm truncate flex-1">{property.title || 'Untitled'}</div>
                                 {property.is_marketed === false && (
                                   <Badge variant="outline" className="text-[10px] shrink-0 border-gray-300 text-gray-500 bg-gray-50">
                                     <EyeOff className="h-2.5 w-2.5 mr-0.5" /> Off
@@ -331,7 +394,6 @@ export default function PropertyPipeline() {
                                 <div className="flex items-center gap-1 text-xs font-semibold text-green-700">
                                   <PoundSterling className="h-3 w-3" />
                                   {formatPrice(property.price)}
-                                  {property.is_rental && <span className="font-normal text-muted-foreground">/mo</span>}
                                 </div>
                               )}
 
@@ -389,20 +451,21 @@ export default function PropertyPipeline() {
 
                               {/* Actions */}
                               <div className="flex gap-1">
-                                {nextLabel && stage.id !== 'fallen_through' && stage.id !== 'withdrawn' && (
+                                {nextLabel && (
                                   <Button size="sm" variant="outline" className="flex-1 text-xs h-7" onClick={(e) => { e.stopPropagation(); updateStatusMutation.mutate({ id: property.id, status: nextStatus! }); }} disabled={updateStatusMutation.isPending}>
                                     {updateStatusMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <>{nextLabel} <ArrowRight className="h-3 w-3 ml-1" /></>}
                                   </Button>
                                 )}
-                                {['under_offer', 'sstc'].includes(stage.id) && (
-                                  <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-orange-500 hover:text-orange-700 hover:bg-orange-50" title="Mark as fallen through" onClick={(e) => { e.stopPropagation(); if (confirm('Mark as fallen through?')) updateStatusMutation.mutate({ id: property.id, status: 'fallen_through' }); }}>
-                                    <AlertTriangle className="h-3 w-3" />
-                                  </Button>
-                                )}
-                                {['fallen_through', 'withdrawn'].includes(stage.id) && (
-                                  <Button size="sm" variant="outline" className="flex-1 text-xs h-7 text-blue-600 hover:bg-blue-50" onClick={(e) => { e.stopPropagation(); updateStatusMutation.mutate({ id: property.id, status: 'active' }); }}>
-                                    <Home className="h-3 w-3 mr-1" /> Re-list
-                                  </Button>
+                                {/* Terminal actions: Fallen Through / Withdrawn */}
+                                {isTerminalCandidate && (
+                                  <>
+                                    <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-orange-500 hover:text-orange-700 hover:bg-orange-50" title="Mark as fallen through" onClick={(e) => { e.stopPropagation(); if (confirm('Mark as Fallen Through? This will move the property out of the active pipeline.')) updateStatusMutation.mutate({ id: property.id, status: 'fallen_through' }); }}>
+                                      <AlertTriangle className="h-3 w-3" />
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-gray-500 hover:text-gray-700 hover:bg-gray-50" title="Withdraw property" onClick={(e) => { e.stopPropagation(); if (confirm('Withdraw Property? This property will be removed from active marketing.')) updateStatusMutation.mutate({ id: property.id, status: 'withdrawn' }); }}>
+                                      <XCircle className="h-3 w-3" />
+                                    </Button>
+                                  </>
                                 )}
                                 <Button size="sm" variant="outline" className="text-xs h-7 px-2 text-red-500 hover:text-red-700 hover:bg-red-50" onClick={(e) => { e.stopPropagation(); if (confirm('Delete this property?')) deleteMutation.mutate(property.id); }} disabled={deleteMutation.isPending}>
                                   <Trash2 className="h-3 w-3" />
