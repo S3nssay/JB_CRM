@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 08-06-PLAN.md
-last_updated: "2026-03-27T10:35:37.775Z"
+stopped_at: Completed 08-05-PLAN.md
+last_updated: "2026-03-27T10:40:20.429Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 11
-  completed_phases: 9
+  completed_phases: 10
   total_plans: 43
-  completed_plans: 39
+  completed_plans: 40
   percent: 100
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-03-19)
 ## Current Position
 
 Phase: 11 (property-sourcing-agent-market-intelligence-owner-outreach) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-03-27
 
@@ -97,6 +97,7 @@ Progress: [██████████] 100%
 | Phase 08 P04 | 8min | 3 tasks | 4 files |
 | Phase 11 P01 | 10min | 2 tasks | 10 files |
 | Phase 08 P06 | 3min | 1 tasks | 1 files |
+| Phase 08 P05 | 8min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -202,6 +203,8 @@ Recent decisions affecting current work:
 - [Phase 11]: Dual registration: BaseAgent for legacy orchestrator + SDK Agent for Supervisor routing
 - [Phase 11]: Static analysis tests for agent wiring (no DB needed)
 - [Phase 08]: Corrected Phase 6-10 requirement count from 38 to 42 (6+9+10+8+9=42); grand total 81 requirements
+- [Phase 08]: Final statements always set attention_needed=true for mandatory staff review
+- [Phase 08]: First invoice due date: tenancy start_date if future, otherwise 1st of next month
 
 ### Roadmap Evolution
 
@@ -223,6 +226,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-27T10:35:37.724Z
-Stopped at: Completed 08-06-PLAN.md
+Last session: 2026-03-27T10:40:20.399Z
+Stopped at: Completed 08-05-PLAN.md
 Resume file: None
