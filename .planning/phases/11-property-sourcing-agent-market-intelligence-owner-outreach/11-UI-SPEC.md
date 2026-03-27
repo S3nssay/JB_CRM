@@ -21,7 +21,7 @@ created: 2026-03-27
 | Preset | Custom Radix + Tailwind CSS 3 with HSL CSS variables |
 | Component library | Radix UI (via shadcn/ui primitives) |
 | Icon library | Lucide React |
-| Font | Body: Avenir Next / Inter (sans-serif, weight 300). Headings: Tinos (serif, weight 700). Buttons: Inter (weight 600) |
+| Font | Body: Avenir Next / Inter (sans-serif, weight 400). Headings: Tinos (serif, weight 700). Buttons: Inter (weight 700) |
 
 **Source:** Detected from `tailwind.config.ts`, `client/src/index.css`, existing page components.
 
@@ -51,10 +51,12 @@ Exceptions: Touch targets for approve/reject buttons at 44px minimum height (acc
 
 | Role | Size | Weight | Line Height | Font Family |
 |------|------|--------|-------------|-------------|
-| Body | 16px | 300 | 1.5 | Avenir Next, Inter, system-ui |
+| Body | 16px | 400 | 1.5 | Avenir Next, Inter, system-ui |
 | Label / Sidebar | 13px | 400 | 1.4 | Inter |
-| Heading (Card) | 20px | 600 | 1.25 | Tinos, serif |
+| Heading (Card) | 20px | 700 | 1.25 | Tinos, serif |
 | Page Title | 28px | 700 | 1.2 | Tinos, serif |
+
+**Weight budget:** 2 weights only — 400 (body, labels, sidebar) and 700 (card headings, page titles, buttons).
 
 **Source:** `client/src/index.css` base styles, CRMLayout sidebar uses text-[13px], CRMDashboard uses text-sm (14px) for labels and text-2xl (24px) for stat values.
 
@@ -88,9 +90,9 @@ Accent reserved for: active sidebar state background, primary "Approve Outreach"
 | Card | Icon | Value Source | Color |
 |------|------|-------------|-------|
 | Leads Sourced (This Month) | TrendingUp | Count of proactive_leads created this month | bg-[#791E75] |
-| Outreach Sent | Send | Count of outreach with status "sent" this month | bg-blue-500 |
+| Outreach Sent | Send | Count of outreach with status "sent" this month | bg-[#791E75]/80 |
 | Response Rate | MessageCircle | Responded / Sent percentage | bg-[#F8B324] |
-| Valuations Booked | Calendar | Count of leads with status "valuation_booked" | bg-green-500 |
+| Valuations Booked | Calendar | Count of leads with status "valuation_booked" | bg-[#F8B324]/80 |
 
 **Tab Structure:**
 
