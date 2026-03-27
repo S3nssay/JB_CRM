@@ -125,6 +125,26 @@
 - [x] **BIZ-08**: VAT quarter-end reminders via pg-boss cron
 - [x] **BIZ-09**: Clear domain boundary between Riley (company financials) and Taylor (tenant/landlord finance)
 
+### Property Sourcing Agent
+
+- [x] **SRC-01**: Market intelligence scraping identifies available properties from portals and public records
+- [x] **SRC-02**: Owner matching links scraped properties to potential landlord/vendor leads in CRM
+- [x] **SRC-03**: Sourcing agent drafts personalised outreach letters/emails based on property and owner data
+- [x] **SRC-04**: Staff approval gate before outreach is sent (no autonomous owner contact)
+- [x] **SRC-05**: Follow-up sequence automation (letter → email → letter at configured intervals)
+- [x] **SRC-06**: Sourcing dashboard shows pipeline metrics, approval queue, and outreach status
+
+### Kanban Pipelines & Lead Auto-Matching
+
+- [x] **KAN-01**: Sales property pipeline displays 9 kanban columns from Valuation Enquiry through Completed
+- [x] **KAN-02**: Lettings property pipeline displays 9 kanban columns from Valuation Enquiry through Move-in Complete
+- [x] **KAN-03**: Landlord lead pipeline has owner type filter (All Owners, Letting Owners, Selling Owners)
+- [x] **KAN-04**: Lead auto-matching engine flags buyer/renter leads when properties reach "Listed" stage
+- [x] **KAN-05**: Staff can approve auto-matches to send property details to matched leads
+- [x] **KAN-06**: Each pipeline has its own dedicated page with workflow-specific card content and actions
+- [x] **KAN-07**: Fallen Through and Withdrawn are valid terminal transitions from any active pipeline stage
+- [x] **KAN-08**: Pipeline stage updates persist via backend PATCH endpoint with optimistic UI
+
 ## v2 Requirements
 
 ### Contract Generation
@@ -238,14 +258,28 @@
 | BIZ-07 | Phase 10 | Complete |
 | BIZ-08 | Phase 10 | Complete |
 | BIZ-09 | Phase 10 | Complete |
+| SRC-01 | Phase 11 | Complete |
+| SRC-02 | Phase 11 | Complete |
+| SRC-03 | Phase 11 | Complete |
+| SRC-04 | Phase 11 | Complete |
+| SRC-05 | Phase 11 | Complete |
+| SRC-06 | Phase 11 | Complete |
+| KAN-01 | Phase 12 | Complete |
+| KAN-02 | Phase 12 | Complete |
+| KAN-03 | Phase 12 | Complete |
+| KAN-04 | Phase 12 | Complete |
+| KAN-05 | Phase 12 | Complete |
+| KAN-06 | Phase 12 | Complete |
+| KAN-07 | Phase 12 | Complete |
+| KAN-08 | Phase 12 | Complete |
 
 **Coverage:**
 - v1 requirements: 39 total
 - Mapped to phases: 39
 - Unmapped: 0
-- Phase 6-10 requirements: 42 total (all complete)
-- Grand total: 81 requirements mapped
+- Phase 6-12 requirements: 56 total (all complete)
+- Grand total: 95 requirements mapped
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-27 -- added Phase 6-10 requirement definitions and traceability*
+*Last updated: 2026-03-27 -- added Phase 11-12 requirement definitions and traceability*
