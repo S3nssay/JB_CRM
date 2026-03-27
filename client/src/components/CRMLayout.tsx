@@ -1,10 +1,11 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ImportKeyDataDialog } from '@/components/ImportKeyDataDialog';
 import NotificationBell from '@/components/NotificationBell';
+import { InboundCallerPopup, useInboundCallPopup } from '@/components/communication/InboundCallerPopup';
 import {
   Building2, Users, Home, Wrench, BarChart3,
   Settings, LogOut, Bell, GitBranch, Mic, Shield,
@@ -16,7 +17,7 @@ import {
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
-  FolderTree, Percent, Banknote, Handshake, Target
+  FolderTree, Percent, Banknote, Handshake, Target, Phone
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -31,6 +32,8 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
   const [salesExpanded, setSalesExpanded] = useState(true);
   const [accountingExpanded, setAccountingExpanded] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(true);
+  const { incomingPhone, showCallerPopup, dismissCallerPopup } = useInboundCallPopup();
+  const sseRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user');
@@ -40,6 +43,41 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
       setLocation('/crm/login');
     }
   }, []);
+
+  // SSE listener for real-time notifications (inbound calls, etc.)
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+
+    function connect() {
+      es = new EventSource('/api/crm/notifications/stream', { withCredentials: true });
+      sseRef.current = es;
+
+      es.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'inbound_call' && data.phone) {
+            showCallerPopup(data.phone);
+          }
+        } catch { /* ignore parse errors */ }
+      };
+
+      es.onerror = () => {
+        es?.close();
+        sseRef.current = null;
+        // Reconnect after 5 seconds
+        reconnectTimer = setTimeout(connect, 5000);
+      };
+    }
+
+    connect();
+
+    return () => {
+      clearTimeout(reconnectTimer);
+      es?.close();
+      sseRef.current = null;
+    };
+  }, [showCallerPopup]);
 
   // Fetch landlord leads for badge counts
   const { data: landlordLeads = [] } = useQuery({
@@ -98,6 +136,9 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Inbound Call Caller ID Popup */}
+      <InboundCallerPopup incomingPhone={incomingPhone} onDismiss={dismissCallerPopup} />
+
       {/* Header */}
       <header className="bg-white shadow-sm border-b sticky top-0 z-50">
         <div className="px-4 sm:px-6 lg:px-8">
@@ -220,6 +261,12 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   )}
                 </button>
               </div>
+
+              {/* Call Management */}
+              <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all mt-1 ${isActive('/crm/call-management') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/call-management')}>
+                <Phone className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/call-management') ? 'text-white' : 'text-orange-400'}`} />
+                Call Management
+              </button>
             </div>
 
             {/* Property Management Section */}
@@ -468,7 +515,11 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/property-pipeline') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/property-pipeline')}>
                   <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/property-pipeline') ? 'text-white' : 'text-gray-400'}`} />
-                  Property Pipeline
+                  Sales Pipeline
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/lettings-property-pipeline') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/lettings-property-pipeline')}>
+                  <GitBranch className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/lettings-property-pipeline') ? 'text-white' : 'text-gray-400'}`} />
+                  Lettings Pipeline
                 </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all relative ${isActive('/crm/leads') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/leads')}>
                   <Users className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/leads') ? 'text-white' : 'text-gray-400'}`} />
@@ -478,6 +529,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                       {newBuyerRenterLeadsCount > 99 ? '99+' : newBuyerRenterLeadsCount}
                     </span>
                   )}
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/lead-matches') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/lead-matches')}>
+                  <Target className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/lead-matches') ? 'text-white' : 'text-gray-400'}`} />
+                  Lead Matches
                 </button>
               </div>
               </>}

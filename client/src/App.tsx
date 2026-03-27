@@ -76,6 +76,8 @@ import SalesProgressionPage from "@/pages/SalesProgressionPage";
 import ContractorManagement from "@/pages/ContractorManagement";
 import LandlordLeadPipeline from "@/pages/LandlordLeadPipeline";
 import PropertyPipeline from "@/pages/PropertyPipeline";
+import LettingsPropertyPipeline from "@/pages/LettingsPropertyPipeline";
+import LeadMatches from "@/pages/LeadMatches";
 import LandlordLeadDetails from "@/pages/LandlordLeadDetails";
 import PropertyImport from "@/pages/PropertyImport";
 import TermsAndConditions from "@/pages/TermsAndConditions";
@@ -129,6 +131,7 @@ import OffersManagement from "@/pages/OffersManagement";
 import PendingStatements from "@/pages/PendingStatements";
 import TenantInvoices from "@/pages/TenantInvoices";
 import SourcingDashboard from "@/pages/SourcingDashboard";
+import CallManagement from "@/pages/CallManagement";
 
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
@@ -340,6 +343,8 @@ function Router() {
         <Route path="/crm/website-leads"><CRMLayout><WebsiteLeads /></CRMLayout></Route>
         <Route path="/crm/landlord-lead-pipeline"><CRMLayout><LandlordLeadPipeline /></CRMLayout></Route>
         <Route path="/crm/property-pipeline"><CRMLayout><PropertyPipeline /></CRMLayout></Route>
+        <Route path="/crm/lettings-property-pipeline"><CRMLayout><LettingsPropertyPipeline /></CRMLayout></Route>
+        <Route path="/crm/lead-matches"><CRMLayout><LeadMatches /></CRMLayout></Route>
         <Route path="/crm/landlord-lead/:id">{(params: any) => <CRMLayout><LandlordLeadDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/ai-agents"><CRMLayout><AIAgentDashboard /></CRMLayout></Route>
         <Route path="/crm/landlord-directory"><CRMLayout><LandlordDirectory /></CRMLayout></Route>
@@ -441,6 +446,9 @@ function Router() {
 
         {/* Property Sourcing */}
         <Route path="/crm/sourcing-dashboard"><CRMLayout><SourcingDashboard /></CRMLayout></Route>
+
+        {/* Call Management */}
+        <Route path="/crm/call-management"><CRMLayout><CallManagement /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
