@@ -68,6 +68,63 @@
 - [x] **CHAN-03**: Agent memory — context from previous interactions injected into current conversation
 - [x] **CHAN-04**: WhatsApp/SMS confirmations sent automatically after call actions (viewing booked, fault reported)
 
+### Cross-Agent Collaboration & Deal Lifecycle
+
+- [x] **DEAL-01**: Shared deal record tracks lifecycle stages across agent handoffs
+- [x] **DEAL-02**: Event bus triggers downstream agents when deal stages complete
+- [x] **DEAL-03**: Visual deal timeline shows all events and agent actions
+- [x] **DEAL-04**: Staff can override deal steps (pause, skip, complete, cancel)
+- [x] **DEAL-05**: Real-time SSE notifications for deal events
+- [x] **DEAL-06**: Cross-referral between Sales and Lettings agents on dual-interest leads
+
+### Agent Corrections & Cost Ledger
+
+- [x] **CORR-01**: Sales agent (Alex) records offers professionally instead of negotiating autonomously
+- [x] **CORR-02**: Lettings agent (Jordan) records offers professionally instead of negotiating autonomously
+- [x] **CORR-03**: New offers trigger email notification to assigned agent
+- [x] **CORR-04**: New offers trigger email notification to assigned agent with offer details
+- [x] **COST-01**: Cost ledger tracks maintenance and compliance spend per property
+- [x] **COST-02**: Cost ledger tracks spend per landlord (aggregated across properties)
+- [x] **COST-03**: Configurable cost threshold alerts sent via email when exceeded
+- [x] **OFFER-UI**: Staff can view, accept, reject, and counter offers from CRM dashboard
+- [x] **COST-UI**: Cost ledger visible on property and landlord detail pages
+
+### PM Finance Agent
+
+- [x] **FIN-01**: Monthly landlord statement generation (per-property, 1st of month) with rent, fees, deductions, VAT
+- [x] **FIN-02**: Statement approval workflow (draft -> approved -> sent) with staff gate before landlord delivery
+- [x] **FIN-03**: Branded PDF generation (John Barclay purple/gold) for statements and invoices
+- [x] **FIN-04**: Monthly tenant rent invoice auto-generation 7 days before rent due date
+- [x] **FIN-05**: Dual payment links (Stripe + GoCardless) included on each invoice
+- [x] **FIN-06**: Invoice delivery via email (PDF attachment) + WhatsApp notification with payment link
+- [x] **FIN-07**: Auto-reconciliation of incoming Stripe/GoCardless payments against outstanding invoices
+- [x] **FIN-08**: Taylor registered as conversational finance agent in Supervisor for intent routing
+- [x] **FIN-09**: Deal event triggers (tenancy.agreed -> first invoice, tenancy.ending -> final statement)
+- [x] **FIN-10**: Management fee calculation from letting service terms (let-only=0 monthly, let-and-collect=11%, full-management=13%)
+
+### Head of Property Management Agent
+
+- [x] **HPM-01**: Jamie agent provides cross-domain portfolio query tools spanning maintenance, arrears, finance, and compliance
+- [x] **HPM-02**: Jamie delegates operational tasks to specialist agents (Morgan, Sarah, Sam, Taylor) via handoffs
+- [x] **HPM-03**: Jamie registered in Supervisor for landlord portfolio queries
+- [x] **HPM-04**: Daily certification expiry checks with proactive email alerts
+- [x] **HPM-05**: Weekly portfolio health report generation and email delivery
+- [x] **HPM-06**: Portfolio health scoring per property (100 base minus penalty factors)
+- [x] **HPM-07**: PM overview API with compliance alerts and health scores
+- [x] **HPM-08**: Enhanced PM tracking dashboard with compliance and health widgets
+
+### Business Accounts Agent
+
+- [x] **BIZ-01**: Riley agent provides conversational access to P&L, balance sheet, and cash position
+- [x] **BIZ-02**: Riley can query VAT returns and aged debtors/creditors
+- [x] **BIZ-03**: Riley registered in Supervisor for company-wide finance queries
+- [x] **BIZ-04**: Shared accounting queries module for agent tool reuse
+- [x] **BIZ-05**: Recurring invoice auto-generation via pg-boss cron
+- [x] **BIZ-06**: Commission journal entries auto-created on deal completion events
+- [x] **BIZ-07**: Financial period close reminders via pg-boss cron
+- [x] **BIZ-08**: VAT quarter-end reminders via pg-boss cron
+- [x] **BIZ-09**: Clear domain boundary between Riley (company financials) and Taylor (tenant/landlord finance)
+
 ## v2 Requirements
 
 ### Contract Generation
@@ -139,12 +196,56 @@
 | CHAN-02 | Phase 1 | Complete |
 | CHAN-03 | Phase 2 | Complete |
 | CHAN-04 | Phase 2 | Complete |
+| DEAL-01 | Phase 6 | Complete |
+| DEAL-02 | Phase 6 | Complete |
+| DEAL-03 | Phase 6 | Complete |
+| DEAL-04 | Phase 6 | Complete |
+| DEAL-05 | Phase 6 | Complete |
+| DEAL-06 | Phase 6 | Complete |
+| CORR-01 | Phase 7 | Complete |
+| CORR-02 | Phase 7 | Complete |
+| CORR-03 | Phase 7 | Complete |
+| CORR-04 | Phase 7 | Complete |
+| COST-01 | Phase 7 | Complete |
+| COST-02 | Phase 7 | Complete |
+| COST-03 | Phase 7 | Complete |
+| OFFER-UI | Phase 7 | Complete |
+| COST-UI | Phase 7 | Complete |
+| FIN-01 | Phase 8 | Complete |
+| FIN-02 | Phase 8 | Complete |
+| FIN-03 | Phase 8 | Complete |
+| FIN-04 | Phase 8 | Complete |
+| FIN-05 | Phase 8 | Complete |
+| FIN-06 | Phase 8 | Complete |
+| FIN-07 | Phase 8 | Complete |
+| FIN-08 | Phase 8 | Complete |
+| FIN-09 | Phase 8 | Complete |
+| FIN-10 | Phase 8 | Complete |
+| HPM-01 | Phase 9 | Complete |
+| HPM-02 | Phase 9 | Complete |
+| HPM-03 | Phase 9 | Complete |
+| HPM-04 | Phase 9 | Complete |
+| HPM-05 | Phase 9 | Complete |
+| HPM-06 | Phase 9 | Complete |
+| HPM-07 | Phase 9 | Complete |
+| HPM-08 | Phase 9 | Complete |
+| BIZ-01 | Phase 10 | Complete |
+| BIZ-02 | Phase 10 | Complete |
+| BIZ-03 | Phase 10 | Complete |
+| BIZ-04 | Phase 10 | Complete |
+| BIZ-05 | Phase 10 | Complete |
+| BIZ-06 | Phase 10 | Complete |
+| BIZ-07 | Phase 10 | Complete |
+| BIZ-08 | Phase 10 | Complete |
+| BIZ-09 | Phase 10 | Complete |
 
 **Coverage:**
 - v1 requirements: 39 total
 - Mapped to phases: 39
 - Unmapped: 0
+- Phase 6-10 requirements: 42 total (all complete)
+- Grand total: 81 requirements mapped
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 — traceability complete after roadmap creation*
+*Last updated: 2026-03-27 -- added Phase 6-10 requirement definitions and traceability*
