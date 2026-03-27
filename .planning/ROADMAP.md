@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Text-Channel Agents** - Supervisor, Sales, Lettings, and Admin specialists live on WhatsApp/SMS/email (completed 2026-03-20)
 - [ ] **Phase 3: Voice Integration** - Voice AI (Vapi) answering inbound calls 24/7 with specialist routing
 - [x] **Phase 4: Property Management Specialist** - Maintenance intake, contractor dispatch, work order management (completed 2026-03-22)
-- [ ] **Phase 5: Arrears Chasing & Monitoring** - Compliant rent arrears outreach and staff agent monitoring dashboard
+- [x] **Phase 5: Arrears Chasing & Monitoring** - Compliant rent arrears outreach and staff agent monitoring dashboard (completed 2026-03-27)
 
 ## Phase Details
 
@@ -111,7 +111,7 @@ Plans:
 **Goal:** Agents collaborate across deal lifecycles -- when one specialist completes a stage (tenancy agreed, sale agreed, renewal due, tenancy ending), downstream agents are automatically triggered via an event bus, with a shared deal record, visual timeline, real-time notifications, and full staff override controls.
 **Requirements**: DEAL-01, DEAL-02, DEAL-03, DEAL-04, DEAL-05, DEAL-06
 **Depends on:** Phase 5
-**Plans:** 4/4 plans complete
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 06-01-PLAN.md — Schema (deals, deal_steps, deal_events, notifications tables), DealEventBus (pg-boss), DealPipelineService (coded pipeline templates with dependency resolution), DealService (CRUD)
@@ -130,7 +130,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6
 | 2. Text-Channel Agents | 5/5 | Complete | 2026-03-20 |
 | 3. Voice Integration | 2/3 | In Progress|  |
 | 4. Property Management Specialist | 3/3 | Complete   | 2026-03-22 |
-| 5. Arrears Chasing & Monitoring | 2/3 | In Progress|  |
+| 5. Arrears Chasing & Monitoring | 2/3 | Complete    | 2026-03-27 |
 | 6. Cross-Agent Collaboration | 4/4 | Complete   | 2026-03-24 |
 
 ### Phase 7: Agent Corrections & Cost Ledger
