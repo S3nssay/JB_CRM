@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: Completed 11-03-PLAN.md
-last_updated: "2026-03-27T10:50:35.878Z"
+last_updated: "2026-03-27T10:51:03.805Z"
 last_activity: 2026-03-27
 progress:
   total_phases: 11
@@ -215,6 +215,8 @@ Recent decisions affecting current work:
 - [Phase 11]: Lazy imports for cross-plan service dependencies (Plan 02 artifacts) in sourcingRoutes handlers
 - [Phase 11]: Raw SQL COUNT FILTER for metrics aggregation (more efficient than Drizzle for analytics)
 - [Phase 11]: Lazy imports for Plan 02 services (sourcingApprovalService, sourcingOutreachService) to avoid import-time dependency on parallel plan artifacts
+- [Phase 11]: gpt-4o-mini for outreach drafting (cost efficiency at high volume)
+- [Phase 11]: Default follow-up sequence: letter(day 0) -> email(day 7) -> letter(day 21)
 
 ### Roadmap Evolution
 
