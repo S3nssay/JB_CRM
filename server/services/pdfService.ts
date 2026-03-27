@@ -302,3 +302,77 @@ export async function generateReceiptPDF(data: ReceiptPDFData): Promise<Buffer> 
   doc.end();
   return bufferPromise;
 }
+
+// ============================================================
+// Outreach Letter PDF
+// ============================================================
+
+export interface OutreachLetterData {
+  recipientName: string;
+  recipientAddress: string;
+  propertyAddress: string;
+  leadSource: string;
+  personalizedMessage: string;
+  date: Date;
+}
+
+/**
+ * Generate a branded outreach letter PDF for manual posting.
+ * Used by Charlie (Property Sourcing Agent) for letter-based outreach.
+ */
+export async function generateOutreachLetterPDF(data: OutreachLetterData): Promise<Buffer> {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const bufferPromise = collectBuffer(doc);
+
+  // Header
+  drawHeader(doc, 'Property Opportunity');
+
+  // Date (right-aligned)
+  let y = 110;
+  doc.fillColor(DARK).fontSize(10).font('Helvetica');
+  doc.text(formatDate(data.date), 50, y, { width: 500, align: 'right' });
+
+  // Recipient address block
+  y += 30;
+  doc.text(data.recipientName, 50, y);
+  const addressLines = data.recipientAddress.split(/[,\n]/).map(l => l.trim()).filter(Boolean);
+  for (const line of addressLines) {
+    y += 16;
+    doc.text(line, 50, y);
+  }
+
+  // Salutation
+  y += 35;
+  const salutation = data.recipientName && data.recipientName !== 'Property Owner'
+    ? `Dear ${data.recipientName},`
+    : 'Dear Property Owner,';
+  doc.font('Helvetica').text(salutation, 50, y);
+
+  // Body (the AI-drafted personalized message)
+  y += 25;
+  doc.fontSize(10).fillColor(DARK);
+  const paragraphs = data.personalizedMessage.split('\n').filter(p => p.trim());
+  for (const para of paragraphs) {
+    // Skip if it starts with "Dear" (already added salutation)
+    if (para.trim().startsWith('Dear ')) continue;
+    doc.text(para.trim(), 50, y, { width: 500, lineGap: 4 });
+    y += doc.heightOfString(para.trim(), { width: 500, lineGap: 4 }) + 10;
+  }
+
+  // Sign-off
+  y += 15;
+  doc.text('Yours sincerely,', 50, y);
+  y += 40;
+  doc.font('Helvetica-Bold').text('John Barclay Estate Agents', 50, y);
+  y += 16;
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED);
+  doc.text('W9 | W10 | W11 | NW6 | NW8', 50, y);
+  y += 16;
+  doc.text('Tel: 020 7262 4400 | info@johnbarclay.co.uk | www.johnbarclay.co.uk', 50, y);
+
+  // Footer
+  drawFooter(doc);
+
+  doc.end();
+  return bufferPromise;
+}
