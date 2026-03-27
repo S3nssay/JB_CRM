@@ -154,12 +154,12 @@ Plans:
 **Plans:** 6 plans (4 complete + 2 gap closure)
 
 Plans:
-- [ ] 08-01-PLAN.md — Schema fix (propertyId on landlordStatements), financeAgentService (statement aggregation, invoice generation, management fee calculation), pdfService (branded PDF generation), Wave 0 test stubs
-- [ ] 08-02-PLAN.md — Taylor agent definition (persona, finance tools), Supervisor registration with finance routing, pg-boss cron jobs (monthly statements, daily invoices), deal event hooks (tenancy.agreed/ending triggers)
-- [ ] 08-03-PLAN.md — Finance API routes (statement approval workflow, invoice listing, manual triggers), auto-reconciliation wiring for Taylor-generated invoices
-- [ ] 08-04-PLAN.md — Pending Statements approval page, Tenant Invoices page, CRM sidebar Finance section, App.tsx routing
+- [x] 08-01-PLAN.md — Schema fix (propertyId on landlordStatements), financeAgentService (statement aggregation, invoice generation, management fee calculation), pdfService (branded PDF generation), Wave 0 test stubs
+- [x] 08-02-PLAN.md — Taylor agent definition (persona, finance tools), Supervisor registration with finance routing, pg-boss cron jobs (monthly statements, daily invoices), deal event hooks (tenancy.agreed/ending triggers)
+- [x] 08-03-PLAN.md — Finance API routes (statement approval workflow, invoice listing, manual triggers), auto-reconciliation wiring for Taylor-generated invoices
+- [x] 08-04-PLAN.md — Pending Statements approval page, Tenant Invoices page, CRM sidebar Finance section, App.tsx routing
 - [ ] 08-05-PLAN.md — Gap closure: missing lifecycle trigger functions (generateFirstInvoiceForTenancy, generateFinalStatement), fix TenantInvoices endpoint, remove duplicate approve route
-- [ ] 08-06-PLAN.md — Gap closure: add FIN-01..FIN-10 and Phase 6-10 requirement definitions to REQUIREMENTS.md
+- [x] 08-06-PLAN.md — Gap closure: add FIN-01..FIN-10 and Phase 6-10 requirement definitions to REQUIREMENTS.md
 
 ### Phase 9: Head of Property Management Agent
 
