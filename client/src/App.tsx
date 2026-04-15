@@ -132,6 +132,10 @@ import PendingStatements from "@/pages/PendingStatements";
 import TenantInvoices from "@/pages/TenantInvoices";
 import SourcingDashboard from "@/pages/SourcingDashboard";
 import CallManagement from "@/pages/CallManagement";
+import ClientAccountPage from "@/pages/ClientAccountPage";
+import OfficeAccountPage from "@/pages/OfficeAccountPage";
+import ReserveAccountsPage from "@/pages/ReserveAccountsPage";
+import DepositAccountPage from "@/pages/DepositAccountPage";
 
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
@@ -449,6 +453,12 @@ function Router() {
 
         {/* Call Management */}
         <Route path="/crm/call-management"><CRMLayout><CallManagement /></CRMLayout></Route>
+
+        {/* Account Management Pages */}
+        <Route path="/crm/client-account"><CRMLayout><ClientAccountPage /></CRMLayout></Route>
+        <Route path="/crm/office-account"><CRMLayout><OfficeAccountPage /></CRMLayout></Route>
+        <Route path="/crm/reserve-accounts"><CRMLayout><ReserveAccountsPage /></CRMLayout></Route>
+        <Route path="/crm/deposit-account"><CRMLayout><DepositAccountPage /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>

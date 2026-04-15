@@ -17,7 +17,7 @@ import {
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
-  FolderTree, Percent, Banknote, Handshake, Target, Phone
+  FolderTree, Percent, Banknote, Handshake, Target, Phone, PiggyBank
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -496,7 +496,22 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 Finance
               </p>
               <div className="space-y-0.5">
-
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/client-account') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/client-account')}>
+                  <Landmark className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/client-account') ? 'text-white' : 'text-gray-400'}`} />
+                  Client Account
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/office-account') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/office-account')}>
+                  <Building2 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/office-account') ? 'text-white' : 'text-gray-400'}`} />
+                  Office Account
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/reserve-accounts') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/reserve-accounts')}>
+                  <PiggyBank className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/reserve-accounts') ? 'text-white' : 'text-gray-400'}`} />
+                  Reserve Accounts
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/deposit-account') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/deposit-account')}>
+                  <Shield className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/deposit-account') ? 'text-white' : 'text-gray-400'}`} />
+                  Deposit Account
+                </button>
               </div>
 
               {/* Leads */}
