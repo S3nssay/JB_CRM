@@ -1015,6 +1015,15 @@ export const landlords = pgTable("landlord", {
   // Status
   isActive: boolean("is_active").default(true),
 
+  // NRLS (Non-Resident Landlord Scheme) - Overseas Tax
+  isOverseas: boolean("is_overseas").default(false),
+  taxPercentage: text("tax_percentage").default("20"), // stored as text to avoid decimal issues
+  taxExemptionCertificateNo: text("tax_exemption_certificate_no"),
+  taxExemptionStartDate: timestamp("tax_exemption_start_date"),
+  taxExemptionEndDate: timestamp("tax_exemption_end_date"),
+  overseasAddress: text("overseas_address"),
+  overseasCountry: text("overseas_country"),
+
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
 });
@@ -8404,4 +8413,49 @@ export const arrearsReminderConfig = pgTable("arrears_reminder_config", {
 
 export const insertArrearsReminderConfigSchema = createInsertSchema(arrearsReminderConfig).omit({ id: true, createdAt: true, updatedAt: true });
 export type ArrearsReminderConfig = typeof arrearsReminderConfig.$inferSelect;
+
+// LHA Benefit Payments - Local Housing Allowance payments from council
+export const lhaBenefitPayments = pgTable("lha_benefit_payments", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  tenancyId: integer("tenancy_id"),
+  paymentDate: timestamp("payment_date").notNull(),
+  totalAmount: integer("total_amount").notNull(), // pence - total benefit received
+  splitToRent: integer("split_to_rent").notNull(), // pence - portion applied to rent
+  splitToTenant: integer("split_to_tenant").notNull().default(0), // pence - remainder to tenant
+  reference: text("reference"),
+  status: text("status").notNull().default("received"), // received, allocated, reversed
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertLhaBenefitPaymentSchema = createInsertSchema(lhaBenefitPayments).omit({ id: true, createdAt: true, updatedAt: true });
+export type LhaBenefitPayment = typeof lhaBenefitPayments.$inferSelect;
+export type InsertLhaBenefitPayment = z.infer<typeof insertLhaBenefitPaymentSchema>;
+
+// Landlord Tax Deductions - NRLS tax deductions per statement period
+export const landlordTaxDeductions = pgTable("landlord_tax_deductions", {
+  id: serial("id").primaryKey(),
+  landlordId: integer("landlord_id").notNull(),
+  statementId: integer("statement_id"), // FK to landlord statement
+  propertyId: integer("property_id"),
+  taxPeriodStart: timestamp("tax_period_start").notNull(),
+  taxPeriodEnd: timestamp("tax_period_end").notNull(),
+  rentCollected: integer("rent_collected").notNull(), // pence
+  taxRate: text("tax_rate").notNull(), // percentage as string
+  taxDeducted: integer("tax_deducted").notNull(), // pence
+  netPaidToLandlord: integer("net_paid_to_landlord").notNull(), // pence
+  remittedToHmrc: boolean("remitted_to_hmrc").default(false),
+  remittedDate: timestamp("remitted_date"),
+  hmrcReference: text("hmrc_reference"),
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertLandlordTaxDeductionSchema = createInsertSchema(landlordTaxDeductions).omit({ id: true, createdAt: true });
+export type LandlordTaxDeduction = typeof landlordTaxDeductions.$inferSelect;
+export type InsertLandlordTaxDeduction = z.infer<typeof insertLandlordTaxDeductionSchema>;
 export type InsertArrearsReminderConfig = z.infer<typeof insertArrearsReminderConfigSchema>;
