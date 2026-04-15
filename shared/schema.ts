@@ -254,6 +254,16 @@ export const properties = pgTable("property", {
   blockManagementContact: text("block_management_contact"),
   parentPropertyId: integer("parent_property_id"), // For units within a block/development
 
+  // Compliance Management Flags
+  manageGas: boolean("manage_gas").default(true),
+  manageElectrical: boolean("manage_electrical").default(true),
+  manageSmokeAlarms: boolean("manage_smoke_alarms").default(true),
+  manageCoAlarms: boolean("manage_co_alarms").default(true),
+  manageBoiler: boolean("manage_boiler").default(true),
+  blockManagementManagesGas: boolean("block_management_manages_gas").default(false),
+  blockManagementManagesElectrical: boolean("block_management_manages_electrical").default(false),
+  blockManagementManagesFire: boolean("block_management_manages_fire").default(false),
+
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -8200,3 +8210,86 @@ export const statementSequences = pgTable("statement_sequences", {
 export const insertStatementSequenceSchema = createInsertSchema(statementSequences).omit({ id: true });
 export type StatementSequence = typeof statementSequences.$inferSelect;
 export type InsertStatementSequence = z.infer<typeof insertStatementSequenceSchema>;
+
+// ─── Compliance Tables ────────────────────────────────────────────────────────
+
+export const propertyInsurance = pgTable("property_insurance", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  insuranceType: text("insurance_type").notNull(), // buildings, contents, landlord, rent_guarantee, legal_expenses
+  provider: text("provider"),
+  policyNumber: text("policy_number"),
+  expiryDate: timestamp("expiry_date"),
+  premiumAmount: integer("premium_amount"), // pence
+  excessAmount: integer("excess_amount"), // pence
+  coverDescription: text("cover_description"),
+  contactPhone: text("contact_phone"),
+  contactEmail: text("contact_email"),
+  isActive: boolean("is_active").default(true),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyInsuranceSchema = createInsertSchema(propertyInsurance).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyInsurance = typeof propertyInsurance.$inferSelect;
+export type InsertPropertyInsurance = z.infer<typeof insertPropertyInsuranceSchema>;
+
+export const propertyBoilers = pgTable("property_boilers", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  make: text("make"),
+  model: text("model"),
+  serialNumber: text("serial_number"),
+  fuelType: text("fuel_type"), // gas, oil, electric, lpg
+  installationDate: timestamp("installation_date"),
+  lastServiceDate: timestamp("last_service_date"),
+  nextServiceDue: timestamp("next_service_due"),
+  warrantyExpiry: timestamp("warranty_expiry"),
+  location: text("location"), // where in the property
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyBoilerSchema = createInsertSchema(propertyBoilers).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyBoiler = typeof propertyBoilers.$inferSelect;
+export type InsertPropertyBoiler = z.infer<typeof insertPropertyBoilerSchema>;
+
+export const hmoComplianceItems = pgTable("hmo_compliance_items", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  fireAlarmNextDue: timestamp("fire_alarm_next_due"),
+  fireEquipmentNextDue: timestamp("fire_equipment_next_due"),
+  fireLightingNextDue: timestamp("fire_lighting_next_due"),
+  hmoLicenceExpiry: timestamp("hmo_licence_expiry"),
+  hmoLicenceNumber: text("hmo_licence_number"),
+  maxOccupants: integer("max_occupants"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertHmoComplianceItemSchema = createInsertSchema(hmoComplianceItems).omit({ id: true, createdAt: true, updatedAt: true });
+export type HmoComplianceItem = typeof hmoComplianceItems.$inferSelect;
+export type InsertHmoComplianceItem = z.infer<typeof insertHmoComplianceItemSchema>;
+
+export const gasBoilerCover = pgTable("gas_boiler_cover", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  provider: text("provider"),
+  policyReference: text("policy_reference"),
+  expiryDate: timestamp("expiry_date"),
+  annualCost: integer("annual_cost"), // pence
+  contactPhone: text("contact_phone"),
+  coversBoiler: boolean("covers_boiler").default(true),
+  coversHeating: boolean("covers_heating").default(false),
+  coversPlumbing: boolean("covers_plumbing").default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertGasBoilerCoverSchema = createInsertSchema(gasBoilerCover).omit({ id: true, createdAt: true, updatedAt: true });
+export type GasBoilerCover = typeof gasBoilerCover.$inferSelect;
+export type InsertGasBoilerCover = z.infer<typeof insertGasBoilerCoverSchema>;
