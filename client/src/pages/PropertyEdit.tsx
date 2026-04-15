@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
+import ApplicantMatchCriteria from '@/components/ApplicantMatchCriteria';
 
 interface PropertyData {
   id: number;
@@ -59,6 +60,37 @@ interface PropertyData {
   rentAmount?: number;
   rentPeriod?: string;
   deposit?: number;
+  // Identification & Access Codes
+  keyCode?: string;
+  propCode?: string;
+  valuationRef?: string;
+  estateRef?: string;
+  lockCode?: string;
+  securityAlarmCode?: string;
+  fireAlarmCode?: string;
+  // Meter References
+  gasMeterSerial?: string;
+  electricityMeterSerial?: string;
+  waterMeterSerial?: string;
+  // Property Classification
+  propertyTypeSecondary?: string;
+  blockManagementCompany?: string;
+  blockManagementContact?: string;
+  isHmo?: boolean;
+  isStudentLet?: boolean;
+  isHolidayLet?: boolean;
+  isCouncilLet?: boolean;
+  // Applicant Match Criteria
+  lettingType?: string;
+  idealRentDay?: number;
+  dssAccepted?: boolean;
+  childrenAccepted?: boolean;
+  smokersAccepted?: boolean;
+  dogsAccepted?: boolean;
+  catsAccepted?: boolean;
+  parkingAvailable?: boolean;
+  generateMultipleRents?: boolean;
+  generateRentsInArrears?: boolean;
 }
 
 function GroupViewingSection({ propertyId }: { propertyId: number }) {
@@ -1244,6 +1276,183 @@ export default function PropertyEdit() {
         {property && (property.isListedSale || property.isListedRental) && (
           <GroupViewingSection propertyId={property.id} />
         )}
+
+        {/* Identification & Access Codes */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              Identification &amp; Access Codes
+            </CardTitle>
+            <CardDescription>Internal reference codes and security access information</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="keyCode">Key Code</Label>
+                <Input
+                  id="keyCode"
+                  value={formData.keyCode || ''}
+                  onChange={(e) => updateField('keyCode', e.target.value)}
+                  placeholder="e.g., 733"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="propCode">Property Code</Label>
+                <Input
+                  id="propCode"
+                  value={formData.propCode || ''}
+                  onChange={(e) => updateField('propCode', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="valuationRef">Valuation Reference</Label>
+                <Input
+                  id="valuationRef"
+                  value={formData.valuationRef || ''}
+                  onChange={(e) => updateField('valuationRef', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="estateRef">Estate Reference</Label>
+                <Input
+                  id="estateRef"
+                  value={formData.estateRef || ''}
+                  onChange={(e) => updateField('estateRef', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lockCode">Lock Code</Label>
+                <Input
+                  id="lockCode"
+                  value={formData.lockCode || ''}
+                  onChange={(e) => updateField('lockCode', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="securityAlarmCode">Security Alarm Code</Label>
+                <Input
+                  id="securityAlarmCode"
+                  value={formData.securityAlarmCode || ''}
+                  onChange={(e) => updateField('securityAlarmCode', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="fireAlarmCode">Fire Alarm Code</Label>
+                <Input
+                  id="fireAlarmCode"
+                  value={formData.fireAlarmCode || ''}
+                  onChange={(e) => updateField('fireAlarmCode', e.target.value)}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Meter References */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Square className="h-5 w-5" />
+              Meter References
+            </CardTitle>
+            <CardDescription>Utility meter serial numbers for this property</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="gasMeterSerial">Gas Meter Serial</Label>
+                <Input
+                  id="gasMeterSerial"
+                  value={formData.gasMeterSerial || ''}
+                  onChange={(e) => updateField('gasMeterSerial', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="electricityMeterSerial">Electricity Meter Serial</Label>
+                <Input
+                  id="electricityMeterSerial"
+                  value={formData.electricityMeterSerial || ''}
+                  onChange={(e) => updateField('electricityMeterSerial', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="waterMeterSerial">Water Meter Serial</Label>
+                <Input
+                  id="waterMeterSerial"
+                  value={formData.waterMeterSerial || ''}
+                  onChange={(e) => updateField('waterMeterSerial', e.target.value)}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Property Classification */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              Property Classification
+            </CardTitle>
+            <CardDescription>Additional classification details and block management information</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="propertyTypeSecondary">Secondary Type</Label>
+                <Input
+                  id="propertyTypeSecondary"
+                  value={formData.propertyTypeSecondary || ''}
+                  onChange={(e) => updateField('propertyTypeSecondary', e.target.value)}
+                  placeholder="e.g., Maisonette"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="blockManagementCompany">Block Management Company</Label>
+                <Input
+                  id="blockManagementCompany"
+                  value={formData.blockManagementCompany || ''}
+                  onChange={(e) => updateField('blockManagementCompany', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="blockManagementContact">Block Management Contact</Label>
+                <Input
+                  id="blockManagementContact"
+                  value={formData.blockManagementContact || ''}
+                  onChange={(e) => updateField('blockManagementContact', e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Classification Flags</Label>
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                {[
+                  { id: 'isHmo', label: 'HMO' },
+                  { id: 'isStudentLet', label: 'Student Let' },
+                  { id: 'isHolidayLet', label: 'Holiday Let' },
+                  { id: 'isCouncilLet', label: 'Council Let' },
+                ].map(({ id, label }) => (
+                  <div key={id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={id}
+                      checked={(formData as any)[id] ?? false}
+                      onCheckedChange={(checked) => updateField(id as keyof PropertyData, !!checked)}
+                    />
+                    <Label htmlFor={id} className="cursor-pointer text-sm font-normal">{label}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Applicant Match Criteria */}
+        <ApplicantMatchCriteria
+          formData={formData}
+          setFormData={setFormData}
+        />
 
         {/* Save Button */}
         <div className="flex justify-end gap-4">
