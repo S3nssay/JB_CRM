@@ -533,19 +533,11 @@ const VALID_PROPERTY_FIELDS = new Set([
   'isPublishedWebsite', 'isPublishedZoopla', 'isPublishedRightmove',
   'isPublishedOnthemarket', 'isPublishedSocial', 'publishedToPortals',
   'notes', 'isListed', 'isRental',
-  // Identification & access fields
-  'keyCode', 'propCode', 'lockCode', 'securityAlarmCode', 'fireAlarmCode',
-  'valuationRef', 'estateRef',
-  // Meter references
-  'gasMeterSerial', 'electricityMeterSerial', 'waterMeterSerial',
+  // Identification & access fields (keyCode/propCode remain on properties table)
+  'keyCode', 'propCode',
   // Classification flags
-  'propertyTypeSecondary', 'isStudentLet', 'isHolidayLet', 'isCouncilLet', 'isHmo',
-  'blockManagementCompany', 'blockManagementContact', 'parentPropertyId',
-  // Applicant criteria
-  'dssAccepted', 'childrenAccepted', 'smokersAccepted', 'dogsAccepted', 'catsAccepted',
-  'parkingAvailable', 'lettingType', 'idealRentDay',
-  // Rent generation
-  'generateMultipleRents', 'generateRentsInArrears'
+  'isStudentLet', 'isHolidayLet', 'isCouncilLet', 'isHmo',
+  'blockManagementCompany', 'blockManagementContact', 'parentPropertyId'
 ]);
 
 // Field name mappings: frontend alias -> schema column name
@@ -1768,39 +1760,17 @@ crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
       notes: properties.notes,
       createdAt: properties.createdAt,
       updatedAt: properties.updatedAt,
-      // Identification & access
+      // Identification & access (keyCode/propCode remain on properties table)
       keyCode: properties.keyCode,
       propCode: properties.propCode,
-      lockCode: properties.lockCode,
-      securityAlarmCode: properties.securityAlarmCode,
-      fireAlarmCode: properties.fireAlarmCode,
-      valuationRef: properties.valuationRef,
-      estateRef: properties.estateRef,
-      // Meter references
-      gasMeterSerial: properties.gasMeterSerial,
-      electricityMeterSerial: properties.electricityMeterSerial,
-      waterMeterSerial: properties.waterMeterSerial,
       // Classification
-      propertyTypeSecondary: properties.propertyTypeSecondary,
       isHmo: properties.isHmo,
       isStudentLet: properties.isStudentLet,
       isHolidayLet: properties.isHolidayLet,
       isCouncilLet: properties.isCouncilLet,
       blockManagementCompany: properties.blockManagementCompany,
       blockManagementContact: properties.blockManagementContact,
-      parentPropertyId: properties.parentPropertyId,
-      // Applicant criteria
-      dssAccepted: properties.dssAccepted,
-      childrenAccepted: properties.childrenAccepted,
-      smokersAccepted: properties.smokersAccepted,
-      dogsAccepted: properties.dogsAccepted,
-      catsAccepted: properties.catsAccepted,
-      parkingAvailable: properties.parkingAvailable,
-      lettingType: properties.lettingType,
-      idealRentDay: properties.idealRentDay,
-      // Rent generation
-      generateMultipleRents: properties.generateMultipleRents,
-      generateRentsInArrears: properties.generateRentsInArrears
+      parentPropertyId: properties.parentPropertyId
     })
     .from(properties)
     .where(eq(properties.id, id));
@@ -17584,5 +17554,231 @@ crmRouter.get('/properties/:id/history', requireAgent, async (req: any, res) => 
   } catch (error) {
     console.error('Error fetching property history:', error);
     res.status(500).json({ error: 'Failed to fetch property history' });
+  }
+});
+
+// ==========================================
+// PROPERTY METERS ENDPOINTS
+// ==========================================
+
+crmRouter.get('/properties/:id/meters', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const result = await pool.query(
+      'SELECT * FROM property_meters WHERE property_id = $1 ORDER BY meter_type',
+      [propertyId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property meters:', error);
+    res.status(500).json({ error: 'Failed to fetch property meters' });
+  }
+});
+
+crmRouter.post('/properties/:id/meters', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const { meter_type, serial_number, location, last_reading, last_reading_date } = req.body;
+    if (!meter_type) {
+      return res.status(400).json({ error: 'meter_type is required' });
+    }
+    const result = await pool.query(
+      `INSERT INTO property_meters (property_id, meter_type, serial_number, location, last_reading, last_reading_date)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING *`,
+      [propertyId, meter_type, serial_number || null, location || null, last_reading || null, last_reading_date || null]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating property meter:', error);
+    res.status(500).json({ error: 'Failed to create property meter' });
+  }
+});
+
+crmRouter.put('/meters/:id', requireAgent, async (req, res) => {
+  try {
+    const meterId = parseInt(req.params.id);
+    const { meter_type, serial_number, location, last_reading, last_reading_date } = req.body;
+    const result = await pool.query(
+      `UPDATE property_meters
+       SET meter_type = COALESCE($1, meter_type),
+           serial_number = COALESCE($2, serial_number),
+           location = COALESCE($3, location),
+           last_reading = COALESCE($4, last_reading),
+           last_reading_date = COALESCE($5, last_reading_date),
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [meter_type || null, serial_number || null, location || null, last_reading || null, last_reading_date || null, meterId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Meter not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating property meter:', error);
+    res.status(500).json({ error: 'Failed to update property meter' });
+  }
+});
+
+crmRouter.delete('/meters/:id', requireAgent, async (req, res) => {
+  try {
+    const meterId = parseInt(req.params.id);
+    const result = await pool.query(
+      'DELETE FROM property_meters WHERE id = $1 RETURNING id',
+      [meterId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Meter not found' });
+    }
+    res.json({ success: true, id: meterId });
+  } catch (error) {
+    console.error('Error deleting property meter:', error);
+    res.status(500).json({ error: 'Failed to delete property meter' });
+  }
+});
+
+// ==========================================
+// PROPERTY ACCESS CODES ENDPOINTS
+// ==========================================
+
+crmRouter.get('/properties/:id/access-codes', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const result = await pool.query(
+      'SELECT * FROM property_access_codes WHERE property_id = $1 ORDER BY code_type',
+      [propertyId]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property access codes:', error);
+    res.status(500).json({ error: 'Failed to fetch property access codes' });
+  }
+});
+
+crmRouter.post('/properties/:id/access-codes', requireAgent, async (req: any, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const { code_type, code_value, notes } = req.body;
+    if (!code_type) {
+      return res.status(400).json({ error: 'code_type is required' });
+    }
+    const updatedBy = req.user?.id || null;
+    const result = await pool.query(
+      `INSERT INTO property_access_codes (property_id, code_type, code_value, notes, updated_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [propertyId, code_type, code_value || null, notes || null, updatedBy]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating property access code:', error);
+    res.status(500).json({ error: 'Failed to create property access code' });
+  }
+});
+
+crmRouter.put('/access-codes/:id', requireAgent, async (req: any, res) => {
+  try {
+    const codeId = parseInt(req.params.id);
+    const { code_type, code_value, notes } = req.body;
+    const updatedBy = req.user?.id || null;
+    const result = await pool.query(
+      `UPDATE property_access_codes
+       SET code_type = COALESCE($1, code_type),
+           code_value = COALESCE($2, code_value),
+           notes = COALESCE($3, notes),
+           updated_by = $4,
+           updated_at = NOW()
+       WHERE id = $5
+       RETURNING *`,
+      [code_type || null, code_value || null, notes || null, updatedBy, codeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Access code not found' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating property access code:', error);
+    res.status(500).json({ error: 'Failed to update property access code' });
+  }
+});
+
+crmRouter.delete('/access-codes/:id', requireAgent, async (req, res) => {
+  try {
+    const codeId = parseInt(req.params.id);
+    const result = await pool.query(
+      'DELETE FROM property_access_codes WHERE id = $1 RETURNING id',
+      [codeId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Access code not found' });
+    }
+    res.json({ success: true, id: codeId });
+  } catch (error) {
+    console.error('Error deleting property access code:', error);
+    res.status(500).json({ error: 'Failed to delete property access code' });
+  }
+});
+
+// ==========================================
+// PROPERTY LISTING CRITERIA ENDPOINTS
+// ==========================================
+
+crmRouter.get('/properties/:id/listing-criteria', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const result = await pool.query(
+      'SELECT * FROM property_listing_criteria WHERE property_id = $1 LIMIT 1',
+      [propertyId]
+    );
+    // Return null body (not 404) when no row exists yet — caller can handle gracefully
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error fetching property listing criteria:', error);
+    res.status(500).json({ error: 'Failed to fetch property listing criteria' });
+  }
+});
+
+crmRouter.put('/properties/:id/listing-criteria', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const {
+      dss_accepted,
+      children_accepted,
+      smokers_accepted,
+      dogs_accepted,
+      cats_accepted,
+      parking_available,
+      letting_type
+    } = req.body;
+    const result = await pool.query(
+      `INSERT INTO property_listing_criteria
+         (property_id, dss_accepted, children_accepted, smokers_accepted, dogs_accepted, cats_accepted, parking_available, letting_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (property_id) DO UPDATE SET
+         dss_accepted = EXCLUDED.dss_accepted,
+         children_accepted = EXCLUDED.children_accepted,
+         smokers_accepted = EXCLUDED.smokers_accepted,
+         dogs_accepted = EXCLUDED.dogs_accepted,
+         cats_accepted = EXCLUDED.cats_accepted,
+         parking_available = EXCLUDED.parking_available,
+         letting_type = EXCLUDED.letting_type,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        propertyId,
+        dss_accepted ?? null,
+        children_accepted ?? null,
+        smokers_accepted ?? null,
+        dogs_accepted ?? null,
+        cats_accepted ?? null,
+        parking_available ?? null,
+        letting_type || null
+      ]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error upserting property listing criteria:', error);
+    res.status(500).json({ error: 'Failed to upsert property listing criteria' });
   }
 });
