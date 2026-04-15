@@ -60,37 +60,16 @@ interface PropertyData {
   rentAmount?: number;
   rentPeriod?: string;
   deposit?: number;
-  // Identification & Access Codes
+  // Identification & Access Codes (still on properties table)
   keyCode?: string;
   propCode?: string;
-  valuationRef?: string;
-  estateRef?: string;
-  lockCode?: string;
-  securityAlarmCode?: string;
-  fireAlarmCode?: string;
-  // Meter References
-  gasMeterSerial?: string;
-  electricityMeterSerial?: string;
-  waterMeterSerial?: string;
-  // Property Classification
-  propertyTypeSecondary?: string;
+  // Property Classification (still on properties table)
   blockManagementCompany?: string;
   blockManagementContact?: string;
   isHmo?: boolean;
   isStudentLet?: boolean;
   isHolidayLet?: boolean;
   isCouncilLet?: boolean;
-  // Applicant Match Criteria
-  lettingType?: string;
-  idealRentDay?: number;
-  dssAccepted?: boolean;
-  childrenAccepted?: boolean;
-  smokersAccepted?: boolean;
-  dogsAccepted?: boolean;
-  catsAccepted?: boolean;
-  parkingAvailable?: boolean;
-  generateMultipleRents?: boolean;
-  generateRentsInArrears?: boolean;
 }
 
 function GroupViewingSection({ propertyId }: { propertyId: number }) {
@@ -348,6 +327,116 @@ export default function PropertyEdit() {
     },
     enabled: !!propertyId
   });
+
+  // Fetch meters for this property
+  const { data: meters = [], refetch: refetchMeters } = useQuery<any[]>({
+    queryKey: ['property-meters', propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/properties/${propertyId}/meters`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
+
+  // Fetch access codes for this property
+  const { data: accessCodes = [], refetch: refetchAccessCodes } = useQuery<any[]>({
+    queryKey: ['property-access-codes', propertyId],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/properties/${propertyId}/access-codes`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!propertyId,
+  });
+
+  // Add meter state
+  const [showAddMeter, setShowAddMeter] = useState(false);
+  const [newMeterType, setNewMeterType] = useState('gas');
+  const [newMeterSerial, setNewMeterSerial] = useState('');
+  const [newMeterLocation, setNewMeterLocation] = useState('');
+  const [isSavingMeter, setIsSavingMeter] = useState(false);
+
+  // Add access code state
+  const [showAddCode, setShowAddCode] = useState(false);
+  const [newCodeType, setNewCodeType] = useState('lock');
+  const [newCodeValue, setNewCodeValue] = useState('');
+  const [newCodeNotes, setNewCodeNotes] = useState('');
+  const [isSavingCode, setIsSavingCode] = useState(false);
+
+  const handleAddMeter = async () => {
+    if (!newMeterSerial) {
+      toast({ title: 'Serial number required', variant: 'destructive' });
+      return;
+    }
+    setIsSavingMeter(true);
+    try {
+      const res = await fetch(`/api/crm/properties/${propertyId}/meters`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ meterType: newMeterType, serialNumber: newMeterSerial, location: newMeterLocation }),
+      });
+      if (!res.ok) throw new Error('Failed to add meter');
+      setNewMeterSerial('');
+      setNewMeterLocation('');
+      setShowAddMeter(false);
+      refetchMeters();
+      toast({ title: 'Meter added' });
+    } catch (err: any) {
+      toast({ title: 'Failed to add meter', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsSavingMeter(false);
+    }
+  };
+
+  const handleDeleteMeter = async (meterId: number) => {
+    try {
+      const res = await fetch(`/api/crm/meters/${meterId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Delete failed');
+      refetchMeters();
+      toast({ title: 'Meter removed' });
+    } catch {
+      toast({ title: 'Failed to remove meter', variant: 'destructive' });
+    }
+  };
+
+  const handleAddCode = async () => {
+    if (!newCodeValue) {
+      toast({ title: 'Code value required', variant: 'destructive' });
+      return;
+    }
+    setIsSavingCode(true);
+    try {
+      const res = await fetch(`/api/crm/properties/${propertyId}/access-codes`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ codeType: newCodeType, codeValue: newCodeValue, notes: newCodeNotes }),
+      });
+      if (!res.ok) throw new Error('Failed to add code');
+      setNewCodeValue('');
+      setNewCodeNotes('');
+      setShowAddCode(false);
+      refetchAccessCodes();
+      toast({ title: 'Access code added' });
+    } catch (err: any) {
+      toast({ title: 'Failed to add code', description: err.message, variant: 'destructive' });
+    } finally {
+      setIsSavingCode(false);
+    }
+  };
+
+  const handleDeleteCode = async (codeId: number) => {
+    try {
+      const res = await fetch(`/api/crm/access-codes/${codeId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Delete failed');
+      refetchAccessCodes();
+      toast({ title: 'Access code removed' });
+    } catch {
+      toast({ title: 'Failed to remove access code', variant: 'destructive' });
+    }
+  };
 
   useEffect(() => {
     if (property) {
@@ -1287,7 +1376,8 @@ export default function PropertyEdit() {
             <CardDescription>Internal reference codes and security access information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {/* Key Code and Prop Code still on properties table */}
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="keyCode">Key Code</Label>
                 <Input
@@ -1305,88 +1395,163 @@ export default function PropertyEdit() {
                   onChange={(e) => updateField('propCode', e.target.value)}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="valuationRef">Valuation Reference</Label>
-                <Input
-                  id="valuationRef"
-                  value={formData.valuationRef || ''}
-                  onChange={(e) => updateField('valuationRef', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="estateRef">Estate Reference</Label>
-                <Input
-                  id="estateRef"
-                  value={formData.estateRef || ''}
-                  onChange={(e) => updateField('estateRef', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lockCode">Lock Code</Label>
-                <Input
-                  id="lockCode"
-                  value={formData.lockCode || ''}
-                  onChange={(e) => updateField('lockCode', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="securityAlarmCode">Security Alarm Code</Label>
-                <Input
-                  id="securityAlarmCode"
-                  value={formData.securityAlarmCode || ''}
-                  onChange={(e) => updateField('securityAlarmCode', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fireAlarmCode">Fire Alarm Code</Label>
-                <Input
-                  id="fireAlarmCode"
-                  value={formData.fireAlarmCode || ''}
-                  onChange={(e) => updateField('fireAlarmCode', e.target.value)}
-                />
-              </div>
             </div>
+
+            {/* Lock / alarm codes via access-codes endpoint */}
+            {propertyId && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Lock &amp; Alarm Codes</Label>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setShowAddCode(v => !v)}>
+                      <Plus className="h-4 w-4 mr-1" /> Add Code
+                    </Button>
+                  </div>
+
+                  {showAddCode && (
+                    <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Type</Label>
+                          <Select value={newCodeType} onValueChange={setNewCodeType}>
+                            <SelectTrigger><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="lock">Lock Code</SelectItem>
+                              <SelectItem value="security_alarm">Security Alarm</SelectItem>
+                              <SelectItem value="fire_alarm">Fire Alarm</SelectItem>
+                              <SelectItem value="gate">Gate Code</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Code Value</Label>
+                          <Input value={newCodeValue} onChange={e => setNewCodeValue(e.target.value)} placeholder="e.g., 1234#" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Notes</Label>
+                          <Input value={newCodeNotes} onChange={e => setNewCodeNotes(e.target.value)} placeholder="Optional" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" className="bg-[#791E75] hover:bg-[#60175d]" onClick={handleAddCode} disabled={isSavingCode}>
+                          {isSavingCode ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                          Save
+                        </Button>
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setShowAddCode(false)}>Cancel</Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {accessCodes.length === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">No access codes recorded</p>
+                  ) : (
+                    <div className="space-y-1">
+                      {accessCodes.map((code: any) => (
+                        <div key={code.id} className="flex items-center justify-between border rounded px-3 py-2 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="text-muted-foreground capitalize">{(code.code_type || '').replace(/_/g, ' ')}</span>
+                            <span className="font-mono font-medium">{code.code_value}</span>
+                            {code.notes && <span className="text-muted-foreground text-xs">— {code.notes}</span>}
+                          </div>
+                          <Button type="button" variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteCode(code.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
         {/* Meter References */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Square className="h-5 w-5" />
-              Meter References
-            </CardTitle>
-            <CardDescription>Utility meter serial numbers for this property</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="gasMeterSerial">Gas Meter Serial</Label>
-                <Input
-                  id="gasMeterSerial"
-                  value={formData.gasMeterSerial || ''}
-                  onChange={(e) => updateField('gasMeterSerial', e.target.value)}
-                />
+        {propertyId && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Square className="h-5 w-5" />
+                    Meter References
+                  </CardTitle>
+                  <CardDescription>Utility meter serial numbers for this property</CardDescription>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={() => setShowAddMeter(v => !v)}>
+                  <Plus className="h-4 w-4 mr-1" /> Add Meter
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="electricityMeterSerial">Electricity Meter Serial</Label>
-                <Input
-                  id="electricityMeterSerial"
-                  value={formData.electricityMeterSerial || ''}
-                  onChange={(e) => updateField('electricityMeterSerial', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="waterMeterSerial">Water Meter Serial</Label>
-                <Input
-                  id="waterMeterSerial"
-                  value={formData.waterMeterSerial || ''}
-                  onChange={(e) => updateField('waterMeterSerial', e.target.value)}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {showAddMeter && (
+                <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Meter Type</Label>
+                      <Select value={newMeterType} onValueChange={setNewMeterType}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="gas">Gas</SelectItem>
+                          <SelectItem value="electricity">Electricity</SelectItem>
+                          <SelectItem value="water">Water</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Serial Number</Label>
+                      <Input value={newMeterSerial} onChange={e => setNewMeterSerial(e.target.value)} placeholder="e.g., G4A12345" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Location</Label>
+                      <Input value={newMeterLocation} onChange={e => setNewMeterLocation(e.target.value)} placeholder="e.g., Cupboard under stairs" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" className="bg-[#791E75] hover:bg-[#60175d]" onClick={handleAddMeter} disabled={isSavingMeter}>
+                      {isSavingMeter ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                      Save
+                    </Button>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => setShowAddMeter(false)}>Cancel</Button>
+                  </div>
+                </div>
+              )}
+
+              {meters.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No meter records added yet</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="pb-2 pr-4 font-medium">Type</th>
+                        <th className="pb-2 pr-4 font-medium">Serial Number</th>
+                        <th className="pb-2 pr-4 font-medium">Location</th>
+                        <th className="pb-2 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {meters.map((meter: any) => (
+                        <tr key={meter.id} className="border-b last:border-0">
+                          <td className="py-2 pr-4 capitalize">{meter.meter_type}</td>
+                          <td className="py-2 pr-4 font-mono">{meter.serial_number}</td>
+                          <td className="py-2 pr-4 text-muted-foreground">{meter.location || '—'}</td>
+                          <td className="py-2 text-right">
+                            <Button type="button" variant="ghost" size="sm" className="text-red-500 hover:text-red-700" onClick={() => handleDeleteMeter(meter.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Property Classification */}
         <Card>
@@ -1398,16 +1563,7 @@ export default function PropertyEdit() {
             <CardDescription>Additional classification details and block management information</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="propertyTypeSecondary">Secondary Type</Label>
-                <Input
-                  id="propertyTypeSecondary"
-                  value={formData.propertyTypeSecondary || ''}
-                  onChange={(e) => updateField('propertyTypeSecondary', e.target.value)}
-                  placeholder="e.g., Maisonette"
-                />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="blockManagementCompany">Block Management Company</Label>
                 <Input
@@ -1449,10 +1605,9 @@ export default function PropertyEdit() {
         </Card>
 
         {/* Applicant Match Criteria */}
-        <ApplicantMatchCriteria
-          formData={formData}
-          setFormData={setFormData}
-        />
+        {propertyId && (
+          <ApplicantMatchCriteria propertyId={parseInt(propertyId)} />
+        )}
 
         {/* Save Button */}
         <div className="flex justify-end gap-4">

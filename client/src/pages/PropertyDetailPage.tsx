@@ -56,33 +56,14 @@ interface Property {
   latitude?: string;
   longitude?: string;
   nearestTubeStation?: string;
-  // Identification & access
+  // Identification & access (still on properties table)
   keyCode?: string;
   propCode?: string;
-  lockCode?: string;
-  securityAlarmCode?: string;
-  fireAlarmCode?: string;
-  valuationRef?: string;
-  estateRef?: string;
-  // Meter references
-  gasMeterSerial?: string;
-  electricityMeterSerial?: string;
-  waterMeterSerial?: string;
   // Classification
-  propertyTypeSecondary?: string;
   isHmo?: boolean;
   isStudentLet?: boolean;
   isHolidayLet?: boolean;
   isCouncilLet?: boolean;
-  // Applicant criteria
-  dssAccepted?: boolean;
-  childrenAccepted?: boolean;
-  smokersAccepted?: boolean;
-  dogsAccepted?: boolean;
-  catsAccepted?: boolean;
-  parkingAvailable?: boolean;
-  lettingType?: string;
-  idealRentDay?: number;
 }
 
 const EPC_COLORS: Record<string, { bg: string; text: string; width: string }> = {
@@ -120,6 +101,39 @@ export default function PropertyDetailPage() {
       if (!response.ok) throw new Error('Property not found');
       return response.json();
     }
+  });
+
+  // Fetch meters from new normalised endpoint (CRM-authenticated)
+  const { data: meters = [] } = useQuery<any[]>({
+    queryKey: [`/api/crm/properties/${id}/meters`],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/properties/${id}/meters`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  // Fetch access codes from new normalised endpoint
+  const { data: accessCodes = [] } = useQuery<any[]>({
+    queryKey: [`/api/crm/properties/${id}/access-codes`],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/properties/${id}/access-codes`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!id,
+  });
+
+  // Fetch listing criteria from new normalised endpoint
+  const { data: listingCriteria } = useQuery<any>({
+    queryKey: [`/api/crm/properties/${id}/listing-criteria`],
+    queryFn: async () => {
+      const res = await fetch(`/api/crm/properties/${id}/listing-criteria`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!id,
   });
 
   // Initialize Google Map when property data is available
@@ -468,7 +482,7 @@ export default function PropertyDetailPage() {
       </div>
 
       {/* Identification & Access Section */}
-      {(property.keyCode || property.propCode || property.valuationRef || property.estateRef || property.lockCode || property.securityAlarmCode || property.fireAlarmCode) && (
+      {(property.keyCode || property.propCode || accessCodes.length > 0) && (
         <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
           <Card>
             <CardHeader>
@@ -488,36 +502,12 @@ export default function PropertyDetailPage() {
                     <span className="text-gray-900 font-medium font-mono">{property.propCode}</span>
                   </div>
                 )}
-                {property.valuationRef && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Valuation Ref:</span>
-                    <span className="text-gray-900 font-medium">{property.valuationRef}</span>
+                {accessCodes.map((code: any) => (
+                  <div key={code.id} className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600 capitalize">{(code.code_type || '').replace(/_/g, ' ')}:</span>
+                    <span className="text-gray-900 font-medium font-mono">{code.code_value}</span>
                   </div>
-                )}
-                {property.estateRef && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Estate Ref:</span>
-                    <span className="text-gray-900 font-medium">{property.estateRef}</span>
-                  </div>
-                )}
-                {property.lockCode && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Lock Code:</span>
-                    <span className="text-gray-900 font-medium font-mono">{property.lockCode}</span>
-                  </div>
-                )}
-                {property.securityAlarmCode && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Security Alarm Code:</span>
-                    <span className="text-gray-900 font-medium font-mono">{property.securityAlarmCode}</span>
-                  </div>
-                )}
-                {property.fireAlarmCode && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Fire Alarm Code:</span>
-                    <span className="text-gray-900 font-medium font-mono">{property.fireAlarmCode}</span>
-                  </div>
-                )}
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -525,7 +515,7 @@ export default function PropertyDetailPage() {
       )}
 
       {/* Meter References Section */}
-      {(property.gasMeterSerial || property.electricityMeterSerial || property.waterMeterSerial) && (
+      {meters.length > 0 && (
         <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
           <Card>
             <CardHeader>
@@ -533,24 +523,12 @@ export default function PropertyDetailPage() {
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-3 gap-4">
-                {property.gasMeterSerial && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Gas Meter Serial:</span>
-                    <span className="text-gray-900 font-medium font-mono">{property.gasMeterSerial}</span>
+                {meters.map((meter: any) => (
+                  <div key={meter.id} className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600 capitalize">{meter.meter_type} Meter:</span>
+                    <span className="text-gray-900 font-medium font-mono">{meter.serial_number}</span>
                   </div>
-                )}
-                {property.electricityMeterSerial && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Electricity Meter Serial:</span>
-                    <span className="text-gray-900 font-medium font-mono">{property.electricityMeterSerial}</span>
-                  </div>
-                )}
-                {property.waterMeterSerial && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Water Meter Serial:</span>
-                    <span className="text-gray-900 font-medium font-mono">{property.waterMeterSerial}</span>
-                  </div>
-                )}
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -558,46 +536,35 @@ export default function PropertyDetailPage() {
       )}
 
       {/* Applicant Criteria Section */}
-      {(property.lettingType || property.idealRentDay || property.furnished ||
-        property.dssAccepted || property.childrenAccepted || property.smokersAccepted ||
-        property.dogsAccepted || property.catsAccepted || property.parkingAvailable) && (
+      {listingCriteria && (listingCriteria.letting_type || listingCriteria.dss_accepted ||
+        listingCriteria.children_accepted || listingCriteria.smokers_accepted ||
+        listingCriteria.dogs_accepted || listingCriteria.cats_accepted || listingCriteria.parking_available) && (
         <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
           <Card>
             <CardHeader>
               <CardTitle className="text-[#791E75]">Applicant Criteria</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-4">
-                {property.lettingType && (
+              {listingCriteria.letting_type && (
+                <div className="grid md:grid-cols-3 gap-4">
                   <div className="flex justify-between py-2 border-b border-gray-100">
                     <span className="text-gray-600">Letting Type:</span>
-                    <span className="text-gray-900 font-medium capitalize">{property.lettingType.replace(/_/g, ' ')}</span>
+                    <span className="text-gray-900 font-medium capitalize">{listingCriteria.letting_type.replace(/_/g, ' ')}</span>
                   </div>
-                )}
-                {property.idealRentDay && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Ideal Rent Day:</span>
-                    <span className="text-gray-900 font-medium">{property.idealRentDay}</span>
-                  </div>
-                )}
-                {property.furnished && (
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-600">Furnished:</span>
-                    <span className="text-gray-900 font-medium capitalize">{property.furnished.replace(/_/g, ' ')}</span>
-                  </div>
-                )}
-              </div>
-              {(property.dssAccepted || property.childrenAccepted || property.smokersAccepted ||
-                property.dogsAccepted || property.catsAccepted || property.parkingAvailable) && (
+                </div>
+              )}
+              {(listingCriteria.dss_accepted || listingCriteria.children_accepted ||
+                listingCriteria.smokers_accepted || listingCriteria.dogs_accepted ||
+                listingCriteria.cats_accepted || listingCriteria.parking_available) && (
                 <div>
                   <p className="text-sm text-gray-600 mb-2">Accepted / Available:</p>
                   <div className="flex flex-wrap gap-2">
-                    {property.dssAccepted && <Badge variant="outline">DSS Accepted</Badge>}
-                    {property.childrenAccepted && <Badge variant="outline">Children</Badge>}
-                    {property.smokersAccepted && <Badge variant="outline">Smokers</Badge>}
-                    {property.dogsAccepted && <Badge variant="outline">Dogs</Badge>}
-                    {property.catsAccepted && <Badge variant="outline">Cats</Badge>}
-                    {property.parkingAvailable && <Badge variant="outline">Parking</Badge>}
+                    {listingCriteria.dss_accepted && <Badge variant="outline">DSS Accepted</Badge>}
+                    {listingCriteria.children_accepted && <Badge variant="outline">Children</Badge>}
+                    {listingCriteria.smokers_accepted && <Badge variant="outline">Smokers</Badge>}
+                    {listingCriteria.dogs_accepted && <Badge variant="outline">Dogs</Badge>}
+                    {listingCriteria.cats_accepted && <Badge variant="outline">Cats</Badge>}
+                    {listingCriteria.parking_available && <Badge variant="outline">Parking</Badge>}
                   </div>
                 </div>
               )}
