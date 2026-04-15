@@ -148,6 +148,11 @@ import ArrearsReminderWorkflow from "@/pages/ArrearsReminderWorkflow";
 // Compliance Pages
 import UnmanagedComplianceReport from "@/pages/UnmanagedComplianceReport";
 
+// Tax & Benefits Pages
+import LHABenefitManagement from "@/pages/LHABenefitManagement";
+import OverseasTaxManagement from "@/pages/OverseasTaxManagement";
+import HMRCRentReport from "@/pages/HMRCRentReport";
+
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
 import ChartOfAccounts from "@/pages/ChartOfAccounts";
@@ -481,6 +486,11 @@ function Router() {
         {/* Communications Routes */}
         <Route path="/crm/letter-templates"><CRMLayout><LetterTemplateManagement /></CRMLayout></Route>
         <Route path="/crm/arrears-reminders"><CRMLayout><ArrearsReminderWorkflow /></CRMLayout></Route>
+
+        {/* Tax & Benefits Routes */}
+        <Route path="/crm/lha-benefits"><CRMLayout><LHABenefitManagement /></CRMLayout></Route>
+        <Route path="/crm/overseas-tax"><CRMLayout><OverseasTaxManagement /></CRMLayout></Route>
+        <Route path="/crm/hmrc-report"><CRMLayout><HMRCRentReport /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>

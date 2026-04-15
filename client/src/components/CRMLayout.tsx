@@ -17,7 +17,8 @@ import {
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
-  FolderTree, Percent, Banknote, Handshake, Target, Phone, PiggyBank, AlertCircle
+  FolderTree, Percent, Banknote, Handshake, Target, Phone, PiggyBank, AlertCircle,
+  HandCoins, Globe
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -390,6 +391,18 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/account-maintenance') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/account-maintenance')}>
                   <Settings2 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/account-maintenance') ? 'text-white' : 'text-gray-400'}`} />
                   Account Maintenance
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/lha-benefits') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/lha-benefits')}>
+                  <HandCoins className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/lha-benefits') ? 'text-white' : 'text-gray-400'}`} />
+                  LHA Benefits
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/overseas-tax') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/overseas-tax')}>
+                  <Globe className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/overseas-tax') ? 'text-white' : 'text-gray-400'}`} />
+                  Overseas Tax
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/hmrc-report') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/hmrc-report')}>
+                  <FileSpreadsheet className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/hmrc-report') ? 'text-white' : 'text-gray-400'}`} />
+                  HMRC Report
                 </button>
 
                 {/* PM Workflows sub-group */}
