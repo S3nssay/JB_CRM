@@ -70,6 +70,15 @@ interface PropertyData {
   isStudentLet?: boolean;
   isHolidayLet?: boolean;
   isCouncilLet?: boolean;
+  // Compliance management flags
+  manageGas?: boolean;
+  manageElectrical?: boolean;
+  manageSmokeAlarms?: boolean;
+  manageCoAlarms?: boolean;
+  manageBoiler?: boolean;
+  blockManagementManagesGas?: boolean;
+  blockManagementManagesElectrical?: boolean;
+  blockManagementManagesFire?: boolean;
 }
 
 function GroupViewingSection({ propertyId }: { propertyId: number }) {
@@ -1589,6 +1598,59 @@ export default function PropertyEdit() {
                   { id: 'isStudentLet', label: 'Student Let' },
                   { id: 'isHolidayLet', label: 'Holiday Let' },
                   { id: 'isCouncilLet', label: 'Council Let' },
+                ].map(({ id, label }) => (
+                  <div key={id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={id}
+                      checked={(formData as any)[id] ?? false}
+                      onCheckedChange={(checked) => updateField(id as keyof PropertyData, !!checked)}
+                    />
+                    <Label htmlFor={id} className="cursor-pointer text-sm font-normal">{label}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Compliance Management */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Compliance Management
+            </CardTitle>
+            <CardDescription>Configure which compliance areas are managed by John Barclay</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <Label className="text-sm font-medium mb-3 block">Directly Managed</Label>
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                {[
+                  { id: 'manageGas', label: 'Manage Gas' },
+                  { id: 'manageElectrical', label: 'Manage Electrical' },
+                  { id: 'manageSmokeAlarms', label: 'Manage Smoke Alarms' },
+                  { id: 'manageCoAlarms', label: 'Manage CO Alarms' },
+                  { id: 'manageBoiler', label: 'Manage Boiler' },
+                ].map(({ id, label }) => (
+                  <div key={id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={id}
+                      checked={(formData as any)[id] ?? false}
+                      onCheckedChange={(checked) => updateField(id as keyof PropertyData, !!checked)}
+                    />
+                    <Label htmlFor={id} className="cursor-pointer text-sm font-normal">{label}</Label>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm font-medium mb-3 block">Block Management</Label>
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                {[
+                  { id: 'blockManagementManagesGas', label: 'Block Mgmt Manages Gas' },
+                  { id: 'blockManagementManagesElectrical', label: 'Block Mgmt Manages Electrical' },
+                  { id: 'blockManagementManagesFire', label: 'Block Mgmt Manages Fire' },
                 ].map(({ id, label }) => (
                   <div key={id} className="flex items-center space-x-2">
                     <Checkbox

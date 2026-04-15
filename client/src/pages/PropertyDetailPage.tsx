@@ -26,6 +26,10 @@ import {
 import { Link, useParams } from 'wouter';
 import EnquiryChatbot from '@/components/EnquiryChatbot';
 import PropertyHistoryTimeline from '@/components/PropertyHistoryTimeline';
+import PropertyInsuranceSection from '@/components/PropertyInsuranceSection';
+import BoilerInformationSection from '@/components/BoilerInformationSection';
+import HmoComplianceItems from '@/components/HmoComplianceItems';
+import GasBoilerCoverSection from '@/components/GasBoilerCoverSection';
 
 interface Property {
   id: number;
@@ -64,6 +68,15 @@ interface Property {
   isStudentLet?: boolean;
   isHolidayLet?: boolean;
   isCouncilLet?: boolean;
+  // Compliance management flags
+  manageGas?: boolean;
+  manageElectrical?: boolean;
+  manageSmokeAlarms?: boolean;
+  manageCoAlarms?: boolean;
+  manageBoiler?: boolean;
+  blockManagementManagesGas?: boolean;
+  blockManagementManagesElectrical?: boolean;
+  blockManagementManagesFire?: boolean;
 }
 
 const EPC_COLORS: Record<string, { bg: string; text: string; width: string }> = {
@@ -758,6 +771,38 @@ export default function PropertyDetailPage() {
             </Card>
           </div>
         </div>
+      </div>
+
+      {/* Compliance Sections */}
+      <div className="max-w-7xl mx-auto px-4 pb-4 space-y-4">
+        {/* Compliance management flags summary */}
+        {(property.manageGas || property.manageElectrical || property.manageSmokeAlarms ||
+          property.manageCoAlarms || property.manageBoiler ||
+          property.blockManagementManagesGas || property.blockManagementManagesElectrical ||
+          property.blockManagementManagesFire) && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Compliance Management</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {property.manageGas && <Badge variant="outline">Gas Managed</Badge>}
+                {property.manageElectrical && <Badge variant="outline">Electrical Managed</Badge>}
+                {property.manageSmokeAlarms && <Badge variant="outline">Smoke Alarms Managed</Badge>}
+                {property.manageCoAlarms && <Badge variant="outline">CO Alarms Managed</Badge>}
+                {property.manageBoiler && <Badge variant="outline">Boiler Managed</Badge>}
+                {property.blockManagementManagesGas && <Badge variant="secondary">Block Mgmt: Gas</Badge>}
+                {property.blockManagementManagesElectrical && <Badge variant="secondary">Block Mgmt: Electrical</Badge>}
+                {property.blockManagementManagesFire && <Badge variant="secondary">Block Mgmt: Fire</Badge>}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <PropertyInsuranceSection propertyId={property.id} />
+        <BoilerInformationSection propertyId={property.id} />
+        <GasBoilerCoverSection propertyId={property.id} />
+        {property.isHmo && <HmoComplianceItems propertyId={property.id} />}
       </div>
 
       {/* Property History Timeline */}

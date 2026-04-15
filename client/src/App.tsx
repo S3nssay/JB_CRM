@@ -137,6 +137,9 @@ import OfficeAccountPage from "@/pages/OfficeAccountPage";
 import ReserveAccountsPage from "@/pages/ReserveAccountsPage";
 import DepositAccountPage from "@/pages/DepositAccountPage";
 
+// Compliance Pages
+import UnmanagedComplianceReport from "@/pages/UnmanagedComplianceReport";
+
 // Accounting Pages
 import BusinessSettings from "@/pages/BusinessSettings";
 import ChartOfAccounts from "@/pages/ChartOfAccounts";
@@ -363,6 +366,7 @@ function Router() {
         <Route path="/crm/rental-agreements"><CRMLayout><RentalAgreements /></CRMLayout></Route>
         <Route path="/crm/tenancies/:id">{(params: any) => <CRMLayout><TenancyDetails {...params} /></CRMLayout>}</Route>
         <Route path="/crm/support-tickets"><CRMLayout><SupportTickets /></CRMLayout></Route>
+        <Route path="/crm/compliance/unmanaged"><CRMLayout><UnmanagedComplianceReport /></CRMLayout></Route>
         <Route path="/crm/compliance"><CRMLayout><ComplianceReference /></CRMLayout></Route>
         <Route path="/crm/onboarding/landlord"><CRMLayout><LandlordOnboarding /></CRMLayout></Route>
         <Route path="/crm/onboarding/corporate"><CRMLayout><CorporateOnboarding /></CRMLayout></Route>
