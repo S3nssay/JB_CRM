@@ -244,17 +244,8 @@ export const properties = pgTable("property", {
   // Identification & Access (Key Data migration fields)
   keyCode: text("key_code"), // Key safe/lockbox code
   propCode: text("prop_code"), // Legacy property reference code
-  gasMeterSerial: text("gas_meter_serial"),
-  electricityMeterSerial: text("electricity_meter_serial"),
-  waterMeterSerial: text("water_meter_serial"),
-  lockCode: text("lock_code"),
-  securityAlarmCode: text("security_alarm_code"),
-  fireAlarmCode: text("fire_alarm_code"),
-  valuationRef: text("valuation_ref"), // Legacy valuation reference
-  estateRef: text("estate_ref"), // Legacy estate/block reference
 
   // Property Classification (Key Data migration fields)
-  propertyTypeSecondary: text("property_type_secondary"), // e.g. 'end_terrace', 'mid_terrace', 'semi_detached'
   isStudentLet: boolean("is_student_let").default(false),
   isHolidayLet: boolean("is_holiday_let").default(false),
   isCouncilLet: boolean("is_council_let").default(false),
@@ -263,24 +254,62 @@ export const properties = pgTable("property", {
   blockManagementContact: text("block_management_contact"),
   parentPropertyId: integer("parent_property_id"), // For units within a block/development
 
-  // Applicant Match Criteria (Key Data migration fields)
-  dssAccepted: boolean("dss_accepted").default(false), // DSS/Housing Benefit accepted
+  // Timestamps
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow()
+});
+
+// Meter readings and serial numbers for managed properties
+export const propertyMeters = pgTable("property_meters", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  meterType: text("meter_type").notNull(), // gas, electricity, water
+  serialNumber: text("serial_number"),
+  location: text("location"),
+  lastReading: text("last_reading"),
+  lastReadingDate: timestamp("last_reading_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyMeterSchema = createInsertSchema(propertyMeters).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyMeter = typeof propertyMeters.$inferSelect;
+export type InsertPropertyMeter = z.infer<typeof insertPropertyMeterSchema>;
+
+// Access codes (locks, alarms, gates) for managed properties
+export const propertyAccessCodes = pgTable("property_access_codes", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  codeType: text("code_type").notNull(), // lock, security_alarm, fire_alarm, key_safe, gate, communal_door
+  codeValue: text("code_value"),
+  notes: text("notes"),
+  updatedBy: integer("updated_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyAccessCodeSchema = createInsertSchema(propertyAccessCodes).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyAccessCode = typeof propertyAccessCodes.$inferSelect;
+export type InsertPropertyAccessCode = z.infer<typeof insertPropertyAccessCodeSchema>;
+
+// Tenant applicant criteria and letting classification for a property listing
+export const propertyListingCriteria = pgTable("property_listing_criteria", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  dssAccepted: boolean("dss_accepted").default(false),
   childrenAccepted: boolean("children_accepted").default(true),
   smokersAccepted: boolean("smokers_accepted").default(false),
   dogsAccepted: boolean("dogs_accepted").default(false),
   catsAccepted: boolean("cats_accepted").default(false),
   parkingAvailable: boolean("parking_available").default(false),
-  lettingType: text("letting_type"), // e.g. 'long_let', 'short_let', 'student', 'corporate'
-  idealRentDay: integer("ideal_rent_day"), // Preferred day of month for rent collection (1-28)
-
-  // Operational (Key Data migration fields)
-  generateMultipleRents: boolean("generate_multiple_rents").default(false), // Generate split rent schedules
-  generateRentsInArrears: boolean("generate_rents_in_arrears").default(false), // Rent collected in arrears
-
-  // Timestamps
+  lettingType: text("letting_type"), // long_term, short_term, commercial, student
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
+
+export const insertPropertyListingCriteriaSchema = createInsertSchema(propertyListingCriteria).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyListingCriteria = typeof propertyListingCriteria.$inferSelect;
+export type InsertPropertyListingCriteria = z.infer<typeof insertPropertyListingCriteriaSchema>;
 
 // Property portal listings - tracking property syndication to external portals
 export const propertyPortalListings = pgTable("property_portal_listing", {
