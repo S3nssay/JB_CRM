@@ -141,6 +141,10 @@ import TenantRentBook from "@/pages/TenantRentBook";
 import RecurringLandlordCharges from "@/pages/RecurringLandlordCharges";
 import AccountMaintenance from "@/pages/AccountMaintenance";
 
+// Communications Pages
+import LetterTemplateManagement from "@/pages/LetterTemplateManagement";
+import ArrearsReminderWorkflow from "@/pages/ArrearsReminderWorkflow";
+
 // Compliance Pages
 import UnmanagedComplianceReport from "@/pages/UnmanagedComplianceReport";
 
@@ -473,6 +477,10 @@ function Router() {
         <Route path="/crm/tenant-rent-book"><CRMLayout><TenantRentBook /></CRMLayout></Route>
         <Route path="/crm/recurring-charges"><CRMLayout><RecurringLandlordCharges /></CRMLayout></Route>
         <Route path="/crm/account-maintenance"><CRMLayout><AccountMaintenance /></CRMLayout></Route>
+
+        {/* Communications Routes */}
+        <Route path="/crm/letter-templates"><CRMLayout><LetterTemplateManagement /></CRMLayout></Route>
+        <Route path="/crm/arrears-reminders"><CRMLayout><ArrearsReminderWorkflow /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>

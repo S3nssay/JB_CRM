@@ -21,6 +21,7 @@ import {
   Loader2, Plus, Send, Mail, MessageSquare, Phone, Users,
   AlertCircle, Megaphone, UserPlus,
 } from 'lucide-react';
+import CCRecipientPicker, { CCRecipient } from '@/components/CCRecipientPicker';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export default function BulkMessaging() {
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showAddRecipientsDialog, setShowAddRecipientsDialog] = useState(false);
   const [selectedCampaignId, setSelectedCampaignId] = useState<number | null>(null);
+  const [ccRecipients, setCcRecipients] = useState<CCRecipient[]>([]);
 
   // Campaign form state
   const [campaignForm, setCampaignForm] = useState({
@@ -331,7 +333,7 @@ export default function BulkMessaging() {
       </Card>
 
       {/* Create Campaign Dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Dialog open={showCreateDialog} onOpenChange={(o) => { setShowCreateDialog(o); if (!o) setCcRecipients([]); }}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>Create Campaign</DialogTitle>
@@ -399,9 +401,16 @@ export default function BulkMessaging() {
                 onChange={(e) => setCampaignForm({ ...campaignForm, templateId: e.target.value })}
               />
             </div>
+            <div className="space-y-2">
+              <Label>CC Recipients</Label>
+              <CCRecipientPicker
+                selectedRecipients={ccRecipients}
+                onRecipientsChange={setCcRecipients}
+              />
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowCreateDialog(false); setCcRecipients([]); }}>
               Cancel
             </Button>
             <Button onClick={handleCreateCampaign} disabled={createCampaignMutation.isPending}>

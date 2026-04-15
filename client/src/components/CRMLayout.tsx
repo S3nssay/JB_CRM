@@ -17,7 +17,7 @@ import {
   Gauge, PoundSterling, ShieldCheck, Calendar, ClipboardList, ClipboardCheck, Settings2,
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
-  FolderTree, Percent, Banknote, Handshake, Target, Phone, PiggyBank
+  FolderTree, Percent, Banknote, Handshake, Target, Phone, PiggyBank, AlertCircle
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -266,6 +266,16 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all mt-1 ${isActive('/crm/call-management') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/call-management')}>
                 <Phone className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/call-management') ? 'text-white' : 'text-orange-400'}`} />
                 Call Management
+              </button>
+              {/* Letter Templates */}
+              <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/letter-templates') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/letter-templates')}>
+                <FileText className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/letter-templates') ? 'text-white' : 'text-gray-400'}`} />
+                Letter Templates
+              </button>
+              {/* Arrears Reminders */}
+              <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/arrears-reminders') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/arrears-reminders')}>
+                <AlertCircle className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/arrears-reminders') ? 'text-white' : 'text-gray-400'}`} />
+                Arrears Reminders
               </button>
             </div>
 
