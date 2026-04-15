@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { Link, useParams } from 'wouter';
 import EnquiryChatbot from '@/components/EnquiryChatbot';
+import PropertyHistoryTimeline from '@/components/PropertyHistoryTimeline';
 
 interface Property {
   id: number;
@@ -790,6 +791,11 @@ export default function PropertyDetailPage() {
             </Card>
           </div>
         </div>
+      </div>
+
+      {/* Property History Timeline */}
+      <div className="max-w-7xl mx-auto px-4 pb-8">
+        <PropertyHistoryTimeline propertyId={property.id} />
       </div>
 
       {/* Floor Plan Modal */}

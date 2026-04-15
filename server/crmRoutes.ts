@@ -17496,3 +17496,93 @@ crmRouter.put('/properties/:id/systems-inventory/:systemId', requireAgent, async
     res.status(500).json({ error: 'Failed to update systems inventory entry' });
   }
 });
+
+// Property History Timeline
+crmRouter.get('/properties/:id/history', requireAgent, async (req: any, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) {
+      return res.status(400).json({ error: 'Invalid property ID' });
+    }
+
+    const result = await pool.query(`
+      SELECT * FROM (
+        -- Maintenance tickets
+        SELECT
+          mt.id::text || '-maintenance' AS id,
+          'maintenance' AS type,
+          COALESCE('Maintenance ticket: ' || mt.title, 'Maintenance ticket') AS description,
+          mt.created_at AS created_at,
+          u.full_name AS user_name
+        FROM maintenance_ticket mt
+        LEFT JOIN "user" u ON u.id = mt.assigned_to_id
+        WHERE mt.property_id = $1
+
+        UNION ALL
+
+        -- Documents
+        SELECT
+          d.id::text || '-document' AS id,
+          'document' AS type,
+          COALESCE('Document uploaded: ' || d.name, 'Document uploaded') AS description,
+          d.created_at AS created_at,
+          u.full_name AS user_name
+        FROM document d
+        LEFT JOIN "user" u ON u.id = d.uploaded_by
+        WHERE d.property_id = $1
+
+        UNION ALL
+
+        -- Tenancy contracts
+        SELECT
+          tc.id::text || '-tenancy' AS id,
+          'tenancy' AS type,
+          'Tenancy contract created (status: ' || tc.status || ')' AS description,
+          tc.created_at AS created_at,
+          NULL::text AS user_name
+        FROM tenancy_contract tc
+        WHERE tc.property_id = $1
+
+        UNION ALL
+
+        -- Invoices
+        SELECT
+          i.id::text || '-financial' AS id,
+          'financial' AS type,
+          'Invoice ' || i.invoice_number || ' (' || i.invoice_type || ', £' || (i.total_amount / 100.0)::numeric(10,2)::text || ')' AS description,
+          i.created_at AS created_at,
+          NULL::text AS user_name
+        FROM invoice i
+        WHERE i.property_id = $1
+
+        UNION ALL
+
+        -- Calendar events
+        SELECT
+          ce.id::text || '-calendar' AS id,
+          'calendar' AS type,
+          'Event: ' || ce.title AS description,
+          ce.created_at AS created_at,
+          u.full_name AS user_name
+        FROM calendar_event ce
+        LEFT JOIN "user" u ON u.id = ce.organizer_id
+        WHERE ce.property_id = $1
+      ) history
+      ORDER BY created_at DESC
+      LIMIT 50
+    `, [propertyId]);
+
+    const events = result.rows.map((row: any) => ({
+      id: row.id,
+      type: row.type,
+      description: row.description,
+      createdAt: row.created_at,
+      userName: row.user_name || null,
+    }));
+
+    res.json(events);
+  } catch (error) {
+    console.error('Error fetching property history:', error);
+    res.status(500).json({ error: 'Failed to fetch property history' });
+  }
+});
