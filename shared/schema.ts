@@ -8369,3 +8369,39 @@ export const guaranteedPayments = pgTable("guaranteed_payment", {
 export const insertGuaranteedPaymentSchema = createInsertSchema(guaranteedPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export type GuaranteedPayment = typeof guaranteedPayments.$inferSelect;
 export type InsertGuaranteedPayment = z.infer<typeof insertGuaranteedPaymentSchema>;
+
+export const letterTemplates = pgTable("letter_templates", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  category: text("category").notNull(), // landlord, tenant, applicant, general, arrears
+  subject: text("subject"),
+  bodyHtml: text("body_html").notNull(),
+  mergeFields: text("merge_fields").array(),
+  isActive: boolean("is_active").default(true),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertLetterTemplateSchema = createInsertSchema(letterTemplates).omit({ id: true, createdAt: true, updatedAt: true });
+export type LetterTemplate = typeof letterTemplates.$inferSelect;
+export type InsertLetterTemplate = z.infer<typeof insertLetterTemplateSchema>;
+
+export const arrearsReminderConfig = pgTable("arrears_reminder_config", {
+  id: serial("id").primaryKey(),
+  tier: integer("tier").notNull(),
+  name: text("name").notNull(),
+  daysOverdue: integer("days_overdue").notNull(),
+  templateId: integer("template_id"),
+  sendEmail: boolean("send_email").default(true),
+  sendSms: boolean("send_sms").default(false),
+  sendLetter: boolean("send_letter").default(false),
+  escalateToManager: boolean("escalate_to_manager").default(false),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertArrearsReminderConfigSchema = createInsertSchema(arrearsReminderConfig).omit({ id: true, createdAt: true, updatedAt: true });
+export type ArrearsReminderConfig = typeof arrearsReminderConfig.$inferSelect;
+export type InsertArrearsReminderConfig = z.infer<typeof insertArrearsReminderConfigSchema>;
