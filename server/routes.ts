@@ -188,6 +188,7 @@ import { costLedgerRouter } from './costLedgerRoutes';
 import { offerRouter } from './offerRoutes';
 import { pmOverviewRouter } from './pmOverviewRoutes';
 import { sourcingRouter } from './sourcingRoutes';
+import { accountManagementRoutes } from './accountManagementRoutes';
 import path from 'path';
 import express from 'express';
 
@@ -212,6 +213,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', offerRouter);
   app.use('/api/crm', pmOverviewRouter);
   app.use('/api/crm', sourcingRouter);
+  app.use('/api/crm', accountManagementRoutes);
 
   // ==========================================
   // VAPI VOICE WEBHOOKS (at /api/voice/*)
@@ -2309,7 +2311,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           bio: staffProfiles.publicBio,
           photo: staffProfiles.publicPhoto,
           department: staffProfiles.department,
-          displayOrder: staffProfiles.publicDisplayOrder
+          displayOrder: staffProfiles.publicDisplayOrder,
+          phone: users.phone
         })
         .from(staffProfiles)
         .innerJoin(users, eq(staffProfiles.userId, users.id))
@@ -2319,7 +2322,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             eq(users.isActive, true)
           )
         )
-        .orderBy(staffProfiles.publicDisplayOrder);
+        .orderBy(staffProfiles.publicDisplayOrder)
+        .limit(4);
 
       // Transform to use publicDisplayName if set, otherwise fullName
       const formattedTeam = team.map(member => ({
@@ -2329,7 +2333,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bio: member.bio || '',
         photo: member.photo || '',
         department: member.department,
-        displayOrder: member.displayOrder
+        displayOrder: member.displayOrder,
+        phone: member.phone || ''
       }));
 
       res.json(formattedTeam);
