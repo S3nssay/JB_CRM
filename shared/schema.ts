@@ -8293,3 +8293,79 @@ export const gasBoilerCover = pgTable("gas_boiler_cover", {
 export const insertGasBoilerCoverSchema = createInsertSchema(gasBoilerCover).omit({ id: true, createdAt: true, updatedAt: true });
 export type GasBoilerCover = typeof gasBoilerCover.$inferSelect;
 export type InsertGasBoilerCover = z.infer<typeof insertGasBoilerCoverSchema>;
+
+// ─── Financial Ledger Tables ───────────────────────────────────────────────────
+
+export const recurringLandlordCharges = pgTable("recurring_landlord_charge", {
+  id: serial("id").primaryKey(),
+  landlordId: integer("landlord_id").notNull(),
+  propertyId: integer("property_id"),
+  description: text("description").notNull(),
+  frequency: text("frequency").notNull(), // monthly, quarterly, annually
+  amountNet: integer("amount_net").notNull(), // pence
+  amountVat: integer("amount_vat").notNull().default(0),
+  amountGross: integer("amount_gross").notNull(),
+  nextDueDate: timestamp("next_due_date").notNull(),
+  lastProcessedDate: timestamp("last_processed_date"),
+  endDate: timestamp("end_date"),
+  isActive: boolean("is_active").notNull().default(true),
+  payeeName: text("payee_name"),
+  category: text("category"), // management_fee, insurance, service_charge, ground_rent, other
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertRecurringLandlordChargeSchema = createInsertSchema(recurringLandlordCharges).omit({ id: true, createdAt: true, updatedAt: true });
+export type RecurringLandlordCharge = typeof recurringLandlordCharges.$inferSelect;
+export type InsertRecurringLandlordCharge = z.infer<typeof insertRecurringLandlordChargeSchema>;
+
+export const tenantCreditAccounts = pgTable("tenant_credit_account", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  balance: integer("balance").notNull().default(0), // pence
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertTenantCreditAccountSchema = createInsertSchema(tenantCreditAccounts).omit({ id: true, createdAt: true, updatedAt: true });
+export type TenantCreditAccount = typeof tenantCreditAccounts.$inferSelect;
+export type InsertTenantCreditAccount = z.infer<typeof insertTenantCreditAccountSchema>;
+
+export const tenantCreditTransactions = pgTable("tenant_credit_transaction", {
+  id: serial("id").primaryKey(),
+  tenantCreditAccountId: integer("tenant_credit_account_id").notNull(),
+  transactionType: text("transaction_type").notNull(), // credit, debit, write_off, transfer
+  amount: integer("amount").notNull(), // pence
+  description: text("description").notNull(),
+  reference: text("reference"),
+  transactionDate: timestamp("transaction_date").notNull(),
+  balanceAfter: integer("balance_after").notNull(),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertTenantCreditTransactionSchema = createInsertSchema(tenantCreditTransactions).omit({ id: true, createdAt: true });
+export type TenantCreditTransaction = typeof tenantCreditTransactions.$inferSelect;
+export type InsertTenantCreditTransaction = z.infer<typeof insertTenantCreditTransactionSchema>;
+
+export const guaranteedPayments = pgTable("guaranteed_payment", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(),
+  tenancyId: integer("tenancy_id"),
+  propertyId: integer("property_id"),
+  schemeName: text("scheme_name").notNull(),
+  monthlyAmount: integer("monthly_amount").notNull(), // pence
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  policyNumber: text("policy_number"),
+  status: text("status").notNull().default("active"), // active, expired, cancelled, claimed
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertGuaranteedPaymentSchema = createInsertSchema(guaranteedPayments).omit({ id: true, createdAt: true, updatedAt: true });
+export type GuaranteedPayment = typeof guaranteedPayments.$inferSelect;
+export type InsertGuaranteedPayment = z.infer<typeof insertGuaranteedPaymentSchema>;
