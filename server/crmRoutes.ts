@@ -537,7 +537,10 @@ const VALID_PROPERTY_FIELDS = new Set([
   'keyCode', 'propCode',
   // Classification flags
   'isStudentLet', 'isHolidayLet', 'isCouncilLet', 'isHmo',
-  'blockManagementCompany', 'blockManagementContact', 'parentPropertyId'
+  'blockManagementCompany', 'blockManagementContact', 'parentPropertyId',
+  // Compliance management flags
+  'manageGas', 'manageElectrical', 'manageSmokeAlarms', 'manageCoAlarms', 'manageBoiler',
+  'blockManagementManagesGas', 'blockManagementManagesElectrical', 'blockManagementManagesFire'
 ]);
 
 // Field name mappings: frontend alias -> schema column name
@@ -17780,5 +17783,412 @@ crmRouter.put('/properties/:id/listing-criteria', requireAgent, async (req, res)
   } catch (error) {
     console.error('Error upserting property listing criteria:', error);
     res.status(500).json({ error: 'Failed to upsert property listing criteria' });
+  }
+});
+
+// ==========================================
+// PROPERTY INSURANCE ENDPOINTS
+// ==========================================
+
+// GET /properties/:id/insurance - list all insurance records for a property
+crmRouter.get('/properties/:id/insurance', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM property_insurance WHERE property_id = $1 ORDER BY created_at DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property insurance:', error);
+    res.status(500).json({ error: 'Failed to fetch property insurance' });
+  }
+});
+
+// POST /properties/:id/insurance - add insurance record for a property
+crmRouter.post('/properties/:id/insurance', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      insurance_type, provider, policy_number, expiry_date,
+      premium_amount, excess_amount, cover_description,
+      contact_phone, contact_email, is_active, notes
+    } = req.body;
+    const result = await pool.query(
+      `INSERT INTO property_insurance
+         (property_id, insurance_type, provider, policy_number, expiry_date,
+          premium_amount, excess_amount, cover_description, contact_phone,
+          contact_email, is_active, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING *`,
+      [
+        id,
+        insurance_type || null,
+        provider || null,
+        policy_number || null,
+        expiry_date || null,
+        premium_amount ?? null,
+        excess_amount ?? null,
+        cover_description || null,
+        contact_phone || null,
+        contact_email || null,
+        is_active !== undefined ? is_active : true,
+        notes || null
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating property insurance:', error);
+    res.status(500).json({ error: 'Failed to create property insurance' });
+  }
+});
+
+// PUT /insurance/:insuranceId - update an insurance record
+crmRouter.put('/insurance/:insuranceId', requireAgent, async (req: any, res) => {
+  try {
+    const { insuranceId } = req.params;
+    const {
+      insurance_type, provider, policy_number, expiry_date,
+      premium_amount, excess_amount, cover_description,
+      contact_phone, contact_email, is_active, notes
+    } = req.body;
+    const result = await pool.query(
+      `UPDATE property_insurance SET
+         insurance_type = COALESCE($1, insurance_type),
+         provider = COALESCE($2, provider),
+         policy_number = COALESCE($3, policy_number),
+         expiry_date = COALESCE($4, expiry_date),
+         premium_amount = COALESCE($5, premium_amount),
+         excess_amount = COALESCE($6, excess_amount),
+         cover_description = COALESCE($7, cover_description),
+         contact_phone = COALESCE($8, contact_phone),
+         contact_email = COALESCE($9, contact_email),
+         is_active = COALESCE($10, is_active),
+         notes = COALESCE($11, notes),
+         updated_at = NOW()
+       WHERE id = $12
+       RETURNING *`,
+      [
+        insurance_type || null,
+        provider || null,
+        policy_number || null,
+        expiry_date || null,
+        premium_amount ?? null,
+        excess_amount ?? null,
+        cover_description || null,
+        contact_phone || null,
+        contact_email || null,
+        is_active !== undefined ? is_active : null,
+        notes || null,
+        insuranceId
+      ]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Insurance record not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating property insurance:', error);
+    res.status(500).json({ error: 'Failed to update property insurance' });
+  }
+});
+
+// DELETE /insurance/:insuranceId - delete an insurance record
+crmRouter.delete('/insurance/:insuranceId', requireAgent, async (req: any, res) => {
+  try {
+    const { insuranceId } = req.params;
+    const result = await pool.query(
+      `DELETE FROM property_insurance WHERE id = $1 RETURNING id`,
+      [insuranceId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Insurance record not found' });
+    res.json({ success: true, deletedId: result.rows[0].id });
+  } catch (error) {
+    console.error('Error deleting property insurance:', error);
+    res.status(500).json({ error: 'Failed to delete property insurance' });
+  }
+});
+
+// ==========================================
+// PROPERTY BOILER ENDPOINTS
+// ==========================================
+
+// GET /properties/:id/boilers - list boilers for a property
+crmRouter.get('/properties/:id/boilers', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM property_boilers WHERE property_id = $1 ORDER BY created_at DESC`,
+      [id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching property boilers:', error);
+    res.status(500).json({ error: 'Failed to fetch property boilers' });
+  }
+});
+
+// POST /properties/:id/boilers - add a boiler record for a property
+crmRouter.post('/properties/:id/boilers', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      make, model, serial_number, fuel_type,
+      installation_date, last_service_date, next_service_due,
+      warranty_expiry, location, notes
+    } = req.body;
+    const result = await pool.query(
+      `INSERT INTO property_boilers
+         (property_id, make, model, serial_number, fuel_type,
+          installation_date, last_service_date, next_service_due,
+          warranty_expiry, location, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        id,
+        make || null,
+        model || null,
+        serial_number || null,
+        fuel_type || null,
+        installation_date || null,
+        last_service_date || null,
+        next_service_due || null,
+        warranty_expiry || null,
+        location || null,
+        notes || null
+      ]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error creating property boiler:', error);
+    res.status(500).json({ error: 'Failed to create property boiler' });
+  }
+});
+
+// PUT /boilers/:boilerId - update a boiler record
+crmRouter.put('/boilers/:boilerId', requireAgent, async (req: any, res) => {
+  try {
+    const { boilerId } = req.params;
+    const {
+      make, model, serial_number, fuel_type,
+      installation_date, last_service_date, next_service_due,
+      warranty_expiry, location, notes
+    } = req.body;
+    const result = await pool.query(
+      `UPDATE property_boilers SET
+         make = COALESCE($1, make),
+         model = COALESCE($2, model),
+         serial_number = COALESCE($3, serial_number),
+         fuel_type = COALESCE($4, fuel_type),
+         installation_date = COALESCE($5, installation_date),
+         last_service_date = COALESCE($6, last_service_date),
+         next_service_due = COALESCE($7, next_service_due),
+         warranty_expiry = COALESCE($8, warranty_expiry),
+         location = COALESCE($9, location),
+         notes = COALESCE($10, notes),
+         updated_at = NOW()
+       WHERE id = $11
+       RETURNING *`,
+      [
+        make || null,
+        model || null,
+        serial_number || null,
+        fuel_type || null,
+        installation_date || null,
+        last_service_date || null,
+        next_service_due || null,
+        warranty_expiry || null,
+        location || null,
+        notes || null,
+        boilerId
+      ]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Boiler record not found' });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating property boiler:', error);
+    res.status(500).json({ error: 'Failed to update property boiler' });
+  }
+});
+
+// DELETE /boilers/:boilerId - delete a boiler record
+crmRouter.delete('/boilers/:boilerId', requireAgent, async (req: any, res) => {
+  try {
+    const { boilerId } = req.params;
+    const result = await pool.query(
+      `DELETE FROM property_boilers WHERE id = $1 RETURNING id`,
+      [boilerId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Boiler record not found' });
+    res.json({ success: true, deletedId: result.rows[0].id });
+  } catch (error) {
+    console.error('Error deleting property boiler:', error);
+    res.status(500).json({ error: 'Failed to delete property boiler' });
+  }
+});
+
+// ==========================================
+// HMO COMPLIANCE ENDPOINTS
+// ==========================================
+
+// GET /properties/:id/hmo-compliance - get HMO compliance record for a property
+crmRouter.get('/properties/:id/hmo-compliance', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM hmo_compliance_items WHERE property_id = $1 LIMIT 1`,
+      [id]
+    );
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error fetching HMO compliance:', error);
+    res.status(500).json({ error: 'Failed to fetch HMO compliance' });
+  }
+});
+
+// PUT /properties/:id/hmo-compliance - upsert HMO compliance record for a property
+crmRouter.put('/properties/:id/hmo-compliance', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      fire_alarm_next_due, fire_equipment_next_due, fire_lighting_next_due,
+      hmo_licence_expiry, hmo_licence_number, max_occupants, notes
+    } = req.body;
+    const result = await pool.query(
+      `INSERT INTO hmo_compliance_items
+         (property_id, fire_alarm_next_due, fire_equipment_next_due, fire_lighting_next_due,
+          hmo_licence_expiry, hmo_licence_number, max_occupants, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (property_id) DO UPDATE SET
+         fire_alarm_next_due = EXCLUDED.fire_alarm_next_due,
+         fire_equipment_next_due = EXCLUDED.fire_equipment_next_due,
+         fire_lighting_next_due = EXCLUDED.fire_lighting_next_due,
+         hmo_licence_expiry = EXCLUDED.hmo_licence_expiry,
+         hmo_licence_number = EXCLUDED.hmo_licence_number,
+         max_occupants = EXCLUDED.max_occupants,
+         notes = EXCLUDED.notes,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        id,
+        fire_alarm_next_due || null,
+        fire_equipment_next_due || null,
+        fire_lighting_next_due || null,
+        hmo_licence_expiry || null,
+        hmo_licence_number || null,
+        max_occupants ?? null,
+        notes || null
+      ]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error upserting HMO compliance:', error);
+    res.status(500).json({ error: 'Failed to upsert HMO compliance' });
+  }
+});
+
+// ==========================================
+// GAS BOILER COVER ENDPOINTS
+// ==========================================
+
+// GET /properties/:id/gas-cover - get gas/boiler cover record for a property
+crmRouter.get('/properties/:id/gas-cover', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `SELECT * FROM gas_boiler_cover WHERE property_id = $1 LIMIT 1`,
+      [id]
+    );
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error fetching gas boiler cover:', error);
+    res.status(500).json({ error: 'Failed to fetch gas boiler cover' });
+  }
+});
+
+// PUT /properties/:id/gas-cover - upsert gas/boiler cover record for a property
+crmRouter.put('/properties/:id/gas-cover', requireAgent, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      provider, policy_reference, expiry_date, annual_cost,
+      contact_phone, covers_boiler, covers_heating, covers_plumbing, notes
+    } = req.body;
+    const result = await pool.query(
+      `INSERT INTO gas_boiler_cover
+         (property_id, provider, policy_reference, expiry_date, annual_cost,
+          contact_phone, covers_boiler, covers_heating, covers_plumbing, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       ON CONFLICT (property_id) DO UPDATE SET
+         provider = EXCLUDED.provider,
+         policy_reference = EXCLUDED.policy_reference,
+         expiry_date = EXCLUDED.expiry_date,
+         annual_cost = EXCLUDED.annual_cost,
+         contact_phone = EXCLUDED.contact_phone,
+         covers_boiler = EXCLUDED.covers_boiler,
+         covers_heating = EXCLUDED.covers_heating,
+         covers_plumbing = EXCLUDED.covers_plumbing,
+         notes = EXCLUDED.notes,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        id,
+        provider || null,
+        policy_reference || null,
+        expiry_date || null,
+        annual_cost ?? null,
+        contact_phone || null,
+        covers_boiler !== undefined ? covers_boiler : null,
+        covers_heating !== undefined ? covers_heating : null,
+        covers_plumbing !== undefined ? covers_plumbing : null,
+        notes || null
+      ]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error upserting gas boiler cover:', error);
+    res.status(500).json({ error: 'Failed to upsert gas boiler cover' });
+  }
+});
+
+// ==========================================
+// UNMANAGED COMPLIANCE REPORT
+// ==========================================
+
+// GET /compliance/unmanaged-report - properties where manage_gas=false OR manage_electrical=false
+crmRouter.get('/compliance/unmanaged-report', requireAgent, async (req: any, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         p.id,
+         p.address,
+         p.address_line1,
+         p.address_line2,
+         p.city,
+         p.postcode,
+         p.property_type,
+         p.manage_gas,
+         p.manage_electrical,
+         p.manage_smoke_alarms,
+         p.manage_co_alarms,
+         p.manage_boiler,
+         p.block_management_manages_gas,
+         p.block_management_manages_electrical,
+         p.block_management_manages_fire,
+         p.is_managed,
+         l.name AS landlord_name,
+         l.email AS landlord_email,
+         l.phone AS landlord_phone
+       FROM properties p
+       LEFT JOIN landlords l ON p.landlord_id = l.id
+       WHERE p.is_managed = true
+         AND (
+           p.manage_gas = false
+           OR p.manage_electrical = false
+         )
+       ORDER BY p.address ASC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching unmanaged compliance report:', error);
+    res.status(500).json({ error: 'Failed to fetch unmanaged compliance report' });
   }
 });
