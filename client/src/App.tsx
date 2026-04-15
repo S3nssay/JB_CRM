@@ -136,6 +136,10 @@ import ClientAccountPage from "@/pages/ClientAccountPage";
 import OfficeAccountPage from "@/pages/OfficeAccountPage";
 import ReserveAccountsPage from "@/pages/ReserveAccountsPage";
 import DepositAccountPage from "@/pages/DepositAccountPage";
+import LandlordLedger from "@/pages/LandlordLedger";
+import TenantRentBook from "@/pages/TenantRentBook";
+import RecurringLandlordCharges from "@/pages/RecurringLandlordCharges";
+import AccountMaintenance from "@/pages/AccountMaintenance";
 
 // Compliance Pages
 import UnmanagedComplianceReport from "@/pages/UnmanagedComplianceReport";
@@ -463,6 +467,12 @@ function Router() {
         <Route path="/crm/office-account"><CRMLayout><OfficeAccountPage /></CRMLayout></Route>
         <Route path="/crm/reserve-accounts"><CRMLayout><ReserveAccountsPage /></CRMLayout></Route>
         <Route path="/crm/deposit-account"><CRMLayout><DepositAccountPage /></CRMLayout></Route>
+
+        {/* Ledger & Finance Tools */}
+        <Route path="/crm/landlord-ledger"><CRMLayout><LandlordLedger /></CRMLayout></Route>
+        <Route path="/crm/tenant-rent-book"><CRMLayout><TenantRentBook /></CRMLayout></Route>
+        <Route path="/crm/recurring-charges"><CRMLayout><RecurringLandlordCharges /></CRMLayout></Route>
+        <Route path="/crm/account-maintenance"><CRMLayout><AccountMaintenance /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>

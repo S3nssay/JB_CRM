@@ -365,6 +365,22 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <CreditCard className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/direct-debits') ? 'text-white' : 'text-gray-400'}`} />
                   Direct Debits
                 </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/landlord-ledger') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/landlord-ledger')}>
+                  <BookOpen className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/landlord-ledger') ? 'text-white' : 'text-gray-400'}`} />
+                  Landlord Ledger
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/tenant-rent-book') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/tenant-rent-book')}>
+                  <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/tenant-rent-book') ? 'text-white' : 'text-gray-400'}`} />
+                  Tenant Rent Book
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/recurring-charges') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/recurring-charges')}>
+                  <Repeat className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/recurring-charges') ? 'text-white' : 'text-gray-400'}`} />
+                  Recurring Charges
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/account-maintenance') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/account-maintenance')}>
+                  <Settings2 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/account-maintenance') ? 'text-white' : 'text-gray-400'}`} />
+                  Account Maintenance
+                </button>
 
                 {/* PM Workflows sub-group */}
                 <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mb-1 px-3 mt-2">
