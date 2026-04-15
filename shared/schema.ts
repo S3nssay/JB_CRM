@@ -8073,3 +8073,130 @@ export const notifications = pgTable("notification", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+// ==========================================
+// UK CLIENT MONEY PROTECTION (CMP) COMPLIANCE
+// ==========================================
+
+export const clientAccountTransactions = pgTable("client_account_transactions", {
+  id: serial("id").primaryKey(),
+  transactionType: text("transaction_type").notNull(), // credit, debit, withdrawal, transfer, invoice, petty_cash
+  amount: integer("amount").notNull(), // pence
+  description: text("description").notNull(),
+  reference: text("reference"),
+  transactionDate: timestamp("transaction_date").notNull(),
+  propertyId: integer("property_id"),
+  landlordId: integer("landlord_id"),
+  tenantId: integer("tenant_id"),
+  balanceAfter: integer("balance_after").notNull(),
+  reconciled: boolean("reconciled").notNull().default(false),
+  reconciledAt: timestamp("reconciled_at"),
+  reconciledBy: integer("reconciled_by"),
+  category: text("category"), // rent, deposit, maintenance, management_fee, other
+  notes: text("notes"),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertClientAccountTransactionSchema = createInsertSchema(clientAccountTransactions).omit({ id: true, createdAt: true });
+export type ClientAccountTransaction = typeof clientAccountTransactions.$inferSelect;
+export type InsertClientAccountTransaction = z.infer<typeof insertClientAccountTransactionSchema>;
+
+export const officeAccountCategories = pgTable("office_account_categories", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertOfficeAccountCategorySchema = createInsertSchema(officeAccountCategories).omit({ id: true, createdAt: true });
+export type OfficeAccountCategory = typeof officeAccountCategories.$inferSelect;
+export type InsertOfficeAccountCategory = z.infer<typeof insertOfficeAccountCategorySchema>;
+
+export const officeAccountTransactions = pgTable("office_account_transactions", {
+  id: serial("id").primaryKey(),
+  transactionType: text("transaction_type").notNull(), // credit, debit, supplier_debit, petty_cash, recurring
+  amount: integer("amount").notNull(), // pence
+  description: text("description").notNull(),
+  reference: text("reference"),
+  transactionDate: timestamp("transaction_date").notNull(),
+  categoryId: integer("category_id"),
+  supplierName: text("supplier_name"),
+  isRecurring: boolean("is_recurring").notNull().default(false),
+  recurringFrequency: text("recurring_frequency"),
+  recurringNextDate: timestamp("recurring_next_date"),
+  balanceAfter: integer("balance_after").notNull(),
+  reconciled: boolean("reconciled").notNull().default(false),
+  notes: text("notes"),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertOfficeAccountTransactionSchema = createInsertSchema(officeAccountTransactions).omit({ id: true, createdAt: true });
+export type OfficeAccountTransaction = typeof officeAccountTransactions.$inferSelect;
+export type InsertOfficeAccountTransaction = z.infer<typeof insertOfficeAccountTransactionSchema>;
+
+export const landlordReserveAccounts = pgTable("landlord_reserve_accounts", {
+  id: serial("id").primaryKey(),
+  landlordId: integer("landlord_id").notNull(),
+  balance: integer("balance").notNull().default(0), // pence
+  targetAmount: integer("target_amount"), // pence
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertLandlordReserveAccountSchema = createInsertSchema(landlordReserveAccounts).omit({ id: true, createdAt: true });
+export type LandlordReserveAccount = typeof landlordReserveAccounts.$inferSelect;
+export type InsertLandlordReserveAccount = z.infer<typeof insertLandlordReserveAccountSchema>;
+
+export const reserveAccountTransactions = pgTable("reserve_account_transactions", {
+  id: serial("id").primaryKey(),
+  reserveAccountId: integer("reserve_account_id").notNull(),
+  transactionType: text("transaction_type").notNull(), // transfer_in, transfer_out, charge
+  amount: integer("amount").notNull(), // pence
+  description: text("description").notNull(),
+  reference: text("reference"),
+  transactionDate: timestamp("transaction_date").notNull(),
+  balanceAfter: integer("balance_after").notNull(),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertReserveAccountTransactionSchema = createInsertSchema(reserveAccountTransactions).omit({ id: true, createdAt: true });
+export type ReserveAccountTransaction = typeof reserveAccountTransactions.$inferSelect;
+export type InsertReserveAccountTransaction = z.infer<typeof insertReserveAccountTransactionSchema>;
+
+export const depositAccountTransactions = pgTable("deposit_account_transactions", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id"),
+  tenancyId: integer("tenancy_id"),
+  propertyId: integer("property_id"),
+  transactionType: text("transaction_type").notNull(), // deposit_in, deposit_out, interest
+  amount: integer("amount").notNull(), // pence
+  description: text("description").notNull(),
+  reference: text("reference"),
+  transactionDate: timestamp("transaction_date").notNull(),
+  balanceAfter: integer("balance_after").notNull(),
+  notes: text("notes"),
+  createdBy: integer("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertDepositAccountTransactionSchema = createInsertSchema(depositAccountTransactions).omit({ id: true, createdAt: true });
+export type DepositAccountTransaction = typeof depositAccountTransactions.$inferSelect;
+export type InsertDepositAccountTransaction = z.infer<typeof insertDepositAccountTransactionSchema>;
+
+export const statementSequences = pgTable("statement_sequences", {
+  id: serial("id").primaryKey(),
+  landlordId: integer("landlord_id").notNull(),
+  lastStatementNumber: integer("last_statement_number").notNull().default(0),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertStatementSequenceSchema = createInsertSchema(statementSequences).omit({ id: true });
+export type StatementSequence = typeof statementSequences.$inferSelect;
+export type InsertStatementSequence = z.infer<typeof insertStatementSequenceSchema>;
