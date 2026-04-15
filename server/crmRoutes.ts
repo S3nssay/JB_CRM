@@ -532,7 +532,20 @@ const VALID_PROPERTY_FIELDS = new Set([
   'rentAmount', 'leaseLength', 'groundRent', 'serviceCharge',
   'isPublishedWebsite', 'isPublishedZoopla', 'isPublishedRightmove',
   'isPublishedOnthemarket', 'isPublishedSocial', 'publishedToPortals',
-  'notes', 'isListed', 'isRental'
+  'notes', 'isListed', 'isRental',
+  // Identification & access fields
+  'keyCode', 'propCode', 'lockCode', 'securityAlarmCode', 'fireAlarmCode',
+  'valuationRef', 'estateRef',
+  // Meter references
+  'gasMeterSerial', 'electricityMeterSerial', 'waterMeterSerial',
+  // Classification flags
+  'propertyTypeSecondary', 'isStudentLet', 'isHolidayLet', 'isCouncilLet', 'isHmo',
+  'blockManagementCompany', 'blockManagementContact', 'parentPropertyId',
+  // Applicant criteria
+  'dssAccepted', 'childrenAccepted', 'smokersAccepted', 'dogsAccepted', 'catsAccepted',
+  'parkingAvailable', 'lettingType', 'idealRentDay',
+  // Rent generation
+  'generateMultipleRents', 'generateRentsInArrears'
 ]);
 
 // Field name mappings: frontend alias -> schema column name
@@ -1754,7 +1767,40 @@ crmRouter.get('/properties/:id', requireAgent, async (req, res) => {
       status: properties.status,
       notes: properties.notes,
       createdAt: properties.createdAt,
-      updatedAt: properties.updatedAt
+      updatedAt: properties.updatedAt,
+      // Identification & access
+      keyCode: properties.keyCode,
+      propCode: properties.propCode,
+      lockCode: properties.lockCode,
+      securityAlarmCode: properties.securityAlarmCode,
+      fireAlarmCode: properties.fireAlarmCode,
+      valuationRef: properties.valuationRef,
+      estateRef: properties.estateRef,
+      // Meter references
+      gasMeterSerial: properties.gasMeterSerial,
+      electricityMeterSerial: properties.electricityMeterSerial,
+      waterMeterSerial: properties.waterMeterSerial,
+      // Classification
+      propertyTypeSecondary: properties.propertyTypeSecondary,
+      isHmo: properties.isHmo,
+      isStudentLet: properties.isStudentLet,
+      isHolidayLet: properties.isHolidayLet,
+      isCouncilLet: properties.isCouncilLet,
+      blockManagementCompany: properties.blockManagementCompany,
+      blockManagementContact: properties.blockManagementContact,
+      parentPropertyId: properties.parentPropertyId,
+      // Applicant criteria
+      dssAccepted: properties.dssAccepted,
+      childrenAccepted: properties.childrenAccepted,
+      smokersAccepted: properties.smokersAccepted,
+      dogsAccepted: properties.dogsAccepted,
+      catsAccepted: properties.catsAccepted,
+      parkingAvailable: properties.parkingAvailable,
+      lettingType: properties.lettingType,
+      idealRentDay: properties.idealRentDay,
+      // Rent generation
+      generateMultipleRents: properties.generateMultipleRents,
+      generateRentsInArrears: properties.generateRentsInArrears
     })
     .from(properties)
     .where(eq(properties.id, id));

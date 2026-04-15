@@ -55,6 +55,33 @@ interface Property {
   latitude?: string;
   longitude?: string;
   nearestTubeStation?: string;
+  // Identification & access
+  keyCode?: string;
+  propCode?: string;
+  lockCode?: string;
+  securityAlarmCode?: string;
+  fireAlarmCode?: string;
+  valuationRef?: string;
+  estateRef?: string;
+  // Meter references
+  gasMeterSerial?: string;
+  electricityMeterSerial?: string;
+  waterMeterSerial?: string;
+  // Classification
+  propertyTypeSecondary?: string;
+  isHmo?: boolean;
+  isStudentLet?: boolean;
+  isHolidayLet?: boolean;
+  isCouncilLet?: boolean;
+  // Applicant criteria
+  dssAccepted?: boolean;
+  childrenAccepted?: boolean;
+  smokersAccepted?: boolean;
+  dogsAccepted?: boolean;
+  catsAccepted?: boolean;
+  parkingAvailable?: boolean;
+  lettingType?: string;
+  idealRentDay?: number;
 }
 
 const EPC_COLORS: Record<string, { bg: string; text: string; width: string }> = {
@@ -224,9 +251,13 @@ export default function PropertyDetailPage() {
             <Bath className="h-5 w-5 mr-2" />
             <span className="font-medium">{property.bathrooms} Bath</span>
           </div>
-          <div className="flex items-center gap-1 px-6 py-4 border-r border-white/20">
+          <div className="flex items-center gap-2 px-6 py-4 border-r border-white/20 flex-wrap">
             <Home className="h-5 w-5 mr-2" />
             <span className="font-medium capitalize">{property.propertyType}</span>
+            {property.isHmo && <Badge variant="secondary" className="text-xs">HMO</Badge>}
+            {property.isStudentLet && <Badge variant="secondary" className="text-xs">Student Let</Badge>}
+            {property.isHolidayLet && <Badge variant="secondary" className="text-xs">Holiday Let</Badge>}
+            {property.isCouncilLet && <Badge variant="secondary" className="text-xs">Council Let</Badge>}
           </div>
           <div className="px-6 py-4 bg-[#F8B324] text-black font-bold flex-grow text-center text-xl" data-testid="text-price">
             Price: {formatPrice(property.price)}
@@ -434,6 +465,145 @@ export default function PropertyDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Identification & Access Section */}
+      {(property.keyCode || property.propCode || property.valuationRef || property.estateRef || property.lockCode || property.securityAlarmCode || property.fireAlarmCode) && (
+        <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-[#791E75]">Identification &amp; Access</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-4">
+                {property.keyCode && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Key Code:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.keyCode}</span>
+                  </div>
+                )}
+                {property.propCode && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Prop Code:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.propCode}</span>
+                  </div>
+                )}
+                {property.valuationRef && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Valuation Ref:</span>
+                    <span className="text-gray-900 font-medium">{property.valuationRef}</span>
+                  </div>
+                )}
+                {property.estateRef && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Estate Ref:</span>
+                    <span className="text-gray-900 font-medium">{property.estateRef}</span>
+                  </div>
+                )}
+                {property.lockCode && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Lock Code:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.lockCode}</span>
+                  </div>
+                )}
+                {property.securityAlarmCode && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Security Alarm Code:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.securityAlarmCode}</span>
+                  </div>
+                )}
+                {property.fireAlarmCode && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Fire Alarm Code:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.fireAlarmCode}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Meter References Section */}
+      {(property.gasMeterSerial || property.electricityMeterSerial || property.waterMeterSerial) && (
+        <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-[#791E75]">Meter References</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid md:grid-cols-3 gap-4">
+                {property.gasMeterSerial && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Gas Meter Serial:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.gasMeterSerial}</span>
+                  </div>
+                )}
+                {property.electricityMeterSerial && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Electricity Meter Serial:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.electricityMeterSerial}</span>
+                  </div>
+                )}
+                {property.waterMeterSerial && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Water Meter Serial:</span>
+                    <span className="text-gray-900 font-medium font-mono">{property.waterMeterSerial}</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Applicant Criteria Section */}
+      {(property.lettingType || property.idealRentDay || property.furnished ||
+        property.dssAccepted || property.childrenAccepted || property.smokersAccepted ||
+        property.dogsAccepted || property.catsAccepted || property.parkingAvailable) && (
+        <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-[#791E75]">Applicant Criteria</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid md:grid-cols-3 gap-4">
+                {property.lettingType && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Letting Type:</span>
+                    <span className="text-gray-900 font-medium capitalize">{property.lettingType.replace(/_/g, ' ')}</span>
+                  </div>
+                )}
+                {property.idealRentDay && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Ideal Rent Day:</span>
+                    <span className="text-gray-900 font-medium">{property.idealRentDay}</span>
+                  </div>
+                )}
+                {property.furnished && (
+                  <div className="flex justify-between py-2 border-b border-gray-100">
+                    <span className="text-gray-600">Furnished:</span>
+                    <span className="text-gray-900 font-medium capitalize">{property.furnished.replace(/_/g, ' ')}</span>
+                  </div>
+                )}
+              </div>
+              {(property.dssAccepted || property.childrenAccepted || property.smokersAccepted ||
+                property.dogsAccepted || property.catsAccepted || property.parkingAvailable) && (
+                <div>
+                  <p className="text-sm text-gray-600 mb-2">Accepted / Available:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {property.dssAccepted && <Badge variant="outline">DSS Accepted</Badge>}
+                    {property.childrenAccepted && <Badge variant="outline">Children</Badge>}
+                    {property.smokersAccepted && <Badge variant="outline">Smokers</Badge>}
+                    {property.dogsAccepted && <Badge variant="outline">Dogs</Badge>}
+                    {property.catsAccepted && <Badge variant="outline">Cats</Badge>}
+                    {property.parkingAvailable && <Badge variant="outline">Parking</Badge>}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Floor Plans & EPC Section */}
       <div className="max-w-7xl mx-auto px-4 py-8 border-t border-gray-200">
