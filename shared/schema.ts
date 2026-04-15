@@ -87,7 +87,9 @@ export const properties = pgTable("property", {
   id: serial("id").primaryKey(),
 
   // Property status
-  status: text("status").notNull().default("active"), // 'active', 'under_offer', 'sstc', 'exchanged', 'completed', 'fallen_through', 'withdrawn'
+  // Status: active, under_offer, sstc, exchanged, completed, fallen_through, withdrawn,
+  // let, marketed, dormant, key_out, un_let, un_marketed, under_application
+  status: text("status").notNull().default("active"),
   isMarketed: boolean("is_marketed").default(true), // Whether property is actively being marketed
 
   // Basic property information
@@ -238,6 +240,42 @@ export const properties = pgTable("property", {
   holdingDepositBy: integer("holding_deposit_by"),
   tenancyAgreedBy: integer("tenancy_agreed_by"),
   moveInCompleteBy: integer("move_in_complete_by"),
+
+  // Identification & Access (Key Data migration fields)
+  keyCode: text("key_code"), // Key safe/lockbox code
+  propCode: text("prop_code"), // Legacy property reference code
+  gasMeterSerial: text("gas_meter_serial"),
+  electricityMeterSerial: text("electricity_meter_serial"),
+  waterMeterSerial: text("water_meter_serial"),
+  lockCode: text("lock_code"),
+  securityAlarmCode: text("security_alarm_code"),
+  fireAlarmCode: text("fire_alarm_code"),
+  valuationRef: text("valuation_ref"), // Legacy valuation reference
+  estateRef: text("estate_ref"), // Legacy estate/block reference
+
+  // Property Classification (Key Data migration fields)
+  propertyTypeSecondary: text("property_type_secondary"), // e.g. 'end_terrace', 'mid_terrace', 'semi_detached'
+  isStudentLet: boolean("is_student_let").default(false),
+  isHolidayLet: boolean("is_holiday_let").default(false),
+  isCouncilLet: boolean("is_council_let").default(false),
+  isHmo: boolean("is_hmo").default(false), // House in Multiple Occupation
+  blockManagementCompany: text("block_management_company"),
+  blockManagementContact: text("block_management_contact"),
+  parentPropertyId: integer("parent_property_id"), // For units within a block/development
+
+  // Applicant Match Criteria (Key Data migration fields)
+  dssAccepted: boolean("dss_accepted").default(false), // DSS/Housing Benefit accepted
+  childrenAccepted: boolean("children_accepted").default(true),
+  smokersAccepted: boolean("smokers_accepted").default(false),
+  dogsAccepted: boolean("dogs_accepted").default(false),
+  catsAccepted: boolean("cats_accepted").default(false),
+  parkingAvailable: boolean("parking_available").default(false),
+  lettingType: text("letting_type"), // e.g. 'long_let', 'short_let', 'student', 'corporate'
+  idealRentDay: integer("ideal_rent_day"), // Preferred day of month for rent collection (1-28)
+
+  // Operational (Key Data migration fields)
+  generateMultipleRents: boolean("generate_multiple_rents").default(false), // Generate split rent schedules
+  generateRentsInArrears: boolean("generate_rents_in_arrears").default(false), // Rent collected in arrears
 
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -2900,7 +2900,9 @@ crmRouter.patch('/property-pipeline/:id/status', requireAgent, async (req, res) 
       'valuation_enquiry', 'valuation_booked', 'valuation_completed', 'instruction_signed',
       'active', 'listed', 'under_offer', 'sstc', 'exchanged', 'completed', 'sold', 'let',
       'fallen_through', 'withdrawn',
-      'viewings', 'holding_deposit', 'tenancy_agreed', 'move_in_complete'
+      'viewings', 'holding_deposit', 'tenancy_agreed', 'move_in_complete',
+      // Key Data statuses
+      'marketed', 'dormant', 'key_out', 'un_let', 'un_marketed', 'under_application'
     ];
     if (!validStatuses.includes(stage)) {
       return res.status(400).json({ error: 'Invalid status' });
