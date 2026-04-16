@@ -182,6 +182,14 @@ import TaxRates from "@/pages/TaxRates";
 import FinancialPeriods from "@/pages/FinancialPeriods";
 import PaymentAllocations from "@/pages/PaymentAllocations";
 
+// Phase 9: Advanced Admin pages
+import BranchManagement from "@/pages/BranchManagement";
+import AMLSanctionCheck from "@/pages/AMLSanctionCheck";
+import ArchiveManagement from "@/pages/ArchiveManagement";
+import DormantManagement from "@/pages/DormantManagement";
+import DepositTransfers from "@/pages/DepositTransfers";
+import AccountFinalisation from "@/pages/AccountFinalisation";
+
 // Area-specific pages
 import BayswaterPage from "@/pages/areas/BayswaterPage";
 import HarlesdenPage from "@/pages/areas/HarlesdenPage";
@@ -509,6 +517,14 @@ function Router() {
         <Route path="/crm/occupancy"><CRMLayout><OccupancyCalculator /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
+        {/* Phase 9: Advanced Admin routes */}
+        <Route path="/crm/branches"><CRMLayout><BranchManagement /></CRMLayout></Route>
+        <Route path="/crm/aml-checks"><CRMLayout><AMLSanctionCheck /></CRMLayout></Route>
+        <Route path="/crm/archives"><CRMLayout><ArchiveManagement /></CRMLayout></Route>
+        <Route path="/crm/dormant"><CRMLayout><DormantManagement /></CRMLayout></Route>
+        <Route path="/crm/deposit-transfers"><CRMLayout><DepositTransfers /></CRMLayout></Route>
+        <Route path="/crm/account-finalisation"><CRMLayout><AccountFinalisation /></CRMLayout></Route>
+
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
 
         {/* User Account Routes */}

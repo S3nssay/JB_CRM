@@ -18,7 +18,7 @@ import {
   ChevronDown, ChevronRight as ChevronRightIcon,
   BookOpen, Calculator, Landmark, Scale, FileText, Repeat, FileMinus,
   FolderTree, Percent, Banknote, Handshake, Target, Phone, PiggyBank, AlertCircle,
-  HandCoins, Globe
+  HandCoins, Globe, Moon, Archive, MapPin
 } from 'lucide-react';
 
 interface CRMLayoutProps {
@@ -778,6 +778,30 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                     <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/business-invoices') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/business-invoices')}>
                       <Receipt className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/business-invoices') ? 'text-white' : 'text-gray-400'}`} />
                       Business Invoices
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/branches') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/branches')}>
+                      <MapPin className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/branches') ? 'text-white' : 'text-gray-400'}`} />
+                      Branches
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/aml-checks') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/aml-checks')}>
+                      <ShieldCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/aml-checks') ? 'text-white' : 'text-gray-400'}`} />
+                      AML Checks
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/archives') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/archives')}>
+                      <Archive className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/archives') ? 'text-white' : 'text-gray-400'}`} />
+                      Archives
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/dormant') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/dormant')}>
+                      <Moon className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/dormant') ? 'text-white' : 'text-gray-400'}`} />
+                      Dormant
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/deposit-transfers') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/deposit-transfers')}>
+                      <ArrowRightLeft className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/deposit-transfers') ? 'text-white' : 'text-gray-400'}`} />
+                      Deposit Transfers
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/account-finalisation') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/account-finalisation')}>
+                      <Lock className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/account-finalisation') ? 'text-white' : 'text-gray-400'}`} />
+                      Account Finalisation
                     </button>
                     <button className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all" onClick={() => setShowImportKeyDataDialog(true)}>
                       <FileUp className="h-3.5 w-3.5 flex-shrink-0 text-gray-400" />

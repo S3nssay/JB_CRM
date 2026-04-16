@@ -266,7 +266,10 @@ export const properties = pgTable("property", {
 
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+
+  // Branch
+  branchId: integer("branch_id"),
 });
 
 // Meter readings and serial numbers for managed properties
@@ -1028,7 +1031,10 @@ export const landlords = pgTable("landlord", {
   overseasCountry: text("overseas_country"),
 
   createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow()
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+
+  // Branch
+  branchId: integer("branch_id"),
 });
 
 // Personal KYC - for individual landlords
@@ -8501,3 +8507,79 @@ export const keyMovements = pgTable("key_movement", {
 export const insertKeyMovementSchema = createInsertSchema(keyMovements).omit({ id: true, createdAt: true });
 export type KeyMovement = typeof keyMovements.$inferSelect;
 export type InsertKeyMovement = z.infer<typeof insertKeyMovementSchema>;
+
+// ==========================================
+// PHASE 9: ADVANCED ADMIN OPERATIONS
+// ==========================================
+
+// Branches - multi-branch management
+export const branches = pgTable("branches", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  address: text("address"),
+  phone: text("phone"),
+  email: text("email"),
+  managerId: integer("manager_id"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBranchSchema = createInsertSchema(branches).omit({ id: true, createdAt: true, updatedAt: true });
+export type Branch = typeof branches.$inferSelect;
+export type InsertBranch = z.infer<typeof insertBranchSchema>;
+
+// Sanction Checks - AML / HM Treasury list checking
+export const sanctionChecks = pgTable("sanction_checks", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull(), // landlord, tenant
+  entityId: integer("entity_id").notNull(),
+  entityName: text("entity_name").notNull(),
+  checkDate: timestamp("check_date").notNull().defaultNow(),
+  result: text("result").notNull().default("clear"), // clear, match, pending
+  matchedName: text("matched_name"),
+  listSource: text("list_source").default("hm_treasury"),
+  checkedBy: integer("checked_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSanctionCheckSchema = createInsertSchema(sanctionChecks).omit({ id: true, createdAt: true, checkDate: true });
+export type SanctionCheck = typeof sanctionChecks.$inferSelect;
+export type InsertSanctionCheck = z.infer<typeof insertSanctionCheckSchema>;
+
+// Archived Records - systematic archival of old data
+export const archivedRecords = pgTable("archived_records", {
+  id: serial("id").primaryKey(),
+  entityType: text("entity_type").notNull(), // tenancy, lead, property, landlord
+  entityId: integer("entity_id").notNull(),
+  archivedDate: timestamp("archived_date").notNull().defaultNow(),
+  archivedBy: integer("archived_by"),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertArchivedRecordSchema = createInsertSchema(archivedRecords).omit({ id: true, createdAt: true, archivedDate: true });
+export type ArchivedRecord = typeof archivedRecords.$inferSelect;
+export type InsertArchivedRecord = z.infer<typeof insertArchivedRecordSchema>;
+
+// Deposit Transfers - track deposit in/out of protection schemes
+export const depositTransfers = pgTable("deposit_transfers", {
+  id: serial("id").primaryKey(),
+  tenancyId: integer("tenancy_id").notNull(),
+  tenantId: integer("tenant_id"),
+  direction: text("direction").notNull(), // out_to_scheme, in_from_scheme
+  amount: integer("amount").notNull(), // pence
+  fromAccount: text("from_account"),
+  toAccount: text("to_account"),
+  schemeName: text("scheme_name"), // TDS, DPS, MyDeposits
+  reference: text("reference"),
+  transferDate: timestamp("transfer_date").notNull(),
+  status: text("status").notNull().default("pending"), // pending, completed, failed
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertDepositTransferSchema = createInsertSchema(depositTransfers).omit({ id: true, createdAt: true });
+export type DepositTransfer = typeof depositTransfers.$inferSelect;
+export type InsertDepositTransfer = z.infer<typeof insertDepositTransferSchema>;
