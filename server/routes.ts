@@ -192,6 +192,7 @@ import { accountManagementRoutes } from './accountManagementRoutes';
 import { ledgerRoutes } from './ledgerRoutes';
 import { letterRouter } from './letterRoutes';
 import { taxRoutes } from './taxRoutes';
+import { batchPaymentRoutes } from './batchPaymentRoutes';
 import path from 'path';
 import express from 'express';
 
@@ -220,6 +221,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', ledgerRoutes);
   app.use('/api/crm', letterRouter);
   app.use('/api/crm', taxRoutes);
+  app.use('/api/crm', batchPaymentRoutes);
 
   // ==========================================
   // VAPI VOICE WEBHOOKS (at /api/voice/*)

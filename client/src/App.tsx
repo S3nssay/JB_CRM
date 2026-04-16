@@ -136,6 +136,9 @@ import ClientAccountPage from "@/pages/ClientAccountPage";
 import OfficeAccountPage from "@/pages/OfficeAccountPage";
 import ReserveAccountsPage from "@/pages/ReserveAccountsPage";
 import DepositAccountPage from "@/pages/DepositAccountPage";
+import BACSPaymentGeneration from "@/pages/BACSPaymentGeneration";
+import ContractorBatchPayments from "@/pages/ContractorBatchPayments";
+import BatchReceiptRecording from "@/pages/BatchReceiptRecording";
 import LandlordLedger from "@/pages/LandlordLedger";
 import TenantRentBook from "@/pages/TenantRentBook";
 import RecurringLandlordCharges from "@/pages/RecurringLandlordCharges";
@@ -481,6 +484,9 @@ function Router() {
         <Route path="/crm/office-account"><CRMLayout><OfficeAccountPage /></CRMLayout></Route>
         <Route path="/crm/reserve-accounts"><CRMLayout><ReserveAccountsPage /></CRMLayout></Route>
         <Route path="/crm/deposit-account"><CRMLayout><DepositAccountPage /></CRMLayout></Route>
+        <Route path="/crm/bacs-payments"><CRMLayout><BACSPaymentGeneration /></CRMLayout></Route>
+        <Route path="/crm/contractor-batch"><CRMLayout><ContractorBatchPayments /></CRMLayout></Route>
+        <Route path="/crm/batch-receipts"><CRMLayout><BatchReceiptRecording /></CRMLayout></Route>
 
         {/* Ledger & Finance Tools */}
         <Route path="/crm/landlord-ledger"><CRMLayout><LandlordLedger /></CRMLayout></Route>
