@@ -392,6 +392,9 @@ export const maintenanceTickets = pgTable("maintenance_ticket", {
   internalNotes: text("internal_notes"), // Notes for staff only
   tenantCanSeeNotes: boolean("tenant_can_see_notes").default(false),
 
+  // Job number
+  jobNumber: text("job_number"), // Auto-generated: JB-YYYY-NNNN
+
   // Timestamps
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow()
@@ -8459,3 +8462,42 @@ export const insertLandlordTaxDeductionSchema = createInsertSchema(landlordTaxDe
 export type LandlordTaxDeduction = typeof landlordTaxDeductions.$inferSelect;
 export type InsertLandlordTaxDeduction = z.infer<typeof insertLandlordTaxDeductionSchema>;
 export type InsertArrearsReminderConfig = z.infer<typeof insertArrearsReminderConfigSchema>;
+
+// Property Key Register
+export const propertyKeys = pgTable("property_key", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  keyType: text("key_type").notNull(), // front_door, back_door, communal, mailbox, garage, other
+  keyNumber: text("key_number"),
+  totalCopies: integer("total_copies").default(1),
+  location: text("location"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyKeySchema = createInsertSchema(propertyKeys).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyKey = typeof propertyKeys.$inferSelect;
+export type InsertPropertyKey = z.infer<typeof insertPropertyKeySchema>;
+
+// Key Movements (checkout / return log)
+export const keyMovements = pgTable("key_movement", {
+  id: serial("id").primaryKey(),
+  keyId: integer("key_id").notNull(),
+  propertyId: integer("property_id").notNull(),
+  action: text("action").notNull(), // checkout, return
+  personName: text("person_name").notNull(),
+  personType: text("person_type").notNull(), // agent, landlord, tenant, contractor
+  reason: text("reason"),
+  checkoutDate: timestamp("checkout_date").notNull(),
+  expectedReturnDate: timestamp("expected_return_date"),
+  returnDate: timestamp("return_date"),
+  checkedOutBy: integer("checked_out_by"),
+  checkedInBy: integer("checked_in_by"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertKeyMovementSchema = createInsertSchema(keyMovements).omit({ id: true, createdAt: true });
+export type KeyMovement = typeof keyMovements.$inferSelect;
+export type InsertKeyMovement = z.infer<typeof insertKeyMovementSchema>;

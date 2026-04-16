@@ -19,6 +19,8 @@ import {
   landlords,
   tenant,
   properties,
+  propertyKeys,
+  keyMovements,
   complianceRequirements,
   complianceStatus,
   insertComplianceRequirementSchema,
@@ -4636,11 +4638,21 @@ crmRouter.post('/maintenance/tickets', async (req, res) => {
 
     const validated = maintenanceTicketFormSchema.parse(req.body);
 
+    // Generate job number: JB-YYYY-NNNN
+    const year = new Date().getFullYear();
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM maintenance_ticket WHERE EXTRACT(YEAR FROM created_at) = $1`,
+      [year]
+    );
+    const seq = parseInt(countResult.rows[0].count) + 1;
+    const jobNumber = `JB-${year}-${String(seq).padStart(4, '0')}`;
+
     // Create the ticket
     const ticket = await storage.createMaintenanceTicket({
       ...validated,
       tenantId: req.user.id,
-      status: 'new'
+      status: 'new',
+      jobNumber
     });
 
     res.json(ticket);
@@ -18190,5 +18202,291 @@ crmRouter.get('/compliance/unmanaged-report', requireAgent, async (req: any, res
   } catch (error) {
     console.error('Error fetching unmanaged compliance report:', error);
     res.status(500).json({ error: 'Failed to fetch unmanaged compliance report' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KEY MANAGEMENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /properties/:id/keys - list keys for a property
+crmRouter.get('/properties/:id/keys', async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const keys = await db.select().from(propertyKeys)
+      .where(eq(propertyKeys.propertyId, propertyId))
+      .orderBy(propertyKeys.keyType);
+    res.json(keys);
+  } catch (error) {
+    console.error('Error fetching property keys:', error);
+    res.status(500).json({ error: 'Failed to fetch property keys' });
+  }
+});
+
+// POST /properties/:id/keys - add a key record
+crmRouter.post('/properties/:id/keys', async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const { keyType, keyNumber, totalCopies, location, notes } = req.body;
+    if (!keyType) return res.status(400).json({ error: 'keyType is required' });
+    const [key] = await db.insert(propertyKeys).values({
+      propertyId,
+      keyType,
+      keyNumber: keyNumber || null,
+      totalCopies: totalCopies ?? 1,
+      location: location || null,
+      notes: notes || null,
+    }).returning();
+    res.json(key);
+  } catch (error) {
+    console.error('Error adding property key:', error);
+    res.status(500).json({ error: 'Failed to add property key' });
+  }
+});
+
+// PUT /keys/:keyId - update key
+crmRouter.put('/keys/:keyId', async (req, res) => {
+  try {
+    const keyId = parseInt(req.params.keyId);
+    const { keyType, keyNumber, totalCopies, location, notes } = req.body;
+    const [updated] = await db.update(propertyKeys)
+      .set({
+        ...(keyType !== undefined && { keyType }),
+        ...(keyNumber !== undefined && { keyNumber }),
+        ...(totalCopies !== undefined && { totalCopies }),
+        ...(location !== undefined && { location }),
+        ...(notes !== undefined && { notes }),
+        updatedAt: new Date(),
+      })
+      .where(eq(propertyKeys.id, keyId))
+      .returning();
+    if (!updated) return res.status(404).json({ error: 'Key not found' });
+    res.json(updated);
+  } catch (error) {
+    console.error('Error updating key:', error);
+    res.status(500).json({ error: 'Failed to update key' });
+  }
+});
+
+// DELETE /keys/:keyId - delete key
+crmRouter.delete('/keys/:keyId', async (req, res) => {
+  try {
+    const keyId = parseInt(req.params.keyId);
+    await db.delete(propertyKeys).where(eq(propertyKeys.id, keyId));
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting key:', error);
+    res.status(500).json({ error: 'Failed to delete key' });
+  }
+});
+
+// GET /properties/:id/key-movements - list movements for a property
+crmRouter.get('/properties/:id/key-movements', async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const movements = await db.select().from(keyMovements)
+      .where(eq(keyMovements.propertyId, propertyId))
+      .orderBy(desc(keyMovements.checkoutDate));
+    res.json(movements);
+  } catch (error) {
+    console.error('Error fetching key movements:', error);
+    res.status(500).json({ error: 'Failed to fetch key movements' });
+  }
+});
+
+// POST /key-movements - record checkout or return
+crmRouter.post('/key-movements', async (req, res) => {
+  try {
+    const {
+      keyId, propertyId, action, personName, personType,
+      reason, checkoutDate, expectedReturnDate, returnDate, notes
+    } = req.body;
+    if (!keyId || !propertyId || !action || !personName || !personType || !checkoutDate) {
+      return res.status(400).json({ error: 'keyId, propertyId, action, personName, personType, checkoutDate are required' });
+    }
+    const [movement] = await db.insert(keyMovements).values({
+      keyId: parseInt(keyId),
+      propertyId: parseInt(propertyId),
+      action,
+      personName,
+      personType,
+      reason: reason || null,
+      checkoutDate: new Date(checkoutDate),
+      expectedReturnDate: expectedReturnDate ? new Date(expectedReturnDate) : null,
+      returnDate: returnDate ? new Date(returnDate) : null,
+      checkedOutBy: req.user?.id ?? null,
+      checkedInBy: action === 'return' ? (req.user?.id ?? null) : null,
+      notes: notes || null,
+    }).returning();
+    res.json(movement);
+  } catch (error) {
+    console.error('Error recording key movement:', error);
+    res.status(500).json({ error: 'Failed to record key movement' });
+  }
+});
+
+// GET /keys/outstanding - all keys currently checked out (no return date)
+crmRouter.get('/keys/outstanding', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT km.*, pk.key_type, pk.key_number, pk.location AS key_location,
+             p.address AS property_address
+      FROM key_movement km
+      JOIN property_key pk ON pk.id = km.key_id
+      JOIN properties p ON p.id = km.property_id
+      WHERE km.action = 'checkout'
+        AND km.return_date IS NULL
+      ORDER BY km.checkout_date ASC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching outstanding keys:', error);
+    res.status(500).json({ error: 'Failed to fetch outstanding keys' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OCCUPANCY STATS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /occupancy-stats
+crmRouter.get('/occupancy-stats', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_managed,
+        COUNT(*) FILTER (WHERE EXISTS (
+          SELECT 1 FROM tenancies t
+          WHERE t.property_id = p.id AND t.status = 'active'
+        ))::int AS occupied,
+        COUNT(*) FILTER (WHERE NOT EXISTS (
+          SELECT 1 FROM tenancies t
+          WHERE t.property_id = p.id AND t.status = 'active'
+        ))::int AS vacant
+      FROM properties p
+      WHERE p.is_managed = true
+    `);
+    const { total_managed, occupied, vacant } = result.rows[0];
+    const occupancyRate = total_managed > 0
+      ? Math.round((occupied / total_managed) * 100)
+      : 0;
+
+    const voidResult = await pool.query(`
+      SELECT
+        p.id,
+        p.address,
+        l.name AS landlord,
+        (
+          SELECT MAX(t2.end_date)
+          FROM tenancies t2
+          WHERE t2.property_id = p.id
+        ) AS vacant_since
+      FROM properties p
+      LEFT JOIN landlords l ON l.id = p.landlord_id
+      WHERE p.is_managed = true
+        AND NOT EXISTS (
+          SELECT 1 FROM tenancies t
+          WHERE t.property_id = p.id AND t.status = 'active'
+        )
+      ORDER BY vacant_since ASC NULLS LAST
+    `);
+
+    res.json({
+      totalManaged: total_managed,
+      occupied,
+      vacant,
+      occupancyRate,
+      voidProperties: voidResult.rows.map(r => ({
+        id: r.id,
+        address: r.address,
+        landlord: r.landlord,
+        vacantSince: r.vacant_since,
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching occupancy stats:', error);
+    res.status(500).json({ error: 'Failed to fetch occupancy stats' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DUPLICATION
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /properties/:id/duplicate - clone a property record
+crmRouter.post('/properties/:id/duplicate', async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const srcResult = await pool.query(
+      'SELECT * FROM properties WHERE id = $1',
+      [propertyId]
+    );
+    if (srcResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    const src = srcResult.rows[0];
+    // Remove identity/timestamp fields; override address to indicate copy
+    const { id, created_at, updated_at, ...fields } = src;
+    fields.address = `${fields.address} (Copy)`;
+    const cols = Object.keys(fields);
+    const vals = Object.values(fields);
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+    const insertSql = `INSERT INTO properties (${cols.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+    const newResult = await pool.query(insertSql, vals);
+    res.json(newResult.rows[0]);
+  } catch (error) {
+    console.error('Error duplicating property:', error);
+    res.status(500).json({ error: 'Failed to duplicate property' });
+  }
+});
+
+// POST /tenants/:id/duplicate - clone a tenant record
+crmRouter.post('/tenants/:id/duplicate', async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.id);
+    const srcResult = await pool.query(
+      'SELECT * FROM tenant WHERE id = $1',
+      [tenantId]
+    );
+    if (srcResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+    const src = srcResult.rows[0];
+    const { id, created_at, updated_at, ...fields } = src;
+    // Append (Copy) to name to distinguish
+    if (fields.name) fields.name = `${fields.name} (Copy)`;
+    // Null out unique identifiers to avoid conflicts
+    fields.user_id = null;
+    fields.email = null;
+    const cols = Object.keys(fields);
+    const vals = Object.values(fields);
+    const placeholders = cols.map((_, i) => `$${i + 1}`).join(', ');
+    const insertSql = `INSERT INTO tenant (${cols.join(', ')}) VALUES (${placeholders}) RETURNING *`;
+    const newResult = await pool.query(insertSql, vals);
+    res.json(newResult.rows[0]);
+  } catch (error) {
+    console.error('Error duplicating tenant:', error);
+    res.status(500).json({ error: 'Failed to duplicate tenant' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// JOB NUMBER GENERATION (standalone endpoint as fallback)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /maintenance-tickets/generate-job-number
+crmRouter.post('/maintenance-tickets/generate-job-number', async (req, res) => {
+  try {
+    const year = new Date().getFullYear();
+    const countResult = await pool.query(
+      `SELECT COUNT(*) FROM maintenance_ticket WHERE EXTRACT(YEAR FROM created_at) = $1`,
+      [year]
+    );
+    const seq = parseInt(countResult.rows[0].count) + 1;
+    const jobNumber = `JB-${year}-${String(seq).padStart(4, '0')}`;
+    res.json({ jobNumber });
+  } catch (error) {
+    console.error('Error generating job number:', error);
+    res.status(500).json({ error: 'Failed to generate job number' });
   }
 });
