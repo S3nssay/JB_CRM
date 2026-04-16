@@ -148,6 +148,11 @@ import ArrearsReminderWorkflow from "@/pages/ArrearsReminderWorkflow";
 // Compliance Pages
 import UnmanagedComplianceReport from "@/pages/UnmanagedComplianceReport";
 
+// Operational Tool Pages
+import KeyManagement from "@/pages/KeyManagement";
+import RentCalculator from "@/pages/RentCalculator";
+import OccupancyCalculator from "@/pages/OccupancyCalculator";
+
 // Tax & Benefits Pages
 import LHABenefitManagement from "@/pages/LHABenefitManagement";
 import OverseasTaxManagement from "@/pages/OverseasTaxManagement";
@@ -491,6 +496,11 @@ function Router() {
         <Route path="/crm/lha-benefits"><CRMLayout><LHABenefitManagement /></CRMLayout></Route>
         <Route path="/crm/overseas-tax"><CRMLayout><OverseasTaxManagement /></CRMLayout></Route>
         <Route path="/crm/hmrc-report"><CRMLayout><HMRCRentReport /></CRMLayout></Route>
+
+        {/* Operational Tool Pages */}
+        <Route path="/crm/key-management"><CRMLayout><KeyManagement /></CRMLayout></Route>
+        <Route path="/crm/rent-calculator"><CRMLayout><RentCalculator /></CRMLayout></Route>
+        <Route path="/crm/occupancy"><CRMLayout><OccupancyCalculator /></CRMLayout></Route>
 
         {/* CRM catch-all — MUST be the last /crm route (wouter matches top-to-bottom) */}
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>

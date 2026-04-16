@@ -453,6 +453,27 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
               </div>}
             </div>
 
+            {/* Tools Section */}
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider mb-1.5 px-3">
+                Tools
+              </p>
+              <div className="space-y-0.5">
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/key-management') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/key-management')}>
+                  <Key className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/key-management') ? 'text-white' : 'text-gray-400'}`} />
+                  Key Management
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/rent-calculator') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/rent-calculator')}>
+                  <Calculator className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rent-calculator') ? 'text-white' : 'text-gray-400'}`} />
+                  Rent Calculator
+                </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/occupancy') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/occupancy')}>
+                  <BarChart3 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/occupancy') ? 'text-white' : 'text-gray-400'}`} />
+                  Occupancy
+                </button>
+              </div>
+            </div>
+
             {/* Deals Section */}
             <div className="mt-4 pt-3 border-t border-gray-200">
               <p className="text-[11px] font-semibold text-[#791E75] uppercase tracking-wider mb-1.5 px-3">
