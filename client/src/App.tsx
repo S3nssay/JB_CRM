@@ -182,6 +182,9 @@ import TaxRates from "@/pages/TaxRates";
 import FinancialPeriods from "@/pages/FinancialPeriods";
 import PaymentAllocations from "@/pages/PaymentAllocations";
 
+// Phase 10: Report Center
+import ReportCenter from "@/pages/ReportCenter";
+
 // Phase 9: Advanced Admin pages
 import BranchManagement from "@/pages/BranchManagement";
 import AMLSanctionCheck from "@/pages/AMLSanctionCheck";
@@ -524,6 +527,9 @@ function Router() {
         <Route path="/crm/dormant"><CRMLayout><DormantManagement /></CRMLayout></Route>
         <Route path="/crm/deposit-transfers"><CRMLayout><DepositTransfers /></CRMLayout></Route>
         <Route path="/crm/account-finalisation"><CRMLayout><AccountFinalisation /></CRMLayout></Route>
+
+        {/* Phase 10: Report Center */}
+        <Route path="/crm/report-center"><CRMLayout><ReportCenter /></CRMLayout></Route>
 
         <Route path="/crm"><CRMLayout><MyDesk /></CRMLayout></Route>
 
