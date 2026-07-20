@@ -84,6 +84,7 @@ router.get('/reports/index', requireAgent, (_req, res) => {
           { id: 'vacating', name: 'Vacating Tenants', endpoint: '/api/crm/reports/tenant/vacating', filters: [{ name: 'from', type: 'date', label: 'From' }, { name: 'to', type: 'date', label: 'To' }] },
           { id: 'arrears', name: 'Tenants In Arrears', endpoint: '/api/crm/reports/tenant/arrears', filters: [] },
           { id: 'renewals-due', name: 'Renewals Due', endpoint: '/api/crm/reports/tenant/renewals-due', filters: [{ name: 'from', type: 'date', label: 'From' }, { name: 'to', type: 'date', label: 'To' }] },
+          { id: 'right-to-rent-due', name: 'Right to Rent Checks Due', endpoint: '/api/crm/reports/tenant/right-to-rent-due', filters: [] },
         ],
       },
       {
@@ -584,6 +585,42 @@ router.get('/reports/tenant/renewals-due', requireAgent, async (req: any, res) =
     await sendReport(res, result.rows, 'Renewals Due', format, { from, to });
   } catch (err) {
     console.error('[Report] renewals-due error:', err);
+    res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
+// Right to Rent checks to be arranged — active tenants without a passed RtR screening
+// (KeyData parity: Tenant Reports → "Right to Rent checks to be arranged").
+router.get('/reports/tenant/right-to-rent-due', requireAgent, async (req: any, res) => {
+  const format = (req.query.format as string) || 'json';
+  try {
+    const result = await pool.query(`
+      SELECT
+        t.id,
+        t.name AS "Tenant",
+        t.email AS "Email",
+        t.phone AS "Phone",
+        p.address_line1 AS "Property",
+        p.postcode AS "Postcode",
+        COALESCE(sr.status, 'not requested') AS "RtR Status",
+        sr.requested_at AS "Requested",
+        sr.completed_at AS "Completed"
+      FROM tenant t
+      LEFT JOIN property p ON p.id = t.property_id
+      LEFT JOIN LATERAL (
+        SELECT status, requested_at, completed_at
+        FROM screening_request s
+        WHERE s.tenant_id = t.id AND s.screening_type = 'right_to_rent'
+        ORDER BY s.requested_at DESC
+        LIMIT 1
+      ) sr ON true
+      WHERE (t.status IS NULL OR t.status NOT IN ('past', 'archived', 'former', 'inactive'))
+        AND (sr.status IS NULL OR sr.status <> 'passed')
+      ORDER BY t.name ASC
+    `);
+    await sendReport(res, result.rows, 'Right to Rent Checks Due', format);
+  } catch (err) {
+    console.error('[Report] right-to-rent-due error:', err);
     res.status(500).json({ error: 'Failed to generate report' });
   }
 });

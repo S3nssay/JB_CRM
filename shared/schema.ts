@@ -8583,3 +8583,147 @@ export const depositTransfers = pgTable("deposit_transfers", {
 export const insertDepositTransferSchema = createInsertSchema(depositTransfers).omit({ id: true, createdAt: true });
 export type DepositTransfer = typeof depositTransfers.$inferSelect;
 export type InsertDepositTransfer = z.infer<typeof insertDepositTransferSchema>;
+
+// ─── KeyData parity: Mortgage Management ─────────────────────────────────────────
+// Tracks landlord/property buy-to-let mortgages so the agency can pay the lender
+// out of collected rent (KeyData: Property Accounting → Mortgage Process/Payments/Future).
+
+export const propertyMortgages = pgTable("property_mortgage", {
+  id: serial("id").primaryKey(),
+  propertyId: integer("property_id").notNull(),
+  landlordId: integer("landlord_id"),
+  lenderName: text("lender_name").notNull(),
+  accountNumber: text("account_number"),
+  mortgageType: text("mortgage_type").notNull().default("buy_to_let"), // repayment, interest_only, buy_to_let
+  monthlyPayment: integer("monthly_payment").notNull().default(0), // pence
+  interestRateBps: integer("interest_rate_bps"), // basis points, e.g. 450 = 4.50%
+  termMonths: integer("term_months"),
+  startDate: timestamp("start_date"),
+  dealExpiryDate: timestamp("deal_expiry_date"), // fixed-rate deal end
+  endDate: timestamp("end_date"), // mortgage end / redemption target
+  outstandingBalance: integer("outstanding_balance"), // pence
+  nextPaymentDate: timestamp("next_payment_date"),
+  payFromRent: boolean("pay_from_rent").notNull().default(false), // agency pays lender from collected rent
+  payeeSortCode: text("payee_sort_code"),
+  payeeAccountNumber: text("payee_account_number"),
+  payeeReference: text("payee_reference"),
+  status: text("status").notNull().default("active"), // active, redeemed, in_arrears, closed
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertPropertyMortgageSchema = createInsertSchema(propertyMortgages).omit({ id: true, createdAt: true, updatedAt: true });
+export type PropertyMortgage = typeof propertyMortgages.$inferSelect;
+export type InsertPropertyMortgage = z.infer<typeof insertPropertyMortgageSchema>;
+
+export const mortgagePayments = pgTable("mortgage_payment", {
+  id: serial("id").primaryKey(),
+  mortgageId: integer("mortgage_id").notNull(),
+  dueDate: timestamp("due_date").notNull(),
+  amount: integer("amount").notNull(), // pence
+  paidDate: timestamp("paid_date"),
+  status: text("status").notNull().default("scheduled"), // scheduled, paid, overdue, skipped
+  paymentMethod: text("payment_method"), // bank_transfer, direct_debit, standing_order, on_line
+  reference: text("reference"),
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertMortgagePaymentSchema = createInsertSchema(mortgagePayments).omit({ id: true, createdAt: true, updatedAt: true });
+export type MortgagePayment = typeof mortgagePayments.$inferSelect;
+export type InsertMortgagePayment = z.infer<typeof insertMortgagePaymentSchema>;
+
+// ─── KeyData parity: Block / Service-Charge Management ───────────────────────────
+// Manage blocks of flats: freeholder, leaseholders, service-charge budgets & demands,
+// ground rent and reserve/sinking fund (KeyData: Admin Tools → Block Management).
+
+export const blocks = pgTable("block", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  addressLine1: text("address_line1"),
+  addressLine2: text("address_line2"),
+  city: text("city"),
+  postcode: text("postcode"),
+  freeholderName: text("freeholder_name"),
+  freeholderContact: text("freeholder_contact"),
+  managingAgentName: text("managing_agent_name"), // third-party block manager, if any
+  numberOfUnits: integer("number_of_units").default(0),
+  serviceChargeYearEnd: text("service_charge_year_end"), // e.g. "31 March"
+  groundRentAnnualTotal: integer("ground_rent_annual_total").default(0), // pence
+  reserveFundBalance: integer("reserve_fund_balance").default(0), // pence, sinking fund
+  insurancePolicyRef: text("insurance_policy_ref"),
+  insuranceExpiry: timestamp("insurance_expiry"),
+  status: text("status").notNull().default("active"), // active, inactive
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBlockSchema = createInsertSchema(blocks).omit({ id: true, createdAt: true, updatedAt: true });
+export type Block = typeof blocks.$inferSelect;
+export type InsertBlock = z.infer<typeof insertBlockSchema>;
+
+export const blockUnits = pgTable("block_unit", {
+  id: serial("id").primaryKey(),
+  blockId: integer("block_id").notNull(),
+  propertyId: integer("property_id"), // link to properties table if the unit is one we manage
+  unitReference: text("unit_reference").notNull(), // e.g. "Flat 3"
+  leaseholderName: text("leaseholder_name"),
+  leaseholderContact: text("leaseholder_contact"),
+  apportionmentBps: integer("apportionment_bps"), // share of service charge, basis points (1250 = 12.5%)
+  groundRentAnnual: integer("ground_rent_annual").default(0), // pence
+  leaseEndDate: timestamp("lease_end_date"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertBlockUnitSchema = createInsertSchema(blockUnits).omit({ id: true, createdAt: true, updatedAt: true });
+export type BlockUnit = typeof blockUnits.$inferSelect;
+export type InsertBlockUnit = z.infer<typeof insertBlockUnitSchema>;
+
+export const serviceChargeBudgets = pgTable("service_charge_budget", {
+  id: serial("id").primaryKey(),
+  blockId: integer("block_id").notNull(),
+  yearLabel: text("year_label").notNull(), // e.g. "2025/26"
+  periodStart: timestamp("period_start"),
+  periodEnd: timestamp("period_end"),
+  totalBudget: integer("total_budget").notNull().default(0), // pence
+  reserveContribution: integer("reserve_contribution").default(0), // pence
+  status: text("status").notNull().default("draft"), // draft, issued, closed
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertServiceChargeBudgetSchema = createInsertSchema(serviceChargeBudgets).omit({ id: true, createdAt: true, updatedAt: true });
+export type ServiceChargeBudget = typeof serviceChargeBudgets.$inferSelect;
+export type InsertServiceChargeBudget = z.infer<typeof insertServiceChargeBudgetSchema>;
+
+export const serviceChargeDemands = pgTable("service_charge_demand", {
+  id: serial("id").primaryKey(),
+  blockId: integer("block_id").notNull(),
+  unitId: integer("unit_id"), // block_unit
+  budgetId: integer("budget_id"), // service_charge_budget
+  demandType: text("demand_type").notNull().default("service_charge"), // service_charge, ground_rent, reserve_fund, major_works, admin
+  description: text("description"),
+  demandDate: timestamp("demand_date").notNull(),
+  dueDate: timestamp("due_date"),
+  amount: integer("amount").notNull(), // pence
+  amountPaid: integer("amount_paid").notNull().default(0), // pence
+  paidDate: timestamp("paid_date"),
+  status: text("status").notNull().default("issued"), // issued, part_paid, paid, overdue, cancelled
+  notes: text("notes"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertServiceChargeDemandSchema = createInsertSchema(serviceChargeDemands).omit({ id: true, createdAt: true, updatedAt: true });
+export type ServiceChargeDemand = typeof serviceChargeDemands.$inferSelect;
+export type InsertServiceChargeDemand = z.infer<typeof insertServiceChargeDemandSchema>;

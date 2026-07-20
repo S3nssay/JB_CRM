@@ -143,6 +143,8 @@ import LandlordLedger from "@/pages/LandlordLedger";
 import TenantRentBook from "@/pages/TenantRentBook";
 import RecurringLandlordCharges from "@/pages/RecurringLandlordCharges";
 import AccountMaintenance from "@/pages/AccountMaintenance";
+import MortgageManagement from "@/pages/MortgageManagement";
+import BlockManagement from "@/pages/BlockManagement";
 
 // Communications Pages
 import LetterTemplateManagement from "@/pages/LetterTemplateManagement";
@@ -504,6 +506,10 @@ function Router() {
         <Route path="/crm/tenant-rent-book"><CRMLayout><TenantRentBook /></CRMLayout></Route>
         <Route path="/crm/recurring-charges"><CRMLayout><RecurringLandlordCharges /></CRMLayout></Route>
         <Route path="/crm/account-maintenance"><CRMLayout><AccountMaintenance /></CRMLayout></Route>
+
+        {/* KeyData parity: Mortgage & Block Management */}
+        <Route path="/crm/mortgages"><CRMLayout><MortgageManagement /></CRMLayout></Route>
+        <Route path="/crm/block-management"><CRMLayout><BlockManagement /></CRMLayout></Route>
 
         {/* Communications Routes */}
         <Route path="/crm/letter-templates"><CRMLayout><LetterTemplateManagement /></CRMLayout></Route>
