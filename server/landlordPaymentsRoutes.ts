@@ -74,23 +74,25 @@ async function computeLandlordPeriod(landlordId: number, start: Date, end: Date)
   const charges = chRes.rows.map((r: any) => ({ id: r.id, description: r.description, amount: parseInt(r.amount, 10) || 0, propertyId: r.property_id }));
   const chargesTotal = charges.reduce((s: number, c: any) => s + c.amount, 0);
 
-  // Repairs charged to the landlord, completed this period (best-effort)
+  // Repairs/maintenance charged to the landlord this period.
+  // Source: property_transaction (category 'maintenance'), which is where the
+  // Support Tickets "Charge landlord" action and ticket-completion actually write
+  // the recharge (the work_order lineage is AI-only and never populated by staff).
   let repairsTotal = 0; let repairs: any[] = [];
   try {
     const rp = await pool.query(
-      `SELECT wo.id, wo.invoice_amount AS amount, mr.title, mr.property_id
-       FROM work_order wo
-       JOIN maintenance_request mr ON mr.id = wo.maintenance_request_id
-       JOIN property p ON p.id = mr.property_id
-       WHERE p.landlord_id = $1 AND wo.status = 'completed'
-         AND COALESCE(mr.paid_by,'landlord') = 'landlord'
-         AND mr.completed_at BETWEEN $2 AND $3
-         AND wo.invoice_amount IS NOT NULL`,
+      `SELECT pt.id, pt.description, pt.amount, pt.property_id, p.address AS property_address
+       FROM property_transaction pt
+       LEFT JOIN property p ON p.id = pt.property_id
+       WHERE pt.landlord_id = $1
+         AND pt.category = 'maintenance'
+         AND COALESCE(pt.transaction_type, 'expense') <> 'income'
+         AND pt.transaction_date BETWEEN $2 AND $3`,
       [landlordId, start, end]
     );
-    repairs = rp.rows.map((r: any) => ({ id: r.id, description: r.title, amount: parseInt(r.amount, 10) || 0, propertyId: r.property_id }));
+    repairs = rp.rows.map((r: any) => ({ id: r.id, description: r.description || 'Maintenance', amount: Math.abs(parseInt(r.amount, 10) || 0), propertyId: r.property_id }));
     repairsTotal = repairs.reduce((s: number, r: any) => s + r.amount, 0);
-  } catch { /* maintenance schema variance — treat as no repairs */ }
+  } catch { /* property_transaction variance — treat as no repairs */ }
 
   // Balance brought forward = most recent prior unpaid statement's net (else 0)
   const bbfRes = await pool.query(
