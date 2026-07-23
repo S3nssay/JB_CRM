@@ -197,6 +197,8 @@ import { adminToolsRoutes } from './adminToolsRoutes';
 import { reportCenterRouter } from './reportCenterRoutes';
 import { mortgageRoutes } from './mortgageRoutes';
 import { blockManagementRoutes } from './blockManagementRoutes';
+import { landlordPaymentsRoutes } from './landlordPaymentsRoutes';
+import { sanctionScreeningRoutes } from './sanctionScreeningRoutes';
 import path from 'path';
 import express from 'express';
 
@@ -230,6 +232,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/crm', reportCenterRouter);
   app.use('/api/crm', mortgageRoutes);
   app.use('/api/crm', blockManagementRoutes);
+  app.use('/api/crm', landlordPaymentsRoutes);
+  app.use('/api/crm', sanctionScreeningRoutes);
 
   // ==========================================
   // VAPI VOICE WEBHOOKS (at /api/voice/*)

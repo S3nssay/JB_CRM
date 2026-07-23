@@ -145,6 +145,8 @@ import RecurringLandlordCharges from "@/pages/RecurringLandlordCharges";
 import AccountMaintenance from "@/pages/AccountMaintenance";
 import MortgageManagement from "@/pages/MortgageManagement";
 import BlockManagement from "@/pages/BlockManagement";
+import LandlordPaymentsWorkbench from "@/pages/LandlordPaymentsWorkbench";
+import SanctionScreening from "@/pages/SanctionScreening";
 
 // Communications Pages
 import LetterTemplateManagement from "@/pages/LetterTemplateManagement";
@@ -510,6 +512,10 @@ function Router() {
         {/* KeyData parity: Mortgage & Block Management */}
         <Route path="/crm/mortgages"><CRMLayout><MortgageManagement /></CRMLayout></Route>
         <Route path="/crm/block-management"><CRMLayout><BlockManagement /></CRMLayout></Route>
+
+        {/* KeyData parity: Landlord Payments workbench & AML Sanction Screening */}
+        <Route path="/crm/landlord-payments"><CRMLayout><LandlordPaymentsWorkbench /></CRMLayout></Route>
+        <Route path="/crm/sanction-screening"><CRMLayout><SanctionScreening /></CRMLayout></Route>
 
         {/* Communications Routes */}
         <Route path="/crm/letter-templates"><CRMLayout><LetterTemplateManagement /></CRMLayout></Route>

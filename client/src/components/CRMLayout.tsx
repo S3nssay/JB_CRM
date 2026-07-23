@@ -400,6 +400,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <Building2 className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/block-management') ? 'text-white' : 'text-gray-400'}`} />
                   Block Management
                 </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/landlord-payments') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/landlord-payments')}>
+                  <Banknote className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/landlord-payments') ? 'text-white' : 'text-gray-400'}`} />
+                  Landlord Payments
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/lha-benefits') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/lha-benefits')}>
                   <HandCoins className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/lha-benefits') ? 'text-white' : 'text-gray-400'}`} />
                   LHA Benefits
@@ -798,6 +802,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                     <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/aml-checks') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/aml-checks')}>
                       <ShieldCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/aml-checks') ? 'text-white' : 'text-gray-400'}`} />
                       AML Checks
+                    </button>
+                    <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/sanction-screening') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/sanction-screening')}>
+                      <ShieldCheck className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/sanction-screening') ? 'text-white' : 'text-gray-400'}`} />
+                      Sanction Screening
                     </button>
                     <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/archives') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/archives')}>
                       <Archive className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/archives') ? 'text-white' : 'text-gray-400'}`} />

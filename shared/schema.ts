@@ -6856,13 +6856,17 @@ export const landlordStatements = pgTable("landlord_statement", {
   attentionNeeded: boolean("attention_needed").default(false),
   statementPeriodStart: timestamp("statement_period_start").notNull(),
   statementPeriodEnd: timestamp("statement_period_end").notNull(),
+  balanceBroughtForward: integer("balance_brought_forward").notNull().default(0), // BBF from prior statement (pence)
   totalRentCollected: integer("total_rent_collected").notNull().default(0),
   managementFees: integer("management_fees").notNull().default(0),
   maintenanceDeductions: integer("maintenance_deductions").notNull().default(0),
   otherDeductions: integer("other_deductions").notNull().default(0),
   vatOnFees: integer("vat_on_fees").notNull().default(0),
+  taxDeducted: integer("tax_deducted").notNull().default(0), // NRL/FICO tax withheld (pence)
   netPayable: integer("net_payable").notNull().default(0),
-  status: text("status").notNull().default("draft"), // draft, approved, sent, paid
+  paymentMethod: text("payment_method"), // bank_transfer, cheque, on_line
+  committedToLedger: boolean("committed_to_ledger").notNull().default(false),
+  status: text("status").notNull().default("draft"), // draft, approved, committed, sent, paid
   pdfUrl: text("pdf_url"),
   sentAt: timestamp("sent_at"),
   paidAt: timestamp("paid_at"),
@@ -8329,6 +8333,10 @@ export const recurringLandlordCharges = pgTable("recurring_landlord_charge", {
   isActive: boolean("is_active").notNull().default(true),
   payeeName: text("payee_name"),
   category: text("category"), // management_fee, insurance, service_charge, ground_rent, other
+  chargeKind: text("charge_kind").notNull().default("recurring"), // recurring | one_off
+  onNextStatement: boolean("on_next_statement").notNull().default(false), // include on next landlord statement
+  chargeStatus: text("charge_status").notNull().default("active"), // active (recurring) | pending | on_statement | processed
+  statementId: integer("statement_id"), // set when a one-off charge is consumed onto a statement
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -8727,3 +8735,84 @@ export const serviceChargeDemands = pgTable("service_charge_demand", {
 export const insertServiceChargeDemandSchema = createInsertSchema(serviceChargeDemands).omit({ id: true, createdAt: true, updatedAt: true });
 export type ServiceChargeDemand = typeof serviceChargeDemands.$inferSelect;
 export type InsertServiceChargeDemand = z.infer<typeof insertServiceChargeDemandSchema>;
+
+// ─── KeyData parity: AML Sanction Screening ──────────────────────────────────────
+// Mirrors KeyData "Admin Tools → Sanction List Search Import": import a sanctions
+// list (CSV file) OR screen via an external provider API, batch-check landlords /
+// tenants / applicants / contractors, and record results + proof documents.
+
+export const sanctionLists = pgTable("sanction_list", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(), // e.g. "ConList July26"
+  source: text("source").notNull().default("csv"), // csv | ofsi | opensanctions | provider
+  fileName: text("file_name"),
+  entryCount: integer("entry_count").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  importedBy: integer("imported_by"),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSanctionListSchema = createInsertSchema(sanctionLists).omit({ id: true, createdAt: true, importedAt: true });
+export type SanctionList = typeof sanctionLists.$inferSelect;
+export type InsertSanctionList = z.infer<typeof insertSanctionListSchema>;
+
+export const sanctionListEntries = pgTable("sanction_list_entry", {
+  id: serial("id").primaryKey(),
+  listId: integer("list_id").notNull(),
+  fullName: text("full_name").notNull(),
+  normalizedName: text("normalized_name").notNull(), // lowercased, punctuation-stripped for matching
+  entityType: text("entity_type").default("person"), // person | organisation
+  aliases: text("aliases"), // semicolon-separated
+  country: text("country"),
+  program: text("program"), // sanction programme / regime
+  dateOfBirth: text("date_of_birth"),
+  reference: text("reference"), // group/record id in source list
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSanctionListEntrySchema = createInsertSchema(sanctionListEntries).omit({ id: true, createdAt: true });
+export type SanctionListEntry = typeof sanctionListEntries.$inferSelect;
+export type InsertSanctionListEntry = z.infer<typeof insertSanctionListEntrySchema>;
+
+export const sanctionScreeningRuns = pgTable("sanction_screening_run", {
+  id: serial("id").primaryKey(),
+  runType: text("run_type").notNull().default("batch"), // batch | single
+  provider: text("provider").notNull().default("csv"), // csv | opensanctions | provider
+  listId: integer("list_id"), // sanction_list used (csv mode)
+  partyTypes: text("party_types"), // csv of landlord,tenant,applicant,contractor
+  totalChecked: integer("total_checked").notNull().default(0),
+  totalMatches: integer("total_matches").notNull().default(0),
+  totalPotential: integer("total_potential").notNull().default(0),
+  status: text("status").notNull().default("completed"), // running | completed | failed
+  autoGenerateProof: boolean("auto_generate_proof").notNull().default(true),
+  notes: text("notes"),
+  runBy: integer("run_by"),
+  runAt: timestamp("run_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSanctionScreeningRunSchema = createInsertSchema(sanctionScreeningRuns).omit({ id: true, createdAt: true, runAt: true });
+export type SanctionScreeningRun = typeof sanctionScreeningRuns.$inferSelect;
+export type InsertSanctionScreeningRun = z.infer<typeof insertSanctionScreeningRunSchema>;
+
+export const sanctionScreeningResults = pgTable("sanction_screening_result", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull(),
+  partyType: text("party_type").notNull(), // landlord | tenant | applicant | contractor
+  partyId: integer("party_id"),
+  partyName: text("party_name").notNull(),
+  matchStatus: text("match_status").notNull().default("clear"), // clear | potential_match | match | error
+  matchScore: integer("match_score"), // 0-100
+  matchedEntryId: integer("matched_entry_id"),
+  matchedName: text("matched_name"),
+  provider: text("provider").notNull().default("csv"),
+  details: json("details"), // provider payload / matched aliases
+  proofDocumentUrl: text("proof_document_url"),
+  screenedAt: timestamp("screened_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertSanctionScreeningResultSchema = createInsertSchema(sanctionScreeningResults).omit({ id: true, createdAt: true, screenedAt: true });
+export type SanctionScreeningResult = typeof sanctionScreeningResults.$inferSelect;
+export type InsertSanctionScreeningResult = z.infer<typeof insertSanctionScreeningResultSchema>;
