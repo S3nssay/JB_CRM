@@ -1900,20 +1900,11 @@ crmRouter.post('/properties', requireAgent, async (req, res) => {
   try {
     const validated = insertPropertySchema.parse(req.body);
 
-    // Get the area ID from postcode if areas are configured
+    // Map to a known London area when the postcode matches one (used for public
+    // area pages). Managed properties can be anywhere, so a non-matching postcode
+    // is NOT rejected — it just isn't linked to a marketing area.
     const areas = await storage.getLondonAreas();
-    const area = areas.find(a => validated.postcode?.startsWith(a.postcode));
-
-    // If no areas configured, validate against West London postcodes
-    if (areas.length === 0 && validated.postcode) {
-      const westLondonPostcodes = ['W2', 'W9', 'W10', 'W11', 'NW6', 'NW10'];
-      const isValidPostcode = westLondonPostcodes.some(p => validated.postcode!.toUpperCase().startsWith(p));
-      if (!isValidPostcode) {
-        return res.status(400).json({ error: 'Invalid postcode - must be in W2, W9, W10, W11, NW6, or NW10' });
-      }
-    } else if (areas.length > 0 && !area) {
-      return res.status(400).json({ error: 'Invalid postcode - must be in covered areas' });
-    }
+    const area = areas.find(a => validated.postcode?.toUpperCase().startsWith(a.postcode.toUpperCase()));
 
     // Enhance description with AI if not provided
     let finalDescription = validated.description;
@@ -9472,7 +9463,7 @@ crmRouter.get('/landlords/:id', requireAgent, async (req, res) => {
 // Create landlord - RAW SQL
 crmRouter.post('/landlords', requireAgent, async (req, res) => {
   try {
-    const { name, fullName, email, phone, mobile, addressLine1, address, bankName, bankAccountNumber, bankAccountNo, bankSortCode, landlordType, companyName, companyRegNo, notes } = req.body;
+    const { name, fullName, email, phone, mobile, addressLine1, address, bankName, bankAccountNumber, bankAccountNo, bankAccountHolderName, bankSortCode, landlordType, companyName, companyRegNo, isOverseas, taxPercentage, taxExemptionCertificateNo, notes } = req.body;
 
     // Support both old and new field names for backwards compatibility
     const landlordName = name || fullName;
@@ -9484,10 +9475,10 @@ crmRouter.post('/landlords', requireAgent, async (req, res) => {
     }
 
     const result = await pool.query(`
-      INSERT INTO landlord (name, email, phone, mobile, address_line1, bank_name, bank_account_number, bank_sort_code, landlord_type, company_name, company_registration_no, notes, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
-      RETURNING id, name, email, phone, mobile, address_line1 as "addressLine1", bank_name as "bankName", bank_account_number as "bankAccountNumber", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", notes, status, created_at as "createdAt"
-    `, [landlordName, email || null, phone || mobile || null, mobile || null, addrLine1 || null, bankName || null, bankAccNum || null, bankSortCode || null, landlordType || 'individual', companyName || null, companyRegNo || null, notes || null]);
+      INSERT INTO landlord (name, email, phone, mobile, address_line1, bank_name, bank_account_number, bank_account_holder_name, bank_sort_code, landlord_type, company_name, company_registration_no, is_overseas, tax_percentage, tax_exemption_certificate_no, notes, status)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'active')
+      RETURNING id, name, email, phone, mobile, address_line1 as "addressLine1", bank_name as "bankName", bank_account_number as "bankAccountNumber", bank_sort_code as "bankSortCode", landlord_type as "landlordType", company_name as "companyName", company_registration_no as "companyRegNo", is_overseas as "isOverseas", notes, status, created_at as "createdAt"
+    `, [landlordName, email || null, phone || mobile || null, mobile || null, addrLine1 || null, bankName || null, bankAccNum || null, bankAccountHolderName || null, bankSortCode || null, landlordType || 'individual', companyName || null, companyRegNo || null, isOverseas === true, taxPercentage || null, taxExemptionCertificateNo || null, notes || null]);
 
     res.json(result.rows[0]);
   } catch (error) {

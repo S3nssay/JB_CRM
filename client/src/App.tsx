@@ -148,6 +148,9 @@ import BlockManagement from "@/pages/BlockManagement";
 import LandlordPaymentsWorkbench from "@/pages/LandlordPaymentsWorkbench";
 import SanctionScreening from "@/pages/SanctionScreening";
 import PropertyLocator from "@/pages/PropertyLocator";
+import AddLandlordWizard from "@/pages/AddLandlordWizard";
+import AddTenantWizard from "@/pages/AddTenantWizard";
+import AddPropertyWizard from "@/pages/AddPropertyWizard";
 
 // Communications Pages
 import LetterTemplateManagement from "@/pages/LetterTemplateManagement";
@@ -520,6 +523,11 @@ function Router() {
 
         {/* KeyData-familiar property locator (master-detail selector) */}
         <Route path="/crm/locator"><CRMLayout><PropertyLocator /></CRMLayout></Route>
+
+        {/* Creation wizards (guided add-property / add-tenant / add-landlord) */}
+        <Route path="/crm/add-property"><CRMLayout><AddPropertyWizard /></CRMLayout></Route>
+        <Route path="/crm/add-tenant"><CRMLayout><AddTenantWizard /></CRMLayout></Route>
+        <Route path="/crm/add-landlord"><CRMLayout><AddLandlordWizard /></CRMLayout></Route>
 
         {/* Communications Routes */}
         <Route path="/crm/letter-templates"><CRMLayout><LetterTemplateManagement /></CRMLayout></Route>

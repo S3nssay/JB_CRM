@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Search, MapPin, User, Users, Key, PoundSterling, Home, Loader2, ExternalLink,
-  Pencil, ShieldCheck, CalendarClock, Building2,
+  Pencil, ShieldCheck, CalendarClock, Building2, Plus,
 } from 'lucide-react';
 
 // KeyData-familiar property locator: search + status filters on the left, a live
@@ -117,9 +117,14 @@ export default function PropertyLocator() {
             </p>
           </div>
         </div>
-        <div className="relative w-full sm:w-96">
-          <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-          <Input className="pl-9" placeholder="Locate by address, postcode, key-code, landlord or tenant…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="relative flex-1 sm:w-96">
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <Input className="pl-9" placeholder="Locate by address, postcode, key-code, landlord or tenant…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <Link href="/crm/add-property">
+            <Button className="gap-1.5 bg-[#791E75] hover:bg-[#5f1759] whitespace-nowrap"><Plus className="h-4 w-4" /> Add Property</Button>
+          </Link>
         </div>
       </div>
 
