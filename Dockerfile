@@ -3,11 +3,14 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy package files (include .npmrc for legacy-peer-deps) and the scripts folder,
+# which the postinstall hook (fix-zod-resolution.cjs) needs at install time.
+COPY package*.json .npmrc* ./
+COPY scripts ./scripts
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (legacy-peer-deps: @openai/agents peers zod@^4 while other
+# deps pin zod@^3; strict npm ci otherwise fails ERESOLVE)
+RUN npm ci --legacy-peer-deps
 
 # Copy source code
 COPY . .
@@ -20,9 +23,10 @@ FROM node:22-alpine AS production
 
 WORKDIR /app
 
-# Install only production dependencies
-COPY package*.json ./
-RUN npm ci --only=production
+# Install only production dependencies (scripts/ needed for the postinstall hook)
+COPY package*.json .npmrc* ./
+COPY scripts ./scripts
+RUN npm ci --only=production --legacy-peer-deps
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
