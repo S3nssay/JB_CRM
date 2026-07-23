@@ -9,7 +9,8 @@
  * Uses lazy imports for all service dependencies to avoid DB at module load.
  */
 
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 
 // ---- Lazy pg-boss init ----
 

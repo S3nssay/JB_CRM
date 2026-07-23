@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, ComponentProps, ReactNode, isValidElement, cloneElement } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, ChevronUp, ChevronDown, MapPin, Phone, MessageCircle, Home, Building, Users, ArrowRight, ExternalLink, ArrowUp, Facebook, Instagram, Twitter, Menu, X, LogIn } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
@@ -732,32 +733,50 @@ const EstateAgentHome = () => {
   ];
 
   // Team members data
-  const teamMembers = [
+  // Fallback team data used when no staff are configured in CRM
+  const fallbackTeamMembers = [
     {
       id: 1,
       name: "Aslam Noor",
-      role: "Director of Lettings & Property Management",
-      image: teamAslam,
-      whatsapp: "+447367087752",
-      description: "Leading our lettings division with over 15 years of experience in central London property management."
+      jobTitle: "Director of Lettings & Property Management",
+      photo: teamAslam,
+      phone: "+447367087752",
+      bio: "Leading our lettings division with over 15 years of experience in central London property management."
     },
     {
       id: 2,
       name: "Iury Campos",
-      role: "Associate Partner & General Manager",
-      image: teamIury,
-      whatsapp: "+447367087752",
-      description: "Overseeing operations and client relationships with expertise in both residential sales and commercial ventures."
+      jobTitle: "Associate Partner & General Manager",
+      photo: teamIury,
+      phone: "+447367087752",
+      bio: "Overseeing operations and client relationships with expertise in both residential sales and commercial ventures."
     },
     {
       id: 3,
       name: "Mayssaa Sabrah",
-      role: "Sales & Lettings Negotiator",
-      image: teamMayssaa,
-      whatsapp: "+447367087752",
-      description: "Specializing in client negotiations and property matching services across prime London locations."
+      jobTitle: "Sales & Lettings Negotiator",
+      photo: teamMayssaa,
+      phone: "+447367087752",
+      bio: "Specializing in client negotiations and property matching services across prime London locations."
     }
   ];
+
+  // Fetch team members from CRM staff profiles (max 4, selected via showOnTeamPage)
+  const { data: apiTeamMembers } = useQuery<Array<{
+    id: number;
+    name: string;
+    jobTitle: string;
+    bio: string;
+    photo: string;
+    department: string;
+    displayOrder: number;
+    phone: string;
+  }>>({
+    queryKey: ['/api/public/team'],
+  });
+
+  // Use API data if available with any members, otherwise fall back to hardcoded
+  const teamMembers = (apiTeamMembers && apiTeamMembers.length > 0 ? apiTeamMembers : fallbackTeamMembers);
 
   // Handle carousel arrow clicks with infinite scroll support
   const handleCarouselScroll = (direction: 'left' | 'right') => {
@@ -1849,11 +1868,17 @@ const EstateAgentHome = () => {
                           {/* Outer decorative ring */}
                           <div className="absolute inset-0 rounded-full bg-gradient-to-br from-[#D4A04F] via-[#E6B366] to-[#D4A04F] p-1 group-hover:scale-110 transition-transform duration-500">
                             <div className="w-full h-full rounded-full bg-gray-900 p-1">
-                              <img
-                                src={member.image}
-                                alt={member.name}
-                                className="w-full h-full object-cover rounded-full"
-                              />
+                              {member.photo ? (
+                                <img
+                                  src={member.photo}
+                                  alt={member.name}
+                                  className="w-full h-full object-cover rounded-full"
+                                />
+                              ) : (
+                                <div className="w-full h-full rounded-full bg-gradient-to-br from-[#791E75] to-[#D4A04F] flex items-center justify-center text-white text-2xl font-bold">
+                                  {member.name.split(' ').map(n => n[0]).join('')}
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -1872,18 +1897,19 @@ const EstateAgentHome = () => {
 
                         {/* Role with sophisticated styling */}
                         <p className="text-[#D4A04F] text-xs font-semibold tracking-wide uppercase mb-2">
-                          {member.role}
+                          {member.jobTitle}
                         </p>
 
                         {/* Description with better spacing */}
                         <p className="text-white/80 text-sm leading-relaxed px-2 flex-grow">
-                          {member.description}
+                          {member.bio}
                         </p>
 
                         {/* Enhanced Contact Button - always at bottom */}
+                        {member.phone && (
                         <div className="pt-4 mt-auto">
                           <a
-                            href={`https://wa.me/${member.whatsapp.replace('+', '')}?text=Hi%20${member.name.replace(' ', '%20')}%2C%20I%20have%20a%20property%20enquiry.`}
+                            href={`https://wa.me/${member.phone.replace('+', '')}?text=Hi%20${member.name.replace(' ', '%20')}%2C%20I%20have%20a%20property%20enquiry.`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="group/btn inline-flex items-center justify-center bg-gradient-to-r from-[#25D366] to-[#20b954] hover:from-[#20b954] hover:to-[#1da851] text-white px-6 py-3 rounded-full transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
@@ -1892,6 +1918,7 @@ const EstateAgentHome = () => {
                             Contact Me
                           </a>
                         </div>
+                        )}
                       </div>
                     </div>
                   </div>

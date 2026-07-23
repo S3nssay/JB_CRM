@@ -147,12 +147,17 @@ async function handleToolCalls(
         continue;
       }
 
-      // Build tool context
+      // Build tool context (includes caller phone for cross-channel tools)
       const context: ToolContext = {
         agentType: 'supervisor' as AgentType,
         conversationId: storedContext?.conversationId ?? null,
         contactId: storedContext?.contactId ?? null,
         channel: 'phone',
+        metadata: {
+          callerPhone: customerNumber,
+          callId,
+          contactName: storedContext?.contactName,
+        },
       };
 
       // Execute tool via registry
@@ -200,6 +205,26 @@ async function handleAssistantRequest(message: any, res: Response): Promise<void
     } catch (err: any) {
       // Context loading failure is non-critical -- proceed without context
       console.warn(`[VapiWebhook] Failed to load caller context: ${err.message}`);
+    }
+
+    // Push inbound call notification to CRM agents via SSE (for caller ID popup)
+    try {
+      const { unifiedCommunicationService } = await import('../../services/unifiedCommunicationService.js');
+      const { notificationService } = await import('../../services/notificationService.js');
+
+      const lookup = await unifiedCommunicationService.lookupContactByPhone(customerNumber);
+      notificationService.pushToAll({
+        type: 'inbound_call',
+        phone: customerNumber,
+        callId,
+        contact: lookup.found ? lookup.contacts[0] : null,
+        contacts: lookup.contacts,
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`[VapiWebhook] SSE notification pushed for inbound call from ${customerNumber}`);
+    } catch (err: any) {
+      // SSE push is non-critical
+      console.warn(`[VapiWebhook] Failed to push SSE notification: ${err.message}`);
     }
   }
 

@@ -1169,7 +1169,17 @@ export default function MyDesk() {
                                   className={`px-4 py-3 border-b cursor-pointer transition-colors hover:bg-gray-50 ${
                                     selectedEmailId === email.id ? 'bg-blue-50 border-l-2 border-l-blue-500' : ''
                                   } ${!email.isRead ? 'bg-white' : 'bg-gray-50/50'}`}
-                                  onClick={() => setSelectedEmailId(email.id)}
+                                  onClick={() => {
+                                    setSelectedEmailId(email.id);
+                                    // Optimistically mark as read in the list cache
+                                    if (!email.isRead) {
+                                      queryClient.setQueryData(
+                                        ['/api/email-integration/emails', emailFolder],
+                                        (old: any[] | undefined) =>
+                                          old?.map((e: any) => e.id === email.id ? { ...e, isRead: true } : e)
+                                      );
+                                    }
+                                  }}
                                 >
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">

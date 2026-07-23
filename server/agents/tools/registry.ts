@@ -169,6 +169,8 @@ import { requestContractorQuoteTool } from './definitions/requestContractorQuote
 import { requestLandlordApprovalTool } from './definitions/requestLandlordApproval';
 import { createWorkOrderTool } from './definitions/createWorkOrder';
 import { scheduleWorkOrderFollowupTool } from './definitions/scheduleWorkOrderFollowup';
+import { sendPropertyWhatsAppTool } from './definitions/sendPropertyWhatsApp';
+import { initiateCallbackTool } from './definitions/initiateCallback';
 
 toolRegistry.register(searchPropertiesTool);
 toolRegistry.register(queryKnowledgeBaseTool);
@@ -181,3 +183,5 @@ toolRegistry.register(requestContractorQuoteTool);
 toolRegistry.register(requestLandlordApprovalTool);
 toolRegistry.register(createWorkOrderTool);
 toolRegistry.register(scheduleWorkOrderFollowupTool);
+toolRegistry.register(sendPropertyWhatsAppTool);
+toolRegistry.register(initiateCallbackTool);

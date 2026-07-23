@@ -24,6 +24,7 @@ import {
   Upload, Landmark, BadgeCheck
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import UnifiedCommunicationPanel from '@/components/UnifiedCommunicationPanel';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1661,59 +1662,13 @@ export default function LeadManagement() {
 
                   {/* Communications Tab */}
                   <TabsContent value="communications" className="space-y-4">
-                    {(!leadDetails?.communications || leadDetails.communications.length === 0) ? (
-                      <div className="text-center py-8">
-                        <MessageCircle className="h-10 w-10 mx-auto text-gray-300 mb-3" />
-                        <p className="text-gray-500">No communications logged yet</p>
-                        <Button
-                          variant="outline"
-                          className="mt-3"
-                          onClick={() => setShowCommunicationDialog(true)}
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          Log First Communication
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {leadDetails.communications.map((comm) => (
-                          <Card key={comm.id}>
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div className="flex items-start gap-3">
-                                  <div className={`p-2 rounded-full ${comm.direction === 'inbound' ? 'bg-blue-100' : 'bg-green-100'}`}>
-                                    {channelIcons[comm.channel] || <MessageCircle className="h-4 w-4" />}
-                                  </div>
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-medium capitalize">{comm.channel.replace('_', ' ')}</span>
-                                      <Badge variant="outline" className="text-xs">
-                                        {comm.direction === 'inbound' ? 'Received' : 'Sent'}
-                                      </Badge>
-                                      <Badge variant="secondary" className="text-xs capitalize">
-                                        {comm.type.replace('_', ' ')}
-                                      </Badge>
-                                    </div>
-                                    {comm.subject && (
-                                      <p className="text-sm font-medium mt-1">{comm.subject}</p>
-                                    )}
-                                    <p className="text-sm text-gray-600 mt-1">{comm.content}</p>
-                                    {comm.outcome && (
-                                      <p className="text-xs text-gray-500 mt-2">
-                                        Outcome: <span className="capitalize">{comm.outcome.replace('_', ' ')}</span>
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                                <span className="text-xs text-gray-400">
-                                  {formatDateTime(comm.createdAt)}
-                                </span>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
+                    <UnifiedCommunicationPanel
+                      entityType="lead"
+                      entityId={selectedLead!.id}
+                      contactName={selectedLead!.fullName}
+                      contactEmail={selectedLead?.email || undefined}
+                      contactPhone={selectedLead?.phone || selectedLead?.mobile || undefined}
+                    />
                   </TabsContent>
 
                   {/* Properties Tab */}

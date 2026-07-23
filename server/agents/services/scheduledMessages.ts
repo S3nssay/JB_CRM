@@ -7,7 +7,8 @@
  * Workers check opt-out status before sending and log delivery via auditLogger.
  */
 
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 import { messageSender } from './messageSender';
 import { auditLogger } from '../middleware/auditLogger';
 import { db } from '../../db';

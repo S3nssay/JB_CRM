@@ -57,6 +57,26 @@ export class ChannelGateway {
       'inbound',
     );
 
+    // 5. Cross-post to unified communications table for entity linking
+    try {
+      const { unifiedCommunicationService } = await import('../../services/unifiedCommunicationService.js');
+      const entityType = contact.contactType as any;
+      if (['tenant', 'landlord', 'lead'].includes(entityType)) {
+        await unifiedCommunicationService.logManual({
+          channel: channel as any,
+          direction: 'inbound',
+          content: normalizedMessage.body || 'Inbound message',
+          entityType,
+          entityId: contact.contactId,
+          staffUserId: 0, // system-generated
+          externalMessageId: normalizedMessage.externalId,
+        });
+      }
+    } catch (err) {
+      // Non-critical: don't fail message processing if cross-post fails
+      console.error('[Gateway] Failed to cross-post to communications table:', err);
+    }
+
     return {
       conversationId: conversation.id,
       messageId,

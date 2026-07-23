@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { format } from "date-fns";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
+import UnifiedCommunicationPanel from '@/components/UnifiedCommunicationPanel';
 
 export default function TenantDetails() {
     const { id } = useParams();
@@ -592,49 +593,13 @@ export default function TenantDetails() {
 
                                 {/* Communications Tab */}
                                 <TabsContent value="communications" className="p-6">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h4 className="font-medium">Communication History</h4>
-                                        <Button size="sm">
-                                            <MessageSquare className="mr-2 h-4 w-4" />
-                                            Log Communication
-                                        </Button>
-                                    </div>
-                                    {isLoadingComms ? (
-                                        <div className="text-center py-4">Loading history...</div>
-                                    ) : communications.length === 0 ? (
-                                        <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-lg">
-                                            <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-20" />
-                                            <p>No communication history found</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            {communications.map((comm: any) => (
-                                                <div key={comm.id} className="flex gap-4">
-                                                    <div className={`mt-0.5 rounded-full p-2 h-fit ${comm.type === 'sms' ? 'bg-blue-100 text-blue-600' :
-                                                        comm.type === 'email' ? 'bg-yellow-100 text-yellow-600' :
-                                                            'bg-gray-100 text-gray-600'
-                                                        }`}>
-                                                        {comm.type === 'sms' ? <Phone className="h-4 w-4" /> :
-                                                            comm.type === 'email' ? <Mail className="h-4 w-4" /> :
-                                                                <MessageSquare className="h-4 w-4" />}
-                                                    </div>
-                                                    <div className="flex-1 space-y-1">
-                                                        <div className="flex items-center justify-between">
-                                                            <p className="text-sm font-medium">
-                                                                {comm.direction === 'outbound' ? 'Sent' : 'Received'} {comm.type.toUpperCase()}
-                                                            </p>
-                                                            <span className="text-xs text-muted-foreground">
-                                                                {format(new Date(comm.createdAt), 'PPP p')}
-                                                            </span>
-                                                        </div>
-                                                        <p className="text-sm text-gray-600 bg-gray-50/50 p-3 rounded-md">
-                                                            {comm.content}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
+                                    <UnifiedCommunicationPanel
+                                        entityType="tenant"
+                                        entityId={tenant.id}
+                                        contactName={tenant.name || tenant.fullName}
+                                        contactEmail={tenant.email}
+                                        contactPhone={tenant.mobile || tenant.phone}
+                                    />
                                 </TabsContent>
 
                                 {/* Tenancy History Tab */}

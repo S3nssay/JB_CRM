@@ -16,6 +16,7 @@ export interface ToolContext {
   conversationId: number | null;
   contactId: number | null;
   channel: CommunicationChannel;
+  metadata?: Record<string, any>;
 }
 
 export interface ToolInvocationResult {

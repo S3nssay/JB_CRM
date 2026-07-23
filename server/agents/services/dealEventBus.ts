@@ -6,7 +6,8 @@
  * Includes sourceEventId in payload to prevent circular event loops.
  */
 
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 import { randomUUID } from 'crypto';
 
 // ---- Event Names ----

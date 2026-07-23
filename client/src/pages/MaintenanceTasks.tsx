@@ -26,6 +26,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { useLocation } from 'wouter';
+import UnifiedCommunicationPanel from '@/components/UnifiedCommunicationPanel';
 
 // Form schema for new ticket
 const maintenanceFormSchema = z.object({
@@ -1129,6 +1130,18 @@ export default function MaintenanceTasks() {
                 </div>
               </TabsContent>
             </Tabs>
+
+            {/* Unified Communication Panel */}
+            <div className="px-6 pb-6">
+              <UnifiedCommunicationPanel
+                entityType="maintenance"
+                entityId={selectedTicket.id}
+                contactName={selectedTicket.tenantName || 'Tenant'}
+                contactEmail={selectedTicket.tenantEmail}
+                contactPhone={selectedTicket.tenantPhone}
+                compact
+              />
+            </div>
           </div>
         ) : (
           !selectedTicketId && tickets.length > 0 && (

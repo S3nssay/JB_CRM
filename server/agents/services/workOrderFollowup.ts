@@ -9,7 +9,8 @@
  * - Escalation to staff after 2 unanswered follow-ups
  */
 
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 import { pool } from '../../db';
 import { messageSender } from './messageSender';
 import { auditLogger } from '../middleware/auditLogger';

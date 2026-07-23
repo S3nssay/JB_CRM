@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import ContactTimeline from "@/components/ContactTimeline";
+import UnifiedCommunicationPanel from '@/components/UnifiedCommunicationPanel';
 import CostLedger from "@/components/CostLedger";
 
 export default function LandlordDetails() {
@@ -1146,9 +1147,12 @@ export default function LandlordDetails() {
                                         </Button>
                                     </div>
 
-                                    <ContactTimeline
+                                    <UnifiedCommunicationPanel
                                         entityType="landlord"
                                         entityId={parseInt(id as string)}
+                                        contactName={landlord.name || landlord.fullName}
+                                        contactEmail={landlord.email}
+                                        contactPhone={landlord.mobile || landlord.phone}
                                     />
                                 </TabsContent>
 

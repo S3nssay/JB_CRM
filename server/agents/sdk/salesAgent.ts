@@ -10,7 +10,8 @@
 import { Agent, tool } from '@openai/agents';
 // @ts-ignore -- zod4 is an npm alias for zod@4, required by @openai/agents SDK
 import { z as z4 } from 'zod4';
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 import type { AgentContext } from './context';
 import {
   searchPropertiesTool,

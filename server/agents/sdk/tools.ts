@@ -874,7 +874,7 @@ export const emitDealEventTool = tool({
   parameters: z4.object({
     eventType: z4.string().describe('Event type (e.g., tenancy.agreed, sale.agreed, step.completed)'),
     dealId: z4.number().describe('The deal ID'),
-    metadata: z4.record(z4.string(), z4.any()).optional().describe('Additional event metadata'),
+    metadata: z4.record(z4.string(), z4.any()).optional().nullable().describe('Additional event metadata'),
   }),
   execute: async (_context: AgentContext, input: { eventType: string; dealId: number; metadata?: Record<string, any> }) => {
     const { dealEventBus } = await getDealEventBus();

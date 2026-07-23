@@ -8,7 +8,8 @@
  * Handler functions are exported for unit testing without pg-boss.
  */
 
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 
 // ---- Lazy pg-boss init ----
 

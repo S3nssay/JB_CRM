@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Phone, Mail, Loader2, PhoneCall, PhoneOff, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/use-auth';
 
 // ==========================================
 // Click-to-Call Button
@@ -35,17 +36,26 @@ export function CallButton({
   showLabel = true,
 }: CallButtonProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isConfirming, setIsConfirming] = useState(false);
+  const [manualPhone, setManualPhone] = useState('');
+
+  // Resolve the agent's phone: prop > user profile > manual entry
+  const resolvedAgentPhone = agentPhone || (user as any)?.phone || '';
 
   const callMutation = useMutation({
     mutationFn: async () => {
+      const callerPhone = resolvedAgentPhone || manualPhone;
+      if (!callerPhone) {
+        throw new Error('Please set your phone number in Call Management settings, or enter it below.');
+      }
       const response = await fetch('/api/crm/calls/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           to: phoneNumber,
-          agentPhone: agentPhone || prompt('Enter your phone number (the one Twilio will call first):'),
+          agentPhone: callerPhone,
           contactName,
           entityType,
           entityId,
@@ -119,6 +129,20 @@ export function CallButton({
               <div className="font-medium">{contactName}</div>
               <div className="text-sm text-muted-foreground">{phoneNumber}</div>
             </div>
+            {!resolvedAgentPhone && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Your phone number</Label>
+                <Input
+                  value={manualPhone}
+                  onChange={(e) => setManualPhone(e.target.value)}
+                  placeholder="+44..."
+                  className="h-8 text-sm mt-1"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Set your phone in <a href="/crm/call-management" className="text-[#791E75] underline">Call Management</a> to skip this step.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsConfirming(false)}>

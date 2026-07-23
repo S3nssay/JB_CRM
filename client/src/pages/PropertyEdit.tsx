@@ -22,6 +22,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { format } from 'date-fns';
 import ApplicantMatchCriteria from '@/components/ApplicantMatchCriteria';
+import PropertyChecklistCard from '@/components/PropertyChecklistCard';
 
 interface PropertyData {
   id: number;
@@ -1229,6 +1230,9 @@ export default function PropertyEdit() {
             )}
           </CardContent>
         </Card>
+
+        {/* Tenancy Checklist */}
+        <PropertyChecklistCard propertyId={parseInt(propertyId)} />
 
         {/* Property Documents */}
         <Card>

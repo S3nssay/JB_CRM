@@ -14,7 +14,8 @@
  * All event handlers use fire-and-forget pattern (catch errors internally).
  */
 
-import PgBoss from 'pg-boss';
+import * as PgBossModule from 'pg-boss';
+const PgBoss = (PgBossModule as any).default || PgBossModule;
 
 // ---- Lazy pg-boss init ----
 
