@@ -20,6 +20,8 @@ Two roles are being automated:
 
 **Tasneem remains the human operator.** Her only manual acts are: (a) putting the rent entry into the CRM, (b) approving the money/legal gates, and (c) making the actual bank transfers in her own banking. Everything between is automated.
 
+**Phased rollout is a hard requirement.** The system must be adoptable gradually — able to run *with* Maisa and Iury still involved and hand steps to the agent progressively via switches in System Settings, not a big-bang cutover. This is a first-class design concept (see §3.1): autonomy is a **per-step setting**, not a fixed property.
+
 ### Non-goals (explicit constraints)
 
 - **No banking integration.** The client keeps banking separate and under Tasneem's control. The CRM never connects to a bank, never moves money via API. It prepares payment instructions / BACS files and records payments; Tasneem executes transfers herself.
@@ -69,6 +71,18 @@ trigger event ──▶ trigger registry ──▶ engine creates workflow_run
 - Timeouts/failures escalate to staff (reuse existing escalation). A global **kill-switch** disables all automation instantly.
 - **Chaining:** a step can emit an event that triggers another workflow (e.g. `applicant_approved` from #0 triggers #1).
 
+### 3.1 Configurable autonomy (phased rollout)
+
+Autonomy is a **per-step setting** so the client can phase the agent in while Maisa and Iury stay involved. Before executing a step, the engine resolves its **effective mode**:
+
+- **`manual`** — the step becomes a **task** assigned to the responsible person (Maisa → statement steps, Iury → maintenance capture, Tasneem → payments). The agent still prepares/drafts everything; the human executes or confirms. This is the starting state for phase-in.
+- **`review` (supervised)** — the agent performs the step, but it **pauses for that person's one-click approval** before taking effect (reuses the approval-gate mechanism).
+- **`auto`** — the agent performs the step autonomously.
+
+Resolution: `effective = override(setting) ?? step.defaultMode`, then **capped by a global automation level** (`off | assist | supervised | auto`) and **overridden by the kill-switch**. Money/legal gates (pay landlord, DPS payment/claim, send contract) are **always** at least `review` regardless of settings — they can never be flipped to unattended `auto`.
+
+Switches live in **System Settings** (a new "Automation" screen), stored in `workflow_automation_setting` (per workflow + step), editable by an admin without code changes. Typical rollout: everything `manual` → move Maisa's statement steps to `review` → then `auto`; same for Iury; Tasneem's payment steps stay `review` (hard-gated) throughout.
+
 ---
 
 ## 4. Data model (additive tables)
@@ -79,6 +93,8 @@ trigger event ──▶ trigger registry ──▶ engine creates workflow_run
 - **`workflow_approval`** — id, run_id, step_run_id, action_type (e.g. `pay_landlord`, `send_contract`, `pay_deposit_dps`, `dps_claim`), action_payload (JSONB — the *exact* action + amount awaiting sign-off), status (`pending | approved | rejected`), decided_by, decided_at, reason.
 - **`workflow_trigger`** — id, event_name, definition_key, conditions (JSONB), enabled. Config-driven "when event X → run workflow Y".
 - **`workflow_event`** — id, run_id, step_run_id, type, message, payload (JSONB), actor_id, created_at. Full audit log (doubles as CMP/RICS evidence).
+- **`workflow_automation_setting`** — id, definition_key, step_key (nullable = applies to whole workflow), mode (`manual | review | auto`), assignee_role, updated_by, updated_at. The switches behind §3.1. Plus a global automation level + kill-switch held in the existing `system_setting` table.
+- **`workflow_task`** — id, run_id, step_run_id, assignee_role, assignee_id, title, status (`open | done | skipped`), due_at, completed_by, completed_at. Created when a step resolves to `manual` mode, so Maisa/Iury/Tasneem can execute or confirm it. (Step definitions carry a `defaultMode` and `assigneeRole`.)
 
 All money in integer pence. Singular physical table names.
 
@@ -131,25 +147,30 @@ Idempotent: at most one active run per (entity, workflow) so nothing double-fire
 
 ---
 
-## 8. Approvals UX
+## 8. Approvals & Tasks UX
 
-New `/crm/approvals` queue. Each card shows the workflow, the case, and the **exact action + amount** awaiting sign-off (e.g. "Pay £1,913 to Mr Moydul Hoque — 20-96-55 / 00054127 — ref 540B HARROW ROAD"), with **Approve** / **Reject (+reason)**. Approve → resume run; Reject → pause + escalate. A nav badge shows the pending count; approvals also appear on the case timeline. Money/legal executors **refuse to run** without an approved `workflow_approval`.
+New `/crm/approvals` queue with two kinds of items:
+
+- **Approvals** (from `review` steps and money/legal gates) — each card shows the workflow, the case, and the **exact action + amount** awaiting sign-off (e.g. "Pay £1,913 to Mr Moydul Hoque — 20-96-55 / 00054127 — ref 540B HARROW ROAD"), with **Approve** / **Reject (+reason)**. Approve → resume run; Reject → pause + escalate.
+- **Tasks** (from `manual` steps) — routed to the responsible role (Maisa / Iury / Tasneem) with the agent's prepared draft; the person executes or confirms, then marks done to advance the run.
+
+A nav badge shows pending count; items also appear on the case timeline. Money/legal executors **refuse to run** without an approved `workflow_approval`. A **System Settings → Automation** screen exposes the per-step switches (§3.1) and the global automation level + kill-switch.
 
 ---
 
 ## 9. Safety, audit, error handling
 
 - Every step + approval written to `workflow_event` (who/what/when/payload) — the client-money audit trail.
-- Money/legal actions only reachable through an approved `workflow_approval`.
+- Money/legal actions only reachable through an approved `workflow_approval` (never unattended `auto`, regardless of settings).
 - Transient failures: retry with backoff. Permanent failure: pause run + escalate to staff.
-- Global **kill-switch** disables all automation instantly.
+- **Global automation level** (`off | assist | supervised | auto`) caps every step's effective mode; the **kill-switch** disables all automation instantly. New/changed workflows start at `manual`/`assist` and are promoted deliberately.
 - Runs are durable (pg-boss) and survive restarts.
 
 ---
 
 ## 10. Build order (each is its own plan → build → verify cycle)
 
-1. **Engine core** — `workflow_definition/run/step_run/approval/trigger/event` tables, the run executor (generalised from the deal pipeline), approval model, trigger registry, kill-switch, `/crm/approvals` queue.
+1. **Engine core** — `workflow_definition/run/step_run/approval/trigger/event/automation_setting/task` tables, the run executor (generalised from the deal pipeline) with **per-step effective-mode resolution** (§3.1), approval + task models, trigger registry, global automation level + kill-switch, the `/crm/approvals` (Approvals & Tasks) queue, and the **System Settings → Automation** switch screen. Phasing must work from day one.
 2. **Workflow #2 (Rent → Landlord)** on top of the engine — reuses the Landlord Payments workbench, one-off charges, and the repairs fix. Proves "the agent is Maisa" end-to-end. **First build.**
 3. **Workflow #4 (Maintenance recharge)** — small; makes #2's statements correct.
 4. **Workflow #1 (New Tenancy)** — needs Identity/KYC + DPS + Documents adapters.
