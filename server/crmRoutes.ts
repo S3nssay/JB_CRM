@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { storage } from './storage';
 import { db, pool } from './db';
+import { hashPassword } from './auth';
 import {
   insertPropertySchema,
   portalCredentialsFormSchema,
@@ -6375,10 +6376,10 @@ crmRouter.post('/staff', requireAgent, async (req, res) => {
       return res.status(400).json({ error: 'Username already exists' });
     }
 
-    // Create user first
+    // Create user first (hash the password — storage.createUser does NOT hash)
     const user = await storage.createUser({
       username,
-      password, // Will be hashed by storage
+      password: await hashPassword(password),
       email,
       fullName,
       phone,
