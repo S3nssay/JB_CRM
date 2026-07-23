@@ -3,6 +3,10 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+# Native-module build toolchain (better-sqlite3 / bufferutil compile via node-gyp;
+# node:22-alpine ships without a C/C++ toolchain, so npm ci would fail otherwise)
+RUN apk add --no-cache python3 make g++
+
 # Copy package files (include .npmrc for legacy-peer-deps) and the scripts folder,
 # which the postinstall hook (fix-zod-resolution.cjs) needs at install time.
 COPY package*.json .npmrc* ./
@@ -22,6 +26,9 @@ RUN npm run build
 FROM node:22-alpine AS production
 
 WORKDIR /app
+
+# Native-module build toolchain (production install recompiles better-sqlite3/bufferutil)
+RUN apk add --no-cache python3 make g++
 
 # Install only production dependencies (scripts/ needed for the postinstall hook)
 COPY package*.json .npmrc* ./
