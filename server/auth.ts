@@ -121,6 +121,16 @@ export function setupAuth(app: Express) {
 
   // Login endpoint
   app.post("/api/auth/login", (req, res, next) => {
+    // Trim surrounding whitespace so a stray copy/paste space doesn't cause a
+    // false "Invalid username or password". Username case is preserved on
+    // purpose — the match stays exact/case-sensitive.
+    if (typeof req.body?.username === "string") {
+      req.body.username = req.body.username.trim();
+    }
+    if (typeof req.body?.password === "string") {
+      req.body.password = req.body.password.trim();
+    }
+
     // Validate login data
     const validationResult = loginSchema.safeParse(req.body);
     if (!validationResult.success) {
