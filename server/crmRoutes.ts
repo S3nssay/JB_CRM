@@ -85,7 +85,9 @@ import {
   tenantFeeMaximums,
   type TenantFeeType,
   emailAttachments,
+  propertyChecklists,
 } from '@shared/schema';
+import { propertyChecklistItemKeys } from '@shared/propertyChecklist';
 
 import { eq, desc, and, sql, or, gte, lte, inArray, notInArray, count, isNull } from 'drizzle-orm';
 import {
@@ -1261,6 +1263,11 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
       managementFeeValue: properties.managementFeeValue,
       managementPeriodMonths: properties.managementPeriodMonths,
       managementStartDate: properties.managementStartDate,
+      managementType: properties.managementType,
+      keyCode: properties.keyCode,
+      propCode: properties.propCode,
+      images: properties.images,
+      propertyRentAmount: properties.rentAmount,
       status: properties.status,
       // Landlord info - using 'name' not 'fullName'
       landlordName: landlords.name,
@@ -1353,11 +1360,17 @@ crmRouter.get('/managed-properties', requireAgent, async (req, res) => {
         managementFeeFixed: p.managementFeeType === 'fixed' ? p.managementFeeValue : null,
         managementPeriod: formatManagementPeriod(p.managementPeriodMonths) || (activeTenancy?.periodMonths ? formatManagementPeriod(activeTenancy.periodMonths) : null),
         managementStartDate: p.managementStartDate,
+        // Familiar (KeyData) fields
+        managementType: p.managementType,
+        serviceType: p.managementType === 'let_only' ? 'Let Only' : p.managementType === 'tenant_find' ? 'Tenant Find' : 'Managed',
+        keyCode: p.keyCode,
+        propCode: p.propCode,
+        imageUrl: Array.isArray(p.images) && p.images.length ? p.images[0] : null,
         // Tenancy info
         tenancyId: activeTenancy?.id || null,
         tenantId: activeTenancy?.tenantId || null,
         tenantName: activeTenancy?.tenantName || null,
-        rentAmount: activeTenancy?.rentAmount || null,
+        rentAmount: activeTenancy?.rentAmount || p.propertyRentAmount || null,
         rentFrequency: activeTenancy?.rentFrequency || 'monthly',
         depositAmount: activeTenancy?.depositAmount || null,
         depositHeldBy: formatDepositHolder(activeTenancy?.depositHolderType, activeTenancy?.depositScheme),
@@ -1973,6 +1986,91 @@ crmRouter.patch('/properties/:id', requireAgent, async (req, res) => {
   } catch (error) {
     console.error('Error updating property:', error);
     res.status(500).json({ error: 'Failed to update property' });
+  }
+});
+
+// ==========================================
+// PROPERTY CHECKLISTS ("Details for file")
+// A property has one "active" checklist (the most recent row) plus a history of
+// past ones. Rotating into a new tenancy creates a fresh checklist that becomes
+// active by recency — no schema/status column required.
+// ==========================================
+
+// GET all checklists for a property: { active, history }
+crmRouter.get('/properties/:id/checklists', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) return res.status(400).json({ error: 'Invalid property id' });
+
+    const rows = await db.select()
+      .from(propertyChecklists)
+      .where(eq(propertyChecklists.propertyId, propertyId))
+      .orderBy(desc(propertyChecklists.createdAt), desc(propertyChecklists.id));
+
+    res.json({ active: rows[0] || null, history: rows.slice(1) });
+  } catch (error) {
+    console.error('Error fetching property checklists:', error);
+    res.status(500).json({ error: 'Failed to fetch checklists' });
+  }
+});
+
+// POST create a fresh checklist for a new tenancy (becomes the active one)
+crmRouter.post('/properties/:id/checklists', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    if (isNaN(propertyId)) return res.status(400).json({ error: 'Invalid property id' });
+
+    // Confirm the property exists before creating a checklist for it
+    const [property] = await db.select({ id: properties.id })
+      .from(properties)
+      .where(eq(properties.id, propertyId));
+    if (!property) return res.status(404).json({ error: 'Property not found' });
+
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes : null;
+    const [row] = await db.insert(propertyChecklists)
+      .values({ propertyId, notes })
+      .returning();
+
+    res.status(201).json(row);
+  } catch (error) {
+    console.error('Error creating property checklist:', error);
+    res.status(500).json({ error: 'Failed to create checklist' });
+  }
+});
+
+// PATCH update checklist items / notes on a specific checklist row
+crmRouter.patch('/properties/:id/checklists/:checklistId', requireAgent, async (req, res) => {
+  try {
+    const propertyId = parseInt(req.params.id);
+    const checklistId = parseInt(req.params.checklistId);
+    if (isNaN(propertyId) || isNaN(checklistId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
+
+    // Whitelist: only known boolean item keys + notes may be updated
+    const updates: Record<string, unknown> = {};
+    for (const key of propertyChecklistItemKeys) {
+      if (key in req.body) updates[key] = Boolean(req.body[key]);
+    }
+    if (typeof req.body?.notes === 'string') updates.notes = req.body.notes;
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: 'No valid checklist fields to update' });
+    }
+    updates.updatedAt = new Date();
+
+    const [row] = await db.update(propertyChecklists)
+      .set(updates)
+      .where(and(
+        eq(propertyChecklists.id, checklistId),
+        eq(propertyChecklists.propertyId, propertyId),
+      ))
+      .returning();
+
+    if (!row) return res.status(404).json({ error: 'Checklist not found for this property' });
+    res.json(row);
+  } catch (error) {
+    console.error('Error updating property checklist:', error);
+    res.status(500).json({ error: 'Failed to update checklist' });
   }
 });
 

@@ -304,6 +304,10 @@ export default function CRMLayout({ children }: CRMLayoutProps) {
                   <Key className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/rental-agreements') ? 'text-white' : 'text-gray-400'}`} />
                   Tenancies
                 </button>
+                <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/locator') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/locator')}>
+                  <MapPin className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/locator') ? 'text-white' : 'text-gray-400'}`} />
+                  Property Locator
+                </button>
                 <button className={`w-full flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] transition-all ${isActive('/crm/property-management') ? 'bg-[#791E75] text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`} onClick={() => setLocation('/crm/property-management')}>
                   <Home className={`h-3.5 w-3.5 flex-shrink-0 ${isActive('/crm/property-management') ? 'text-white' : 'text-gray-400'}`} />
                   Managed Properties
