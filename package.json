@@ -9,6 +9,15 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:push": "drizzle-kit push",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:public": "playwright test --project=public-chromium",
+    "test:e2e:crm": "playwright test --project=crm",
+    "test:e2e:auth": "playwright test --project=auth",
+    "test:e2e:api": "playwright test --project=api",
+    "test:e2e:workflows": "playwright test --project=workflows",
+    "test:e2e:seed": "tsx scripts/seed-e2e.ts",
+    "test:e2e:report": "playwright show-report tests/e2e/.report",
     "postinstall": "node scripts/fix-zod-resolution.cjs"
   },
   "dependencies": {
@@ -88,6 +97,7 @@
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pdf2json": "^4.0.0",
+    "pdfkit": "^0.17.2",
     "pg": "^8.16.3",
     "pg-boss": "^12.14.0",
     "playwright": "^1.55.0",
@@ -119,6 +129,7 @@
     "zod4": "npm:zod@^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@replit/vite-plugin-cartographer": "^0.0.11",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",
     "@tailwindcss/typography": "^0.5.15",
@@ -138,7 +149,6 @@
     "dotenv-cli": "^11.0.0",
     "drizzle-kit": "^0.30.4",
     "esbuild": "^0.25.0",
-    "pdfkit": "^0.17.2",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.21.0",
