@@ -14,7 +14,7 @@ import {
   sentEmails,
   emailJobQueue,
 } from '@shared/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, or, desc, sql, inArray } from 'drizzle-orm';
 import { graphAuthService } from '../services/microsoft/graphAuthService';
 import { createGraphClient } from '../services/microsoft/graphApiClient';
 import { graphWebhookHandler } from '../services/email/webhookHandler';
@@ -560,7 +560,30 @@ router.get('/emails', requireAuth, async (req: Request, res: Response) => {
     const user = req.user as any;
     const { limit = '50', offset = '0', connectionId } = req.query;
 
-    let query = db
+    // Get system mailbox connection IDs (accessible by any authenticated user)
+    const systemConnections = await db
+      .select({ id: emailConnections.id })
+      .from(emailConnections)
+      .where(eq(emailConnections.isSystemMailbox, true));
+    const systemConnectionIds = systemConnections.map(c => c.id);
+
+    // Build access filter: user's own emails OR emails from system mailboxes
+    const accessConditions = [eq(processedEmails.userId, user.id)];
+    if (systemConnectionIds.length > 0) {
+      accessConditions.push(inArray(processedEmails.connectionId, systemConnectionIds));
+    }
+
+    let whereCondition = or(...accessConditions)!;
+
+    // If filtering by specific connection, add that constraint
+    if (connectionId) {
+      whereCondition = and(
+        whereCondition,
+        eq(processedEmails.connectionId, parseInt(connectionId as string, 10))
+      )!;
+    }
+
+    const emails = await db
       .select({
         id: processedEmails.id,
         connectionId: processedEmails.connectionId,
@@ -580,16 +603,10 @@ router.get('/emails', requireAuth, async (req: Request, res: Response) => {
         linkedContactId: processedEmails.linkedContactId,
       })
       .from(processedEmails)
-      .where(eq(processedEmails.userId, user.id))
+      .where(whereCondition)
       .orderBy(desc(processedEmails.receivedAt))
       .limit(parseInt(limit as string, 10))
       .offset(parseInt(offset as string, 10));
-
-    if (connectionId) {
-      query = query.where(eq(processedEmails.connectionId, parseInt(connectionId as string, 10))) as any;
-    }
-
-    const emails = await query;
 
     res.json(emails);
   } catch (error) {
@@ -607,19 +624,41 @@ router.get('/emails/:id', requireAuth, async (req: Request, res: Response) => {
     const user = req.user as any;
     const emailId = parseInt(req.params.id, 10);
 
+    // Get IDs of system mailbox connections (accessible by any authenticated user)
+    const systemConnections = await db
+      .select({ id: emailConnections.id })
+      .from(emailConnections)
+      .where(eq(emailConnections.isSystemMailbox, true));
+    const systemConnectionIds = systemConnections.map(c => c.id);
+
+    // Allow access if: email belongs to current user OR email is from a system mailbox
+    const conditions = [eq(processedEmails.userId, user.id)];
+    if (systemConnectionIds.length > 0) {
+      conditions.push(inArray(processedEmails.connectionId, systemConnectionIds));
+    }
+
     const [email] = await db
       .select()
       .from(processedEmails)
       .where(
         and(
           eq(processedEmails.id, emailId),
-          eq(processedEmails.userId, user.id)
+          or(...conditions)
         )
       )
       .limit(1);
 
     if (!email) {
       return res.status(404).json({ error: 'Email not found' });
+    }
+
+    // Mark as read when viewed
+    if (!email.isRead) {
+      await db
+        .update(processedEmails)
+        .set({ isRead: true, updatedAt: new Date() })
+        .where(eq(processedEmails.id, email.id));
+      email.isRead = true;
     }
 
     res.json(email);
@@ -875,8 +914,8 @@ router.post('/system-mailbox', requireAgent, async (req: Request, res: Response)
     } = req.body;
 
     // Validate category
-    if (!category || !['sales', 'lettings', 'maintenance', 'admin'].includes(category)) {
-      return res.status(400).json({ error: 'category must be one of: sales, lettings, maintenance, admin' });
+    if (!category || !['sales', 'lettings', 'maintenance', 'admin', 'accounts'].includes(category)) {
+      return res.status(400).json({ error: 'category must be one of: sales, lettings, maintenance, admin, accounts' });
     }
 
     // Validate required fields
@@ -1004,7 +1043,7 @@ router.patch('/system-mailbox/:category', requireAgent, async (req: Request, res
     }
 
     const { category } = req.params;
-    if (!['sales', 'lettings', 'maintenance', 'admin'].includes(category)) {
+    if (!['sales', 'lettings', 'maintenance', 'admin', 'accounts'].includes(category)) {
       return res.status(400).json({ error: 'Invalid category' });
     }
 
@@ -1118,7 +1157,7 @@ router.delete('/system-mailbox/:category', requireAgent, async (req: Request, re
     }
 
     const { category } = req.params;
-    if (!['sales', 'lettings', 'maintenance', 'admin'].includes(category)) {
+    if (!['sales', 'lettings', 'maintenance', 'admin', 'accounts'].includes(category)) {
       return res.status(400).json({ error: 'Invalid category' });
     }
 
@@ -1290,7 +1329,7 @@ router.post('/department-send', requireAgent, async (req: Request, res: Response
     } = req.body;
 
     // Validate
-    if (!category || !['sales', 'lettings', 'maintenance', 'admin'].includes(category)) {
+    if (!category || !['sales', 'lettings', 'maintenance', 'admin', 'accounts'].includes(category)) {
       return res.status(400).json({ error: 'Valid category required' });
     }
     if (!to || !Array.isArray(to) || to.length === 0 || !subject) {

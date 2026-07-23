@@ -778,6 +778,25 @@ Prioritize these actionTypes:
 - route_to_pm: for anything else needing human review
 - ignore: for spam, auto-replies, newsletters
 Default senderType assumption: tenant (unless email matches a known contractor)`,
+
+      accounts: `
+
+DEPARTMENT CONTEXT: This email was received on the ACCOUNTS inbox (accounts@johnbarclay.uk).
+Run by the Accounts team; handles rent receipts, landlord payments and statements, invoices, and finance queries.
+Prioritize these actionTypes:
+- route_to_pm: for rent-received notifications / bank statement entries, landlord payment or statement queries, tenant payment queries, supplier/contractor invoices, and anything needing accounts action
+- ignore: for spam, auto-replies, newsletters
+Default senderType assumption: existing client (landlord, tenant, or supplier) unless clearly a prospect`,
+
+      admin: `
+
+DEPARTMENT CONTEXT: This email was received on the ADMIN / GENERAL inbox (admin@johnbarclay.uk).
+General office mailbox for anything not specific to sales, lettings, maintenance, or accounts.
+Prioritize these actionTypes:
+- create_enquiry: for genuine sales/lettings enquiries that arrived here by mistake
+- route_to_pm: for anything needing a human to triage or reassign
+- ignore: for spam, auto-replies, newsletters
+Default senderType assumption: unknown (triage before assuming)`,
     };
 
     return instructions[department] || '';

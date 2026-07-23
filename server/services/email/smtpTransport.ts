@@ -17,6 +17,7 @@ export interface SmtpConnectionConfig {
   smtpPassword: string; // encrypted
   smtpSecure: boolean;
   mailboxUpn: string; // from address
+  mailboxDisplayName?: string; // optional human-readable From name, e.g. "John Barclay Accounts Team"
 }
 
 export interface ImapConnectionConfig {
@@ -92,7 +93,9 @@ export class SmtpSender {
     };
 
     const mailOptions: nodemailer.SendMailOptions = {
-      from: config.mailboxUpn,
+      from: config.mailboxDisplayName
+        ? { name: config.mailboxDisplayName, address: config.mailboxUpn }
+        : config.mailboxUpn,
       to: options.to.join(', '),
       cc: options.cc?.join(', '),
       bcc: options.bcc?.join(', '),

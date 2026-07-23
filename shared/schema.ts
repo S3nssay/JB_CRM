@@ -6526,7 +6526,7 @@ export const emailConnections = pgTable("email_connection", {
 
   // System/department mailbox fields
   isSystemMailbox: boolean("is_system_mailbox").notNull().default(false),
-  mailboxCategory: text("mailbox_category"), // 'sales' | 'lettings' | 'maintenance'
+  mailboxCategory: text("mailbox_category"), // 'sales' | 'lettings' | 'maintenance' | 'admin' | 'accounts'
   mailboxDisplayName: text("mailbox_display_name"), // Human-readable name for UI
 
   createdAt: timestamp("created_at").notNull().defaultNow(),

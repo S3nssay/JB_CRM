@@ -309,6 +309,7 @@ export class EmailSender {
         smtpPassword: connection.smtpPassword,
         smtpSecure: connection.smtpSecure || false,
         mailboxUpn: connection.mailboxUpn,
+        mailboxDisplayName: connection.mailboxDisplayName || undefined,
       },
       {
         to: sentEmail.toAddresses,
